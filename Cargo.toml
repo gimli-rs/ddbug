@@ -1,0 +1,9 @@
+[package]
+name = "ddbug"
+version = "0.1.0"
+authors = ["Philip Craig <philipjcraig@gmail.com>"]
+
+[dependencies]
+gimli = { path = "../gimli" }
+memmap = "0.4.0"
+object = "0.1.0"
