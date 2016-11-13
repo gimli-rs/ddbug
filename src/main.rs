@@ -2,11 +2,16 @@ extern crate gimli;
 extern crate memmap;
 extern crate object;
 
+use std::borrow::Borrow;
+use std::borrow::Cow;
 use std::cell;
 use std::collections::HashMap;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::ffi;
+use std::error;
+use std::result;
 use std::io::Write;
 
 use object::Object;
@@ -26,6 +31,41 @@ macro_rules! println_debug {
         }
     })
 }
+
+#[derive(Debug)]
+pub struct Error(pub Cow<'static, str>);
+
+impl error::Error for Error {
+    fn description(&self) -> &str {
+        self.0.borrow()
+    }
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<&'static str> for Error {
+    fn from(s: &'static str) -> Error {
+        Error(Cow::Borrowed(s))
+    }
+}
+
+impl From<String> for Error {
+    fn from(s: String) -> Error {
+        Error(Cow::Owned(s))
+    }
+}
+
+impl From<gimli::Error> for Error {
+    fn from(e: gimli::Error) -> Error {
+        Error(Cow::Owned(format!("DWARF error: {}", e)))
+    }
+}
+
+pub type Result<T> = result::Result<T, Error>;
 
 fn main() {
     for path in env::args_os().skip(1) {
@@ -126,7 +166,7 @@ fn parse_object_file<Endian>(path: &str, file: object::File)
     }
 }
 
-fn parse_units<Endian>(file: &ObjectFile<Endian>) -> Result<(), gimli::Error>
+fn parse_units<Endian>(file: &ObjectFile<Endian>) -> Result<()>
     where Endian: gimli::Endianity
 {
     let mut units = file.debug_info().units();
@@ -164,7 +204,7 @@ struct Unit<'input> {
 
 fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
                               unit: &gimli::CompilationUnitHeader<'input, Endian>)
-                              -> Result<(), gimli::Error>
+                              -> Result<()>
     where Endian: gimli::Endianity
 {
     let abbrev = &try!(unit.abbreviations(file.debug_abbrev()));
@@ -181,9 +221,7 @@ fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
     let mut unit = Unit::default();
     if let Some(entry) = iter.entry() {
         if entry.tag() != gimli::DW_TAG_compile_unit {
-            // TODO: return Err and handle in caller
-            println_err!("{}: unknown CU tag: {}", file.path, entry.tag());
-            return Ok(());
+            return Err(format!("unknown CU tag: {}", entry.tag()).into());
         }
         println!("{}", file.path);
         let mut attrs = entry.attrs();
@@ -225,9 +263,7 @@ fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
         }
         println_debug!("{}: {:?}", file.path, unit);
     } else {
-        // TODO: return Err and handle in caller
-        println_err!("{}: missing CU entry", file.path);
-        return Ok(());
+        return Err("missing CU entry".into());
     };
 
     let mut namespaces = Vec::new();
@@ -238,7 +274,7 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut UnitState<'state, 'input, Endian>,
     namespaces: &mut Vec<String>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<(), gimli::Error>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     while let Some(child) = try!(iter.next()) {
@@ -277,7 +313,7 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut UnitState<'state, 'input, Endian>,
     namespaces: &mut Vec<String>,
     iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<(), gimli::Error>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     let mut namespace = Namespace::default();
@@ -314,7 +350,7 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut UnitState<'state, 'input, Endian>,
     namespaces: &mut Vec<String>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<(), gimli::Error>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     let mut name = None;
@@ -415,7 +451,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut UnitState<'state, 'input, Endian>,
     namespaces: &mut Vec<String>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<(), gimli::Error>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     let mut subprogram = Subprogram::default();
@@ -532,7 +568,7 @@ struct Parameter<'input> {
 fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut UnitState<'state, 'input, Endian>,
     iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<(), gimli::Error>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     let mut parameter = Parameter::default();
@@ -581,7 +617,7 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 fn type_name<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     (unit: &mut UnitState<'state, 'input, Endian>,
      offset: gimli::UnitOffset)
-     -> Result<Option<&'input ffi::CStr>, gimli::Error>
+     -> Result<Option<&'input ffi::CStr>>
     where Endian: gimli::Endianity
 {
     if let Some(name) = unit.type_names.get(&offset.0) {
