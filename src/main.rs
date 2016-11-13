@@ -1,10 +1,9 @@
 extern crate gimli;
 extern crate memmap;
-extern crate object;
+extern crate xmas_elf;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
-use std::cell;
 use std::collections::HashMap;
 use std::env;
 use std::fmt;
@@ -13,8 +12,6 @@ use std::ffi;
 use std::error;
 use std::result;
 use std::io::Write;
-
-use object::Object;
 
 macro_rules! println_err {
     ($($arg:tt)*) => ({
@@ -91,12 +88,19 @@ fn parse_file(path_os: &ffi::OsStr) {
         }
     };
 
-    let file = object::File::parse(unsafe { file.as_slice() });
-
-    if file.is_little_endian() {
-        parse_object_file::<gimli::LittleEndian>(&path, file)
-    } else {
-        parse_object_file::<gimli::BigEndian>(&path, file)
+    let input = unsafe { file.as_slice() };
+    let elf = xmas_elf::ElfFile::new(input);
+    match elf.header.pt1.data {
+        xmas_elf::header::Data::LittleEndian => {
+            parse_object_file::<gimli::LittleEndian>(&path, &elf)
+        }
+        xmas_elf::header::Data::BigEndian => {
+            parse_object_file::<gimli::BigEndian>(&path, &elf)
+        }
+        _ => {
+            println_err!("{}: unknown endianity", path);
+            return;
+        }
     }
 }
 
@@ -104,61 +108,26 @@ struct ObjectFile<'input, Endian>
     where Endian: gimli::Endianity
 {
     path: &'input str,
-    file: &'input object::File<'input>,
-    debug_abbrev: cell::Cell<Option<gimli::DebugAbbrev<'input, Endian>>>,
-    debug_info: cell::Cell<Option<gimli::DebugInfo<'input, Endian>>>,
-    debug_str: cell::Cell<Option<gimli::DebugStr<'input, Endian>>>,
+    debug_abbrev: gimli::DebugAbbrev<'input, Endian>,
+    debug_info: gimli::DebugInfo<'input, Endian>,
+    debug_str: gimli::DebugStr<'input, Endian>,
 }
 
-impl<'input, Endian> ObjectFile<'input, Endian>
+fn parse_object_file<Endian>(path: &str, elf: &xmas_elf::ElfFile)
     where Endian: gimli::Endianity
 {
-    fn debug_abbrev(&self) -> gimli::DebugAbbrev<'input, Endian> {
-        match self.debug_abbrev.get() {
-            Some(debug_abbrev) => debug_abbrev,
-            None => {
-                let debug_abbrev = self.file.get_section(".debug_abbrev").unwrap_or(&[]);
-                let debug_abbrev = gimli::DebugAbbrev::<Endian>::new(debug_abbrev);
-                self.debug_abbrev.set(Some(debug_abbrev));
-                debug_abbrev
-            }
-        }
-    }
+    let debug_abbrev = elf.find_section_by_name(".debug_abbrev").map(|s| s.raw_data(elf));
+    let debug_abbrev = gimli::DebugAbbrev::<Endian>::new(debug_abbrev.unwrap_or(&[]));
+    let debug_info = elf.find_section_by_name(".debug_info").map(|s| s.raw_data(elf));
+    let debug_info = gimli::DebugInfo::<Endian>::new(debug_info.unwrap_or(&[]));
+    let debug_str = elf.find_section_by_name(".debug_str").map(|s| s.raw_data(elf));
+    let debug_str = gimli::DebugStr::<Endian>::new(debug_str.unwrap_or(&[]));
 
-    fn debug_info(&self) -> gimli::DebugInfo<'input, Endian> {
-        match self.debug_info.get() {
-            Some(debug_info) => debug_info,
-            None => {
-                let debug_info = self.file.get_section(".debug_info").unwrap_or(&[]);
-                let debug_info = gimli::DebugInfo::<Endian>::new(debug_info);
-                self.debug_info.set(Some(debug_info));
-                debug_info
-            }
-        }
-    }
-
-    fn debug_str(&self) -> gimli::DebugStr<'input, Endian> {
-        match self.debug_str.get() {
-            Some(debug_str) => debug_str,
-            None => {
-                let debug_str = self.file.get_section(".debug_str").unwrap_or(&[]);
-                let debug_str = gimli::DebugStr::<Endian>::new(debug_str);
-                self.debug_str.set(Some(debug_str));
-                debug_str
-            }
-        }
-    }
-}
-
-fn parse_object_file<Endian>(path: &str, file: object::File)
-    where Endian: gimli::Endianity
-{
     let file = ObjectFile::<Endian> {
         path: path,
-        file: &file,
-        debug_abbrev: cell::Cell::new(None),
-        debug_info: cell::Cell::new(None),
-        debug_str: cell::Cell::new(None),
+        debug_abbrev: debug_abbrev,
+        debug_info: debug_info,
+        debug_str: debug_str,
     };
 
     if let Err(e) = parse_units(&file) {
@@ -169,7 +138,7 @@ fn parse_object_file<Endian>(path: &str, file: object::File)
 fn parse_units<Endian>(file: &ObjectFile<Endian>) -> Result<()>
     where Endian: gimli::Endianity
 {
-    let mut units = file.debug_info().units();
+    let mut units = file.debug_info.units();
     while let Some(unit) = try!(units.next()) {
         if let Err(e) = parse_unit(file, &unit) {
             println_err!("{}: parse unit failed: {}", file.path, e);
@@ -207,7 +176,7 @@ fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
                               -> Result<()>
     where Endian: gimli::Endianity
 {
-    let abbrev = &try!(unit.abbreviations(file.debug_abbrev()));
+    let abbrev = &try!(unit.abbreviations(file.debug_abbrev));
     let mut unit_state = UnitState {
         file: file,
         unit: unit,
@@ -228,8 +197,8 @@ fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
         while let Some(attr) = try!(attrs.next()) {
             match attr.name() {
                 gimli::DW_AT_producer => {}
-                gimli::DW_AT_name => unit.name = attr.string_value(&file.debug_str()),
-                gimli::DW_AT_comp_dir => unit.dir = attr.string_value(&file.debug_str()),
+                gimli::DW_AT_name => unit.name = attr.string_value(&file.debug_str),
+                gimli::DW_AT_comp_dir => unit.dir = attr.string_value(&file.debug_str),
                 gimli::DW_AT_language => {
                     if let gimli::AttributeValue::Language(language) = attr.value() {
                         unit.language = Some(language);
@@ -324,7 +293,7 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = try!(attrs.next()) {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    namespace.name = attr.string_value(&unit.file.debug_str());
+                    namespace.name = attr.string_value(&unit.file.debug_str);
                 }
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line => {}
@@ -361,7 +330,7 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = try!(attrs.next()) {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    name = attr.string_value(&unit.file.debug_str());
+                    name = attr.string_value(&unit.file.debug_str);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -462,7 +431,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = try!(attrs.next()) {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    subprogram.name = attr.string_value(&unit.file.debug_str());
+                    subprogram.name = attr.string_value(&unit.file.debug_str);
                 }
                 gimli::DW_AT_inline => {
                     if let gimli::AttributeValue::Inline(val) = attr.value() {
@@ -579,7 +548,7 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = try!(attrs.next()) {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    parameter.name = attr.string_value(&unit.file.debug_str());
+                    parameter.name = attr.string_value(&unit.file.debug_str);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -630,7 +599,7 @@ fn type_name<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(attr) = try!(attrs.next()) {
         match attr.name() {
             gimli::DW_AT_name => {
-                match attr.string_value(&unit.file.debug_str()) {
+                match attr.string_value(&unit.file.debug_str) {
                     Some(name) => {
                         unit.type_names.insert(offset.0, name);
                         return Ok(Some(name));
