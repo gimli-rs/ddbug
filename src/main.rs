@@ -66,25 +66,25 @@ pub type Result<T> = result::Result<T, Error>;
 
 fn main() {
     for path in env::args_os().skip(1) {
-        parse_file(&path);
+        if let Err(e) = parse_file(&path) {
+            println_err!("{}: {}", path.to_string_lossy(), e);
+        }
     }
 }
 
-fn parse_file(path_os: &ffi::OsStr) {
+fn parse_file(path_os: &ffi::OsStr) -> Result<()> {
     let path = path_os.to_string_lossy();
     let file = match fs::File::open(path_os) {
         Ok(file) => file,
         Err(e) => {
-            println_err!("{}: open failed: {}", path, e);
-            return;
+            return Err(format!("open failed: {}", e).into());
         }
     };
 
     let file = match memmap::Mmap::open(&file, memmap::Protection::Read) {
         Ok(file) => file,
         Err(e) => {
-            println_err!("{}: memmap failed: {}", path, e);
-            return;
+            return Err(format!("memmap failed: {}", e).into());
         }
     };
 
@@ -92,16 +92,16 @@ fn parse_file(path_os: &ffi::OsStr) {
     let elf = xmas_elf::ElfFile::new(input);
     match elf.header.pt1.data {
         xmas_elf::header::Data::LittleEndian => {
-            parse_object_file::<gimli::LittleEndian>(&path, &elf)
+            try!(parse_object_file::<gimli::LittleEndian>(&path, &elf));
         }
         xmas_elf::header::Data::BigEndian => {
-            parse_object_file::<gimli::BigEndian>(&path, &elf)
+            try!(parse_object_file::<gimli::BigEndian>(&path, &elf));
         }
         _ => {
-            println_err!("{}: unknown endianity", path);
-            return;
+            return Err("Unknown endianity".into());
         }
     }
+    Ok(())
 }
 
 struct ObjectFile<'input, Endian>
@@ -113,7 +113,7 @@ struct ObjectFile<'input, Endian>
     debug_str: gimli::DebugStr<'input, Endian>,
 }
 
-fn parse_object_file<Endian>(path: &str, elf: &xmas_elf::ElfFile)
+fn parse_object_file<Endian>(path: &str, elf: &xmas_elf::ElfFile) -> Result<()>
     where Endian: gimli::Endianity
 {
     let debug_abbrev = elf.find_section_by_name(".debug_abbrev").map(|s| s.raw_data(elf));
@@ -130,9 +130,8 @@ fn parse_object_file<Endian>(path: &str, elf: &xmas_elf::ElfFile)
         debug_str: debug_str,
     };
 
-    if let Err(e) = parse_units(&file) {
-        println_err!("{}: parse units failed: {}", file.path, e);
-    }
+    try!(parse_units(&file));
+    Ok(())
 }
 
 fn parse_units<Endian>(file: &ObjectFile<Endian>) -> Result<()>
@@ -140,9 +139,7 @@ fn parse_units<Endian>(file: &ObjectFile<Endian>) -> Result<()>
 {
     let mut units = file.debug_info.units();
     while let Some(unit) = try!(units.next()) {
-        if let Err(e) = parse_unit(file, &unit) {
-            println_err!("{}: parse unit failed: {}", file.path, e);
-        }
+        try!(parse_unit(file, &unit));
     }
     Ok(())
 }
