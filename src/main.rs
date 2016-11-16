@@ -4,16 +4,22 @@ extern crate gimli;
 extern crate log;
 extern crate memmap;
 extern crate xmas_elf;
+extern crate panopticon;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
+use std::collections::BinaryHeap;
 use std::collections::HashMap;
+use std::cmp::Ordering;
 use std::env;
 use std::fmt;
+use std::fmt::Debug;
 use std::fs;
 use std::ffi;
 use std::error;
 use std::result;
+
+use panopticon::amd64;
 
 #[derive(Debug)]
 pub struct Error(pub Cow<'static, str>);
@@ -96,6 +102,8 @@ struct ObjectFile<'input, Endian>
     where Endian: gimli::Endianity
 {
     path: &'input str,
+    machine: xmas_elf::header::Machine,
+    region: panopticon::Region,
     debug_abbrev: gimli::DebugAbbrev<'input, Endian>,
     debug_info: gimli::DebugInfo<'input, Endian>,
     debug_str: gimli::DebugStr<'input, Endian>,
@@ -104,6 +112,35 @@ struct ObjectFile<'input, Endian>
 fn parse_object_file<Endian>(path: &str, elf: &xmas_elf::ElfFile) -> Result<()>
     where Endian: gimli::Endianity
 {
+    let machine = try!(elf.header.pt2).machine();
+    let mut region = match machine {
+        xmas_elf::header::Machine::X86_64 => {
+            panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF)
+        }
+        machine => return Err(format!("Unsupported machine: {:?}", machine).into())
+    };
+
+    for ph in elf.program_iter() {
+        if ph.get_type() == Ok(xmas_elf::program::Type::Load) {
+            let offset = ph.offset();
+            let size = ph.file_size();
+            let addr = ph.virtual_addr();
+            if offset as usize <= elf.input.len() {
+                let input = &elf.input[offset as usize..];
+                if size as usize <= input.len() {
+                    let bound = panopticon::Bound::new(addr, addr + size);
+                    let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
+                    region.cover(bound, layer);
+                    debug!("loaded program header addr {:#x} size {:#x}", addr, size);
+                } else {
+                    debug!("invalid program header size {}", size);
+                }
+            } else {
+                debug!("invalid program header offset {}", offset);
+            }
+        }
+    }
+
     let debug_abbrev = elf.find_section_by_name(".debug_abbrev").map(|s| s.raw_data(elf));
     let debug_abbrev = gimli::DebugAbbrev::<Endian>::new(debug_abbrev.unwrap_or(&[]));
     let debug_info = elf.find_section_by_name(".debug_info").map(|s| s.raw_data(elf));
@@ -113,6 +150,8 @@ fn parse_object_file<Endian>(path: &str, elf: &xmas_elf::ElfFile) -> Result<()>
 
     let file = ObjectFile::<Endian> {
         path: path,
+        machine: machine,
+        region: region,
         debug_abbrev: debug_abbrev,
         debug_info: debug_info,
         debug_str: debug_str,
@@ -341,37 +380,12 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     }
 
     print!("{}: ", iter.entry().unwrap().tag());
-    for namespace in namespaces {
+    for namespace in namespaces.iter() {
         print!("{}::", namespace);
     }
     match name {
         Some(name) => print!("{}", name.to_string_lossy()),
         None => print!("<anon>"),
-    }
-
-    let mut first = true;
-    while let Some(child) = try!(iter.next()) {
-        match child.entry().unwrap().tag() {
-            gimli::DW_TAG_formal_parameter => {
-                if first {
-                    first = false;
-                    print!("(");
-                } else {
-                    print!(", ");
-                }
-                try!(parse_parameter(unit, child));
-            }
-            gimli::DW_TAG_member |
-            gimli::DW_TAG_enumerator |
-            gimli::DW_TAG_subrange_type |
-            gimli::DW_TAG_subprogram => {}
-            tag => {
-                debug!("unknown type child tag: {}", tag);
-            }
-        }
-    }
-    if !first {
-        print!(")");
     }
     if let Some(return_type) = return_type {
         match try!(type_name(unit, return_type)) {
@@ -380,12 +394,33 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
     println!("");
+
+    while let Some(child) = try!(iter.next()) {
+        match child.entry().unwrap().tag() {
+            gimli::DW_TAG_formal_parameter => {
+                print!("\t");
+                try!(parse_parameter(unit, child));
+                println!("");
+            }
+            gimli::DW_TAG_subprogram => {
+                try!(parse_subprogram(unit, namespaces, child));
+            }
+            gimli::DW_TAG_member |
+            gimli::DW_TAG_enumerator |
+            gimli::DW_TAG_subrange_type => {}
+            tag => {
+                debug!("unknown type child tag: {}", tag);
+            }
+        }
+    }
     Ok(())
 }
 
 #[derive(Debug)]
 struct Subprogram<'input> {
     name: Option<&'input ffi::CStr>,
+    low_pc: Option<u64>,
+    high_pc: Option<u64>,
     size: Option<u64>,
     inline: gimli::DwInl,
     return_type: Option<gimli::UnitOffset>,
@@ -395,6 +430,8 @@ impl<'input> Default for Subprogram<'input> {
     fn default() -> Self {
         Subprogram {
             name: None,
+            low_pc: None,
+            high_pc: None,
             size: None,
             inline: gimli::DW_INL_not_inlined,
             return_type: None,
@@ -424,9 +461,15 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         subprogram.inline = val;
                     }
                 }
+                gimli::DW_AT_low_pc => {
+                    if let gimli::AttributeValue::Addr(addr) = attr.value() {
+                        subprogram.low_pc = Some(addr);
+                    }
+                }
                 gimli::DW_AT_high_pc => {
                     match attr.value() {
-                        gimli::AttributeValue::Udata(val) => subprogram.size = Some(val),
+                        gimli::AttributeValue::Addr(addr) => subprogram.high_pc = Some(addr),
+                        gimli::AttributeValue::Udata(size) => subprogram.size = Some(size),
                         _ => {}
                     }
                 }
@@ -438,7 +481,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_linkage_name |
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
-                gimli::DW_AT_low_pc |
                 gimli::DW_AT_frame_base |
                 gimli::DW_AT_external |
                 gimli::DW_AT_abstract_origin |
@@ -452,6 +494,14 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                            attr.name(),
                            attr.value())
                 }
+            }
+        }
+
+        if let Some(low_pc) = subprogram.low_pc {
+            if let Some(high_pc) = subprogram.high_pc {
+                subprogram.size = Some(high_pc - low_pc);
+            } else if let Some(size) = subprogram.size {
+                subprogram.high_pc = Some(low_pc + size);
             }
         }
     }
@@ -510,6 +560,14 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         _ => print!("no"),
     }
     println!("");
+
+    if let (Some(low_pc), Some(high_pc)) = (subprogram.low_pc, subprogram.high_pc) {
+        if low_pc != 0 {
+            // TODO: is high_pc inclusive?
+            println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
+            disassemble(unit.file.machine, &unit.file.region, low_pc, high_pc);
+        }
+    }
 
     Ok(())
 }
@@ -597,4 +655,116 @@ fn type_name<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
     Ok(None)
+}
+
+fn disassemble(machine: xmas_elf::header::Machine, region: &panopticon::Region, low_pc: u64, high_pc: u64) {
+    match machine {
+        xmas_elf::header::Machine::X86_64 => {
+            disassemble_arch::<amd64::Amd64>(region, low_pc, high_pc, amd64::Mode::Long);
+        }
+        _ => {}
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct Jump(u64);
+
+impl Ord for Jump {
+    fn cmp(&self, other: &Jump) -> Ordering {
+        other.0.cmp(&self.0)
+    }
+}
+
+impl PartialOrd for Jump {
+    fn partial_cmp(&self, other: &Jump) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn disassemble_arch<A>(region: &panopticon::Region, low_pc: u64, high_pc: u64, cfg: A::Configuration)
+where
+    A: panopticon::Architecture + Debug,
+    A::Configuration: Debug,
+{
+    let mut calls = Vec::new();
+    let mut jumps = BinaryHeap::new();
+    let mut addr = low_pc;
+    loop {
+        let m = match A::decode(region, addr, &cfg) {
+            Ok(m) => m,
+            Err(e) => {
+                error!("failed to disassemble: {}", e);
+                return;
+            }
+        };
+
+        for mnemonic in m.mnemonics {
+            //println!("\t{:?}", mnemonic);
+            /*
+            print!("\t{}", mnemonic.opcode);
+            let mut first = true;
+            for operand in &mnemonic.operands {
+                if first {
+                    print!("\t");
+                    first = false;
+                } else {
+                    print!(", ");
+                }
+                match *operand {
+                    panopticon::Rvalue::Variable { ref name, .. } => print!("{}", name),
+                    panopticon::Rvalue::Constant { ref value, .. } => print!("0x{:x}", value),
+                    _ => print!("?"),
+                }
+            }
+            println!("");
+            */
+
+            for instruction in mnemonic.instructions {
+                match instruction {
+                    panopticon::Statement { op: panopticon::Operation::Call(ref call), .. } => {
+                        match *call {
+                            panopticon::Rvalue::Constant { ref value, .. } => {
+                                calls.push(*value);
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        for (_origin, target, _guard) in m.jumps {
+            if let panopticon::Rvalue::Constant { value, size: _ } = target {
+                jumps.push(Jump(value));
+                /*
+                if value < low_pc || value >= high_pc {
+                    calls.push(value);
+                }
+                if value > addr && value < next_addr {
+                    next_addr = value;
+                }
+                */
+            }
+        }
+
+        while let Some(&Jump(jump)) = jumps.peek() {
+            if jump > addr && jump <= high_pc {
+                break;
+            }
+            jumps.pop();
+        }
+        addr = match jumps.pop() {
+            Some(Jump(addr)) => addr,
+            None => break,
+        }
+    }
+
+    if !calls.is_empty() {
+        print!("\tcalls: 0x{:x}", calls[0]);
+        for call in &calls[1..] {
+            print!(", 0x{:x}", call);
+        }
+        println!("");
+    }
 }
