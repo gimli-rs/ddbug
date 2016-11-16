@@ -156,9 +156,10 @@ struct Unit<'input> {
     ranges: Option<gimli::DebugRangesOffset>,
 }
 
-fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
-                              unit: &gimli::CompilationUnitHeader<'input, Endian>)
-                              -> Result<()>
+fn parse_unit<'input, Endian>(
+    file: &ObjectFile<'input, Endian>,
+    unit: &gimli::CompilationUnitHeader<'input, Endian>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     let abbrev = &try!(unit.abbreviations(file.debug_abbrev));
@@ -568,10 +569,10 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     Ok(())
 }
 
-fn type_name<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
-    (unit: &mut UnitState<'state, 'input, Endian>,
-     offset: gimli::UnitOffset)
-     -> Result<Option<&'input ffi::CStr>>
+fn type_name<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    unit: &mut UnitState<'state, 'input, Endian>,
+    offset: gimli::UnitOffset
+) -> Result<Option<&'input ffi::CStr>>
     where Endian: gimli::Endianity
 {
     if let Some(name) = unit.type_names.get(&offset.0) {
