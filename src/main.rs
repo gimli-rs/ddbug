@@ -1,4 +1,7 @@
+extern crate env_logger;
 extern crate gimli;
+#[macro_use]
+extern crate log;
 extern crate memmap;
 extern crate xmas_elf;
 
@@ -11,23 +14,6 @@ use std::fs;
 use std::ffi;
 use std::error;
 use std::result;
-use std::io::Write;
-
-macro_rules! println_err {
-    ($($arg:tt)*) => ({
-        let _ = writeln!(&mut ::std::io::stderr(), $($arg)*);
-    })
-}
-
-const DEBUG: bool = false;
-
-macro_rules! println_debug {
-    ($($arg:tt)*) => ({
-        if DEBUG {
-            let _ = writeln!(&mut ::std::io::stderr(), $($arg)*);
-        }
-    })
-}
 
 #[derive(Debug)]
 pub struct Error(pub Cow<'static, str>);
@@ -65,9 +51,11 @@ impl From<gimli::Error> for Error {
 pub type Result<T> = result::Result<T, Error>;
 
 fn main() {
+    env_logger::init().ok();
+
     for path in env::args_os().skip(1) {
         if let Err(e) = parse_file(&path) {
-            println_err!("{}: {}", path.to_string_lossy(), e);
+            error!("{}: {}", path.to_string_lossy(), e);
         }
     }
 }
@@ -213,7 +201,7 @@ fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
                 }
                 gimli::DW_AT_high_pc => {
                     match attr.value() {
-                        gimli::AttributeValue::Addr(addr) => unit.low_pc = Some(addr),
+                        gimli::AttributeValue::Addr(addr) => unit.high_pc = Some(addr),
                         gimli::AttributeValue::Udata(size) => unit.size = Some(size),
                         _ => {}
                     }
@@ -224,10 +212,10 @@ fn parse_unit<'input, Endian>(file: &ObjectFile<'input, Endian>,
                     }
                 }
                 gimli::DW_AT_entry_pc => {}
-                _ => println_debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
-        println_debug!("{}: {:?}", file.path, unit);
+        debug!("{}: {:?}", file.path, unit);
     } else {
         return Err("missing CU entry".into());
     };
@@ -263,7 +251,7 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_const_type |
             gimli::DW_TAG_restrict_type => try!(parse_type(unit, namespaces, child)),
             tag => {
-                println_debug!("unknown namespace child tag: {}", tag);
+                debug!("unknown namespace child tag: {}", tag);
             }
         }
     }
@@ -295,9 +283,9 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line => {}
                 _ => {
-                    println_debug!("unknown namespace attribute: {} {:?}",
-                                   attr.name(),
-                                   attr.value())
+                    debug!("unknown namespace attribute: {} {:?}",
+                           attr.name(),
+                           attr.value())
                 }
             }
         }
@@ -342,7 +330,7 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_enum_class |
                 gimli::DW_AT_encoding |
                 gimli::DW_AT_prototyped => {}
-                _ => println_debug!("unknown type attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!("unknown type attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
     }
@@ -377,7 +365,7 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_subrange_type |
             gimli::DW_TAG_subprogram => {}
             tag => {
-                println_debug!("unknown type child tag: {}", tag);
+                debug!("unknown type child tag: {}", tag);
             }
         }
     }
@@ -459,9 +447,9 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_declaration |
                 gimli::DW_AT_sibling => {}
                 _ => {
-                    println_debug!("unknown subprogram attribute: {} {:?}",
-                                   attr.name(),
-                                   attr.value())
+                    debug!("unknown subprogram attribute: {} {:?}",
+                           attr.name(),
+                           attr.value())
                 }
             }
         }
@@ -496,7 +484,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_union_type |
             gimli::DW_TAG_GNU_call_site => {}
             tag => {
-                println_debug!("unknown subprogram child tag: {}", tag);
+                debug!("unknown subprogram child tag: {}", tag);
             }
         }
     }
@@ -557,9 +545,9 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_location |
                 gimli::DW_AT_abstract_origin => {}
                 _ => {
-                    println_debug!("unknown parameter attribute: {} {:?}",
-                                   attr.name(),
-                                   attr.value())
+                    debug!("unknown parameter attribute: {} {:?}",
+                           attr.name(),
+                           attr.value())
                 }
             }
         }
