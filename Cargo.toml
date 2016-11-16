@@ -5,9 +5,8 @@ authors = ["Philip Craig <philipjcraig@gmail.com>"]
 
 [dependencies]
 env_logger = "0.3.5"
-gimli = { path = "../gimli" }
+gimli = { git = "https://github.com/gimli-rs/gimli", rev = "ccc49fa" }
 log = "0.3.6"
 memmap = "0.4.0"
-#panopticon = { git = "https://github.com/das-labor/panopticon" }
-panopticon = { path = "../panopticon" }
+panopticon = { git = "https://github.com/philipc/panopticon", branch = "ddbug" }
 xmas-elf = "0.3"
