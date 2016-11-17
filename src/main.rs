@@ -66,10 +66,13 @@ fn main() {
     }
 }
 
-struct File {
+struct File<'a, 'input>
+    where 'input: 'a
+{
     // TODO: use format independent machine type
     machine: xmas_elf::header::Machine,
     region: panopticon::Region,
+    subprograms: HashMap<u64, &'a Subprogram<'input>>,
 }
 
 fn parse_file(path: &ffi::OsStr) -> Result<()> {
@@ -126,12 +129,30 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         }
     };
 
+    let mut subprograms = HashMap::new();
+    // TODO: insert symbol table names too
+    for unit in units.iter() {
+        for type_ in unit.types.iter() {
+            for subprogram in type_.subprograms.iter() {
+                if let Some(low_pc) = subprogram.low_pc {
+                    subprograms.insert(low_pc, subprogram);
+                }
+            }
+        }
+        for subprogram in unit.subprograms.iter() {
+            if let Some(low_pc) = subprogram.low_pc {
+                subprograms.insert(low_pc, subprogram);
+            }
+        }
+    }
+
     let file = File {
         machine: machine,
         region: region,
+        subprograms: subprograms,
     };
 
-    for unit in units {
+    for unit in units.iter() {
         unit.print(&file);
     }
     Ok(())
@@ -415,6 +436,7 @@ impl<'input> Type<'input> {
             unit.type_names.insert(iter.entry().unwrap().offset().0, name);
         }
 
+        unit.namespaces.push(type_.name);
         while let Some(child) = try!(iter.next()) {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_formal_parameter => {
@@ -431,6 +453,7 @@ impl<'input> Type<'input> {
                 }
             }
         }
+        unit.namespaces.pop();
         Ok(type_)
     }
 
@@ -633,7 +656,27 @@ impl<'input> Subprogram<'input> {
             if low_pc != 0 {
                 // TODO: is high_pc inclusive?
                 println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
-                disassemble(file.machine, &file.region, low_pc, high_pc);
+                let calls = disassemble(file.machine, &file.region, low_pc, high_pc);
+                if !calls.is_empty() {
+                    println!("\tcalls:");
+                    for call in &calls {
+                        print!("\t\t0x{:x}", call);
+                        if let Some(subprogram) = file.subprograms.get(call) {
+                            print!(" ");
+                            for namespace in subprogram.namespace.iter() {
+                                match *namespace {
+                                    Some(ref name) => print!("{}::", name.to_string_lossy()),
+                                    None => print!("<anon>"),
+                                }
+                            }
+                            match subprogram.name {
+                                Some(name) => print!("{}", name.to_string_lossy()),
+                                None => print!("<anon>"),
+                            }
+                        }
+                        println!("");
+                    }
+                }
             }
         }
     }
@@ -735,12 +778,12 @@ fn disassemble(
     region: &panopticon::Region,
     low_pc: u64,
     high_pc: u64
-) {
+) -> Vec<u64> {
     match machine {
         xmas_elf::header::Machine::X86_64 => {
-            disassemble_arch::<amd64::Amd64>(region, low_pc, high_pc, amd64::Mode::Long);
+            disassemble_arch::<amd64::Amd64>(region, low_pc, high_pc, amd64::Mode::Long)
         }
-        _ => {}
+        _ => Vec::new(),
     }
 }
 
@@ -764,7 +807,7 @@ fn disassemble_arch<A>(
     low_pc: u64,
     high_pc: u64,
     cfg: A::Configuration
-)
+) -> Vec<u64>
     where A: panopticon::Architecture + Debug,
           A::Configuration: Debug
 {
@@ -777,7 +820,7 @@ fn disassemble_arch<A>(
             Ok(m) => m,
             Err(e) => {
                 error!("failed to disassemble: {}", e);
-                return;
+                return calls;
             }
         };
 
@@ -841,12 +884,5 @@ fn disassemble_arch<A>(
             None => break,
         }
     }
-
-    if !calls.is_empty() {
-        print!("\tcalls: 0x{:x}", calls[0]);
-        for call in &calls[1..] {
-            print!(", 0x{:x}", call);
-        }
-        println!("");
-    }
+    calls
 }
