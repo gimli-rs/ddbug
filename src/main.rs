@@ -8,9 +8,8 @@ extern crate panopticon;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
-use std::collections::BinaryHeap;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::cmp::Ordering;
 use std::env;
 use std::fmt;
 use std::fmt::Debug;
@@ -787,21 +786,6 @@ fn disassemble(
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-struct Jump(u64);
-
-impl Ord for Jump {
-    fn cmp(&self, other: &Jump) -> Ordering {
-        other.0.cmp(&self.0)
-    }
-}
-
-impl PartialOrd for Jump {
-    fn partial_cmp(&self, other: &Jump) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 fn disassemble_arch<A>(
     region: &panopticon::Region,
     low_pc: u64,
@@ -812,10 +796,13 @@ fn disassemble_arch<A>(
           A::Configuration: Debug
 {
     let mut calls = Vec::new();
-    // FIXME: stop using BinaryHeap; we need to be able to go backwards sometimes
-    let mut jumps = BinaryHeap::new();
-    let mut addr = low_pc;
-    loop {
+    let mut mnemonics = BTreeMap::new();
+    let mut jumps = vec![low_pc];
+    while let Some(addr) = jumps.pop() {
+        if mnemonics.contains_key(&addr) {
+            continue;
+        }
+
         let m = match A::decode(region, addr, &cfg) {
             Ok(m) => m,
             Err(e) => {
@@ -845,8 +832,8 @@ fn disassemble_arch<A>(
             println!("");
             */
 
-            for instruction in mnemonic.instructions {
-                match instruction {
+            for instruction in mnemonic.instructions.iter() {
+                match *instruction {
                     panopticon::Statement { op: panopticon::Operation::Call(ref call), .. } => {
                         match *call {
                             panopticon::Rvalue::Constant { ref value, .. } => {
@@ -858,30 +845,15 @@ fn disassemble_arch<A>(
                     _ => {}
                 }
             }
+            mnemonics.insert(mnemonic.area.start, mnemonic);
         }
 
         for (_origin, target, _guard) in m.jumps {
             if let panopticon::Rvalue::Constant { value, size: _ } = target {
-                jumps.push(Jump(value));
-                // if value < low_pc || value >= high_pc {
-                // calls.push(value);
-                // }
-                // if value > addr && value < next_addr {
-                // next_addr = value;
-                // }
-                //
+                if value > addr && value <= high_pc {
+                    jumps.push(value);
+                }
             }
-        }
-
-        while let Some(&Jump(jump)) = jumps.peek() {
-            if jump > addr && jump <= high_pc {
-                break;
-            }
-            jumps.pop();
-        }
-        addr = match jumps.pop() {
-            Some(Jump(addr)) => addr,
-            None => break,
         }
     }
     calls
