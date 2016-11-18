@@ -71,6 +71,7 @@ struct File<'a, 'input>
     // TODO: use format independent machine type
     machine: xmas_elf::header::Machine,
     region: panopticon::Region,
+    types: HashMap<usize, &'a Type<'input>>,
     subprograms: HashMap<u64, &'a Subprogram<'input>>,
 }
 
@@ -145,13 +146,18 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         }
     }
 
-    let file = File {
+    let mut file = File {
         machine: machine,
         region: region,
+        types: HashMap::new(),
         subprograms: subprograms,
     };
 
     for unit in units.iter() {
+        file.types.clear();
+        for type_ in unit.types.iter() {
+            file.types.insert(type_.offset.0, type_);
+        }
         unit.print(&file);
     }
     Ok(())
@@ -193,9 +199,8 @@ struct DwarfUnitState<'state, 'input, Endian>
     where Endian: 'state + gimli::Endianity,
           'input: 'state
 {
-    header: &'state gimli::CompilationUnitHeader<'input, Endian>,
-    abbrev: &'state gimli::Abbreviations,
-    type_names: HashMap<usize, &'input ffi::CStr>,
+    _header: &'state gimli::CompilationUnitHeader<'input, Endian>,
+    _abbrev: &'state gimli::Abbreviations,
     line: Option<gimli::DebugLineOffset>,
     ranges: Option<gimli::DebugRangesOffset>,
     namespaces: Vec<Option<&'input ffi::CStr>>,
@@ -222,9 +227,8 @@ impl<'input> Unit<'input> {
     {
         let abbrev = &try!(unit_header.abbreviations(dwarf.debug_abbrev));
         let mut unit_state = DwarfUnitState {
-            header: unit_header,
-            abbrev: abbrev,
-            type_names: HashMap::new(),
+            _header: unit_header,
+            _abbrev: abbrev,
             line: None,
             ranges: None,
             namespaces: Vec::new(),
@@ -368,11 +372,12 @@ impl<'input> Unit<'input> {
 
 #[derive(Debug)]
 struct Type<'input> {
+    offset: gimli::UnitOffset,
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     tag: gimli::DwTag,
     parameters: Vec<Parameter<'input>>,
-    return_type: Option<&'input ffi::CStr>,
+    return_type: Option<gimli::UnitOffset>,
     members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
 }
@@ -380,6 +385,7 @@ struct Type<'input> {
 impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
+            offset: gimli::UnitOffset(0),
             namespace: Vec::new(),
             name: None,
             tag: gimli::DwTag(0),
@@ -403,9 +409,12 @@ impl<'input> Type<'input> {
         type_.namespace = unit.namespaces.clone();
 
         {
-            type_.tag = iter.entry().unwrap().tag();
+            let entry = iter.entry().unwrap();
 
-            let mut attrs = iter.entry().unwrap().attrs();
+            type_.offset = entry.offset();
+            type_.tag = entry.tag();
+
+            let mut attrs = entry.attrs();
             while let Some(attr) = try!(attrs.next()) {
                 match attr.name() {
                     gimli::DW_AT_name => {
@@ -413,11 +422,7 @@ impl<'input> Type<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            if let Some(name) = try!(type_name(dwarf, unit, offset)) {
-                                type_.return_type = Some(name);
-                            } else {
-                                debug!("invalid DW_AT_type offset {}", offset.0);
-                            }
+                            type_.return_type = Some(offset);
                         }
                     }
                     gimli::DW_AT_byte_size |
@@ -431,10 +436,6 @@ impl<'input> Type<'input> {
                     _ => debug!("unknown type attribute: {} {:?}", attr.name(), attr.value()),
                 }
             }
-        }
-
-        if let Some(name) = type_.name {
-            unit.type_names.insert(iter.entry().unwrap().offset().0, name);
         }
 
         unit.namespaces.push(type_.name);
@@ -462,24 +463,16 @@ impl<'input> Type<'input> {
 
     fn print(&self, file: &File) {
         print!("{}: ", self.tag);
-        for namespace in self.namespace.iter() {
-            match *namespace {
-                Some(ref name) => print!("{}::", name.to_string_lossy()),
-                None => print!("<anon>"),
-            }
-        }
-        match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
-        }
+        self.print_name();
         if let Some(return_type) = self.return_type {
-            print!(" -> {}", return_type.to_string_lossy());
+            print!(" -> ");
+            Type::print_offset_name(file, return_type);
         }
         println!("");
 
         for parameter in self.parameters.iter() {
             print!("\t");
-            parameter.print();
+            parameter.print(file);
             println!("");
         }
 
@@ -491,18 +484,38 @@ impl<'input> Type<'input> {
             subprogram.print(file);
         }
     }
+
+    fn print_name(&self) {
+        for namespace in self.namespace.iter() {
+            match *namespace {
+                Some(ref name) => print!("{}::", name.to_string_lossy()),
+                None => print!("<anon>"),
+            }
+        }
+        match self.name {
+            Some(name) => print!("{}", name.to_string_lossy()),
+            None => print!("<anon>"),
+        }
+    }
+
+    fn print_offset_name(file: &File, offset: gimli::UnitOffset) {
+        match file.types.get(&offset.0) {
+            Some(type_) => type_.print_name(),
+            None => print!("<invalid-type>"),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 struct Member<'input> {
     name: Option<&'input ffi::CStr>,
-    type_name: Option<&'input ffi::CStr>,
+    type_: Option<gimli::UnitOffset>,
 }
 
 impl<'input> Member<'input> {
     fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
         dwarf: &DwarfFileState<'input, Endian>,
-        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
         mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
     ) -> Result<Member<'input>>
         where Endian: gimli::Endianity
@@ -518,11 +531,7 @@ impl<'input> Member<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            if let Some(name) = try!(type_name(dwarf, unit, offset)) {
-                                member.type_name = Some(name);
-                            } else {
-                                debug!("invalid Member DW_AT_type offset {:x}", offset.0);
-                            }
+                            member.type_ = Some(offset);
                         }
                     }
                     gimli::DW_AT_data_member_location |
@@ -546,13 +555,14 @@ impl<'input> Member<'input> {
         Ok(member)
     }
 
-    fn print(&self, _file: &File) {
+    fn print(&self, file: &File) {
         match self.name {
             Some(name) => print!("\t{}", name.to_string_lossy()),
             None => print!("\t<anon>"),
         }
-        if let Some(type_name) = self.type_name {
-            print!(": {},", type_name.to_string_lossy());
+        if let Some(type_) = self.type_ {
+            print!(": ");
+            Type::print_offset_name(file, type_);
         }
         println!("");
     }
@@ -567,7 +577,7 @@ struct Subprogram<'input> {
     size: Option<u64>,
     inline: bool,
     parameters: Vec<Parameter<'input>>,
-    return_type: Option<&'input ffi::CStr>,
+    return_type: Option<gimli::UnitOffset>,
 }
 
 impl<'input> Default for Subprogram<'input> {
@@ -627,11 +637,7 @@ impl<'input> Subprogram<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            if let Some(name) = try!(type_name(dwarf, unit, offset)) {
-                                subprogram.return_type = Some(name);
-                            } else {
-                                debug!("invalid DW_AT_type offset {}", offset.0);
-                            }
+                            subprogram.return_type = Some(offset);
                         }
                     }
                     gimli::DW_AT_linkage_name |
@@ -672,6 +678,7 @@ impl<'input> Subprogram<'input> {
                 gimli::DW_TAG_inlined_subroutine |
                 gimli::DW_TAG_variable |
                 gimli::DW_TAG_label |
+                gimli::DW_TAG_structure_type |
                 gimli::DW_TAG_union_type |
                 gimli::DW_TAG_GNU_call_site => {}
                 tag => {
@@ -704,12 +711,13 @@ impl<'input> Subprogram<'input> {
             } else {
                 print!(", ");
             }
-            parameter.print();
+            parameter.print(file);
         }
         print!(")");
 
         if let Some(return_type) = self.return_type {
-            print!(" -> {}", return_type.to_string_lossy());
+            print!(" -> ");
+            Type::print_offset_name(file, return_type);
         }
 
         println!("");
@@ -757,13 +765,13 @@ impl<'input> Subprogram<'input> {
 #[derive(Debug, Default)]
 struct Parameter<'input> {
     name: Option<&'input ffi::CStr>,
-    type_: Option<&'input ffi::CStr>,
+    type_: Option<gimli::UnitOffset>,
 }
 
 impl<'input> Parameter<'input> {
     fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
         dwarf: &DwarfFileState<'input, Endian>,
-        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
         iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
     ) -> Result<Parameter<'input>>
         where Endian: gimli::Endianity
@@ -780,11 +788,7 @@ impl<'input> Parameter<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            if let Some(name) = try!(type_name(dwarf, unit, offset)) {
-                                parameter.type_ = Some(name);
-                            } else {
-                                debug!("invalid DW_AT_type offset {}", offset.0);
-                            }
+                            parameter.type_ = Some(offset);
                         }
                     }
                     gimli::DW_AT_decl_file |
@@ -802,47 +806,17 @@ impl<'input> Parameter<'input> {
         Ok(parameter)
     }
 
-    fn print(&self) {
+    fn print(&self, file: &File) {
         match self.name {
             Some(name) => print!("{}", name.to_string_lossy()),
             None => print!("<anon>"),
         }
+        print!(": ");
         match self.type_ {
-            Some(name) => print!(": {}", name.to_string_lossy()),
+            Some(offset) => Type::print_offset_name(file, offset),
             None => print!(": <anon>"),
         }
     }
-}
-
-fn type_name<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
-    dwarf: &DwarfFileState<'input, Endian>,
-    unit: &mut DwarfUnitState<'state, 'input, Endian>,
-    offset: gimli::UnitOffset
-) -> Result<Option<&'input ffi::CStr>>
-    where Endian: gimli::Endianity
-{
-    if let Some(name) = unit.type_names.get(&offset.0) {
-        return Ok(Some(name));
-    }
-
-    let mut tree = try!(unit.header.entries_tree(unit.abbrev, Some(offset)));
-    let iter = tree.iter();
-    let mut attrs = iter.entry().unwrap().attrs();
-    while let Some(attr) = try!(attrs.next()) {
-        match attr.name() {
-            gimli::DW_AT_name => {
-                match attr.string_value(&dwarf.debug_str) {
-                    Some(name) => {
-                        unit.type_names.insert(offset.0, name);
-                        return Ok(Some(name));
-                    }
-                    None => return Ok(None),
-                }
-            }
-            _ => {}
-        }
-    }
-    Ok(None)
 }
 
 fn disassemble(
