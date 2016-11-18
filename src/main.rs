@@ -373,6 +373,7 @@ struct Type<'input> {
     tag: gimli::DwTag,
     parameters: Vec<Parameter<'input>>,
     return_type: Option<&'input ffi::CStr>,
+    members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
 }
 
@@ -384,6 +385,7 @@ impl<'input> Default for Type<'input> {
             tag: gimli::DwTag(0),
             parameters: Vec::new(),
             return_type: None,
+            members: Vec::new(),
             subprograms: Vec::new(),
         }
     }
@@ -444,7 +446,9 @@ impl<'input> Type<'input> {
                 gimli::DW_TAG_subprogram => {
                     type_.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
                 }
-                gimli::DW_TAG_member |
+                gimli::DW_TAG_member => {
+                    type_.members.push(try!(Member::parse_dwarf(dwarf, unit, child)));
+                }
                 gimli::DW_TAG_enumerator |
                 gimli::DW_TAG_subrange_type => {}
                 tag => {
@@ -479,9 +483,78 @@ impl<'input> Type<'input> {
             println!("");
         }
 
+        for member in self.members.iter() {
+            member.print(file);
+        }
+
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
         }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Member<'input> {
+    name: Option<&'input ffi::CStr>,
+    type_name: Option<&'input ffi::CStr>,
+}
+
+impl<'input> Member<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<Member<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut member = Member::default();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        member.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_type => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            if let Some(name) = try!(type_name(dwarf, unit, offset)) {
+                                member.type_name = Some(name);
+                            } else {
+                                debug!("invalid Member DW_AT_type offset {:x}", offset.0);
+                            }
+                        }
+                    }
+                    gimli::DW_AT_data_member_location |
+                    gimli::DW_AT_bit_offset |
+                    gimli::DW_AT_byte_size |
+                    gimli::DW_AT_bit_size |
+                    gimli::DW_AT_decl_file |
+                    gimli::DW_AT_decl_line => {}
+                    _ => debug!("unknown member attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown member child tag: {}", tag);
+                }
+            }
+        }
+        Ok(member)
+    }
+
+    fn print(&self, _file: &File) {
+        match self.name {
+            Some(name) => print!("\t{}", name.to_string_lossy()),
+            None => print!("\t<anon>"),
+        }
+        if let Some(type_name) = self.type_name {
+            print!(": {},", type_name.to_string_lossy());
+        }
+        println!("");
     }
 }
 
