@@ -411,11 +411,23 @@ impl<'input> Type<'input> {
             gimli::DW_TAG_structure_type => {
                 TypeKind::Struct(try!(StructType::parse_dwarf(dwarf, unit, iter)))
             }
-            _ => {
-                TypeKind::Unimplemented(tag)
-            }
+            _ => TypeKind::Unimplemented(tag),
         };
         Ok(type_)
+    }
+
+    fn from_offset<'a>(
+        file: &File<'a, 'input>,
+        offset: gimli::UnitOffset
+    ) -> Option<&'a Type<'input>> {
+        file.types.get(&offset.0).map(|v| *v)
+    }
+
+    fn bit_size(&self, file: &File) -> Option<u64> {
+        match self.kind {
+            TypeKind::Struct(ref val) => val.bit_size(file),
+            TypeKind::Unimplemented(_) => None,
+        }
     }
 
     fn print(&self, file: &File) {
@@ -436,7 +448,7 @@ impl<'input> Type<'input> {
     }
 
     fn print_offset_name(file: &File, offset: gimli::UnitOffset) {
-        match file.types.get(&offset.0) {
+        match Type::from_offset(file, offset) {
             Some(type_) => type_.print_name(),
             None => print!("<invalid-type>"),
         }
@@ -447,8 +459,7 @@ impl<'input> Type<'input> {
 struct StructType<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
-    parameters: Vec<Parameter<'input>>,
-    return_type: Option<gimli::UnitOffset>,
+    byte_size: Option<u64>,
     members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
 }
@@ -458,8 +469,7 @@ impl<'input> Default for StructType<'input> {
         StructType {
             namespace: Vec::new(),
             name: None,
-            parameters: Vec::new(),
-            return_type: None,
+            byte_size: None,
             members: Vec::new(),
             subprograms: Vec::new(),
         }
@@ -484,12 +494,9 @@ impl<'input> StructType<'input> {
                     gimli::DW_AT_name => {
                         type_.name = attr.string_value(&dwarf.debug_str);
                     }
-                    gimli::DW_AT_type => {
-                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            type_.return_type = Some(offset);
-                        }
+                    gimli::DW_AT_byte_size => {
+                        type_.byte_size = attr.udata_value();
                     }
-                    gimli::DW_AT_byte_size |
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
                     gimli::DW_AT_declaration |
@@ -502,9 +509,6 @@ impl<'input> StructType<'input> {
         unit.namespaces.push(type_.name);
         while let Some(child) = try!(iter.next()) {
             match child.entry().unwrap().tag() {
-                gimli::DW_TAG_formal_parameter => {
-                    type_.parameters.push(try!(Parameter::parse_dwarf(dwarf, unit, child)));
-                }
                 gimli::DW_TAG_subprogram => {
                     type_.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
                 }
@@ -522,23 +526,18 @@ impl<'input> StructType<'input> {
         Ok(type_)
     }
 
+    fn bit_size(&self, _file: &File) -> Option<u64> {
+        self.byte_size.map(|v| v * 8)
+    }
+
     fn print(&self, file: &File) {
         print!("struct ");
         self.print_name();
-        if let Some(return_type) = self.return_type {
-            print!(" -> ");
-            Type::print_offset_name(file, return_type);
-        }
         println!("");
 
-        for parameter in self.parameters.iter() {
-            print!("\t");
-            parameter.print(file);
-            println!("");
-        }
-
+        let mut bit_offset = Some(0);
         for member in self.members.iter() {
-            member.print(file);
+            member.print(file, &mut bit_offset);
         }
 
         for subprogram in self.subprograms.iter() {
@@ -564,6 +563,8 @@ impl<'input> StructType<'input> {
 struct Member<'input> {
     name: Option<&'input ffi::CStr>,
     type_: Option<gimli::UnitOffset>,
+    bit_offset: Option<u64>,
+    bit_size: Option<u64>,
 }
 
 impl<'input> Member<'input> {
@@ -588,13 +589,25 @@ impl<'input> Member<'input> {
                             member.type_ = Some(offset);
                         }
                     }
-                    gimli::DW_AT_data_member_location |
-                    gimli::DW_AT_bit_offset |
-                    gimli::DW_AT_byte_size |
-                    gimli::DW_AT_bit_size |
+                    gimli::DW_AT_data_member_location => {
+                        member.bit_offset = attr.udata_value().map(|v| v * 8);
+                    }
+                    gimli::DW_AT_bit_offset => {
+                        member.bit_offset = attr.udata_value();
+                    }
+                    gimli::DW_AT_byte_size => {
+                        member.bit_size = attr.udata_value().map(|v| v * 8);
+                    }
+                    gimli::DW_AT_bit_size => {
+                        member.bit_size = attr.udata_value();
+                    }
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line => {}
-                    _ => debug!("unknown member attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown member attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -609,7 +622,42 @@ impl<'input> Member<'input> {
         Ok(member)
     }
 
-    fn print(&self, file: &File) {
+    fn bit_size(&self, file: &File) -> Option<u64> {
+        if self.bit_size.is_some() {
+            self.bit_size
+        } else if let Some(type_) = self.type_ {
+            Type::from_offset(file, type_).and_then(|v| v.bit_size(file))
+        } else {
+            None
+        }
+    }
+
+    fn print(&self, file: &File, end_bit_offset: &mut Option<u64>) {
+        match (self.bit_offset, *end_bit_offset) {
+            (Some(bit_offset), Some(end_bit_offset)) => {
+                if bit_offset != end_bit_offset {
+                    println!("\t{}({})\t<padding>",
+                             format_bit(end_bit_offset),
+                             format_bit(bit_offset - end_bit_offset));
+                }
+            }
+            _ => {}
+        }
+
+        match self.bit_offset {
+            Some(bit_offset) => print!("\t{}", format_bit(bit_offset)),
+            None => print!("\t??"),
+        }
+        match self.bit_size(file) {
+            Some(bit_size) => print!("[{}]", format_bit(bit_size)),
+            None => print!("[??]"),
+        }
+        match (self.bit_offset, self.bit_size(file)) {
+            (Some(bit_offset), Some(bit_size)) => {
+                *end_bit_offset = Some(bit_offset + bit_size);
+            }
+            _ => *end_bit_offset = None,
+        }
         match self.name {
             Some(name) => print!("\t{}", name.to_string_lossy()),
             None => print!("\t<anon>"),
@@ -958,4 +1006,14 @@ fn disassemble_arch<A>(
         }
     }
     calls
+}
+
+fn format_bit(val: u64) -> String {
+    let byte = val / 8;
+    let bit = val % 8;
+    if bit == 0 {
+        format!("{}", byte)
+    } else {
+        format!("{}.{}", byte, bit)
+    }
 }
