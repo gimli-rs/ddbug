@@ -129,22 +129,17 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         }
     };
 
-    let mut subprograms = HashMap::new();
+    let mut all_subprograms = HashMap::new();
     // TODO: insert symbol table names too
     for unit in units.iter() {
         for type_ in unit.types.iter() {
             match type_.kind {
-                TypeKind::Struct(ref val) => {
-                    for subprogram in val.subprograms.iter() {
+                TypeKind::Struct(StructType { ref subprograms, ..}) |
+                TypeKind::Union(UnionType { ref subprograms, ..}) |
+                TypeKind::Enumeration(EnumerationType { ref subprograms, ..}) => {
+                    for subprogram in subprograms.iter() {
                         if let Some(low_pc) = subprogram.low_pc {
-                            subprograms.insert(low_pc, subprogram);
-                        }
-                    }
-                }
-                TypeKind::Union(ref val) => {
-                    for subprogram in val.subprograms.iter() {
-                        if let Some(low_pc) = subprogram.low_pc {
-                            subprograms.insert(low_pc, subprogram);
+                            all_subprograms.insert(low_pc, subprogram);
                         }
                     }
                 }
@@ -153,7 +148,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         }
         for subprogram in unit.subprograms.iter() {
             if let Some(low_pc) = subprogram.low_pc {
-                subprograms.insert(low_pc, subprogram);
+                all_subprograms.insert(low_pc, subprogram);
             }
         }
     }
@@ -162,7 +157,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         machine: machine,
         region: region,
         types: HashMap::new(),
-        subprograms: subprograms,
+        subprograms: all_subprograms,
     };
 
     for unit in units.iter() {
@@ -392,6 +387,7 @@ struct Type<'input> {
 enum TypeKind<'input> {
     Struct(StructType<'input>),
     Union(UnionType<'input>),
+    Enumeration(EnumerationType<'input>),
     Unimplemented(gimli::DwTag),
 }
 
@@ -422,6 +418,9 @@ impl<'input> Type<'input> {
             gimli::DW_TAG_union_type => {
                 TypeKind::Union(try!(UnionType::parse_dwarf(dwarf, unit, iter)))
             }
+            gimli::DW_TAG_enumeration_type => {
+                TypeKind::Enumeration(try!(EnumerationType::parse_dwarf(dwarf, unit, iter)))
+            }
             _ => TypeKind::Unimplemented(tag),
         };
         Ok(type_)
@@ -438,6 +437,7 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.bit_size(file),
             TypeKind::Union(ref val) => val.bit_size(file),
+            TypeKind::Enumeration(ref val) => val.bit_size(file),
             TypeKind::Unimplemented(_) => None,
         }
     }
@@ -446,6 +446,7 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.print(file),
             TypeKind::Union(ref val) => val.print(file),
+            TypeKind::Enumeration(ref val) => val.print(file),
             TypeKind::Unimplemented(_) => {
                 self.print_name();
                 println!("");
@@ -457,6 +458,7 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.print_name(),
             TypeKind::Union(ref val) => val.print_name(),
+            TypeKind::Enumeration(ref val) => val.print_name(),
             TypeKind::Unimplemented(ref tag) => print!("<unimplemented {}>", tag),
         }
     }
@@ -469,25 +471,13 @@ impl<'input> Type<'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct StructType<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     byte_size: Option<u64>,
     members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
-}
-
-impl<'input> Default for StructType<'input> {
-    fn default() -> Self {
-        StructType {
-            namespace: Vec::new(),
-            name: None,
-            byte_size: None,
-            members: Vec::new(),
-            subprograms: Vec::new(),
-        }
-    }
 }
 
 impl<'input> StructType<'input> {
@@ -543,9 +533,12 @@ impl<'input> StructType<'input> {
     }
 
     fn print(&self, file: &File) {
-        print!("struct ");
         self.print_name();
         println!("");
+
+        if let Some(size) = self.byte_size {
+            println!("\tsize: {}", size);
+        }
 
         let mut bit_offset = Some(0);
         for member in self.members.iter() {
@@ -558,6 +551,7 @@ impl<'input> StructType<'input> {
     }
 
     fn print_name(&self) {
+        print!("struct ");
         for namespace in self.namespace.iter() {
             match *namespace {
                 Some(ref name) => print!("{}::", name.to_string_lossy()),
@@ -571,25 +565,13 @@ impl<'input> StructType<'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct UnionType<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     byte_size: Option<u64>,
     members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
-}
-
-impl<'input> Default for UnionType<'input> {
-    fn default() -> Self {
-        UnionType {
-            namespace: Vec::new(),
-            name: None,
-            byte_size: None,
-            members: Vec::new(),
-            subprograms: Vec::new(),
-        }
-    }
 }
 
 impl<'input> UnionType<'input> {
@@ -644,9 +626,12 @@ impl<'input> UnionType<'input> {
     }
 
     fn print(&self, file: &File) {
-        print!("union ");
         self.print_name();
         println!("");
+
+        if let Some(size) = self.byte_size {
+            println!("\tsize: {}", size);
+        }
 
         for member in self.members.iter() {
             let mut bit_offset = Some(0);
@@ -659,6 +644,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn print_name(&self) {
+        print!("union ");
         for namespace in self.namespace.iter() {
             match *namespace {
                 Some(ref name) => print!("{}::", name.to_string_lossy()),
@@ -783,7 +769,163 @@ impl<'input> Member<'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
+struct EnumerationType<'input> {
+    namespace: Vec<Option<&'input ffi::CStr>>,
+    name: Option<&'input ffi::CStr>,
+    byte_size: Option<u64>,
+    enumerators: Vec<Enumerator<'input>>,
+    subprograms: Vec<Subprogram<'input>>,
+}
+
+impl<'input> EnumerationType<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<EnumerationType<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut type_ = EnumerationType::default();
+        type_.namespace = unit.namespaces.clone();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        type_.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_byte_size => {
+                        type_.byte_size = attr.udata_value();
+                    }
+                    gimli::DW_AT_decl_file |
+                    gimli::DW_AT_decl_line |
+                    gimli::DW_AT_sibling => {}
+                    gimli::DW_AT_type |
+                    gimli::DW_AT_enum_class => {}
+                    _ => debug!("unknown enumeration attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        unit.namespaces.push(type_.name);
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                gimli::DW_TAG_enumerator => {
+                    type_.enumerators.push(try!(Enumerator::parse_dwarf(dwarf, unit, child)));
+                }
+                gimli::DW_TAG_subprogram => {
+                    type_.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
+                }
+                tag => {
+                    debug!("unknown enumeration child tag: {}", tag);
+                }
+            }
+        }
+        unit.namespaces.pop();
+        Ok(type_)
+    }
+
+    fn bit_size(&self, _file: &File) -> Option<u64> {
+        self.byte_size.map(|v| v * 8)
+    }
+
+    fn print(&self, file: &File) {
+        self.print_name();
+        println!("");
+
+        if let Some(size) = self.byte_size {
+            println!("\tsize: {}", size);
+        }
+
+        for enumerator in self.enumerators.iter() {
+            enumerator.print(file);
+        }
+
+        for subprogram in self.subprograms.iter() {
+            subprogram.print(file);
+        }
+    }
+
+    fn print_name(&self) {
+        print!("enum ");
+        for namespace in self.namespace.iter() {
+            match *namespace {
+                Some(ref name) => print!("{}::", name.to_string_lossy()),
+                None => print!("<anon>"),
+            }
+        }
+        match self.name {
+            Some(name) => print!("{}", name.to_string_lossy()),
+            None => print!("<anon>"),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct Enumerator<'input> {
+    name: Option<&'input ffi::CStr>,
+    value: Option<i64>,
+}
+
+impl<'input> Enumerator<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<Enumerator<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut enumerator = Enumerator::default();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(ref attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        enumerator.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_const_value => {
+                        if let Some(value) = attr.sdata_value() {
+                            enumerator.value = Some(value);
+                        } else {
+                            debug!("unknown enumerator const_value: {:?}", attr.value());
+                        }
+                    }
+                    _ => debug!("unknown enumerator attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown enumerator child tag: {}", tag);
+                }
+            }
+        }
+        Ok(enumerator)
+    }
+
+    fn print(&self, _file: &File) {
+        print!("\t");
+        self.print_name();
+        if let Some(value) = self.value  {
+            print!("({})", value);
+        }
+        println!("");
+    }
+
+    fn print_name(&self) {
+        match self.name {
+            Some(name) => print!("{}", name.to_string_lossy()),
+            None => print!("<anon>"),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
 struct Subprogram<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
@@ -793,21 +935,6 @@ struct Subprogram<'input> {
     inline: bool,
     parameters: Vec<Parameter<'input>>,
     return_type: Option<gimli::UnitOffset>,
-}
-
-impl<'input> Default for Subprogram<'input> {
-    fn default() -> Self {
-        Subprogram {
-            namespace: Vec::new(),
-            name: None,
-            low_pc: None,
-            high_pc: None,
-            size: None,
-            inline: false,
-            parameters: Vec::new(),
-            return_type: None,
-        }
-    }
 }
 
 impl<'input> Subprogram<'input> {
