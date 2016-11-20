@@ -461,6 +461,12 @@ impl<'input> Type<'input> {
                                                                   iter,
                                                                   TypeModifierKind::Pointer)))
             }
+            gimli::DW_TAG_restrict_type => {
+                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
+                                                                  unit,
+                                                                  iter,
+                                                                  TypeModifierKind::Restrict)))
+            }
             _ => TypeKind::Unimplemented(tag),
         };
         Ok(type_)
@@ -539,6 +545,7 @@ struct TypeModifier<'input> {
 enum TypeModifierKind {
     Const,
     Pointer,
+    Restrict,
 }
 
 impl<'input> TypeModifier<'input> {
@@ -598,7 +605,8 @@ impl<'input> TypeModifier<'input> {
             return Some(byte_size * 8);
         }
         match self.kind {
-            TypeModifierKind::Const => {
+            TypeModifierKind::Const |
+            TypeModifierKind::Restrict => {
                 self.type_
                     .and_then(|v| Type::from_offset(file, v))
                     .and_then(|v| v.bit_size(file))
@@ -621,6 +629,7 @@ impl<'input> TypeModifier<'input> {
             match self.kind {
                 TypeModifierKind::Const => print!("const "),
                 TypeModifierKind::Pointer => print!("* "),
+                TypeModifierKind::Restrict => print!("restrict "),
             }
             match self.type_ {
                 Some(type_) => Type::print_offset_name(file, type_),
