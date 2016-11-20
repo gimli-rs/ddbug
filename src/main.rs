@@ -146,6 +146,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
                     }
                 }
                 TypeKind::Base(_) |
+                TypeKind::TypeDef(_) |
                 TypeKind::Array(_) |
                 TypeKind::Modifier(_) |
                 TypeKind::Unimplemented(_) => {}
@@ -395,6 +396,7 @@ struct Type<'input> {
 #[derive(Debug)]
 enum TypeKind<'input> {
     Base(BaseType<'input>),
+    TypeDef(TypeDef<'input>),
     Struct(StructType<'input>),
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
@@ -426,6 +428,9 @@ impl<'input> Type<'input> {
         type_.kind = match tag {
             gimli::DW_TAG_base_type => {
                 TypeKind::Base(try!(BaseType::parse_dwarf(dwarf, unit, iter)))
+            }
+            gimli::DW_TAG_typedef => {
+                TypeKind::TypeDef(try!(TypeDef::parse_dwarf(dwarf, unit, iter)))
             }
             gimli::DW_TAG_structure_type => {
                 TypeKind::Struct(try!(StructType::parse_dwarf(dwarf, unit, iter)))
@@ -460,6 +465,7 @@ impl<'input> Type<'input> {
     fn bit_size(&self, file: &File) -> Option<u64> {
         match self.kind {
             TypeKind::Base(ref val) => val.bit_size(file),
+            TypeKind::TypeDef(ref val) => val.bit_size(file),
             TypeKind::Struct(ref val) => val.bit_size(file),
             TypeKind::Union(ref val) => val.bit_size(file),
             TypeKind::Enumeration(ref val) => val.bit_size(file),
@@ -472,6 +478,7 @@ impl<'input> Type<'input> {
     fn print(&self, file: &File) {
         match self.kind {
             TypeKind::Base(ref val) => val.print(file),
+            TypeKind::TypeDef(ref val) => val.print(file),
             TypeKind::Struct(ref val) => val.print(file),
             TypeKind::Union(ref val) => val.print(file),
             TypeKind::Enumeration(ref val) => val.print(file),
@@ -487,6 +494,7 @@ impl<'input> Type<'input> {
     fn print_name(&self, file: &File) {
         match self.kind {
             TypeKind::Base(ref val) => val.print_name(),
+            TypeKind::TypeDef(ref val) => val.print_name(),
             TypeKind::Struct(ref val) => val.print_name(),
             TypeKind::Union(ref val) => val.print_name(),
             TypeKind::Enumeration(ref val) => val.print_name(),
@@ -597,8 +605,8 @@ impl<'input> TypeModifier<'input> {
             print!("{}", name.to_string_lossy());
         } else {
             match self.kind {
-                TypeModifierKind::Const => print!("myconst "),
-                TypeModifierKind::Pointer => print!("mypointer* "),
+                TypeModifierKind::Const => print!("const "),
+                TypeModifierKind::Pointer => print!("* "),
             }
             match self.type_ {
                 Some(type_) => Type::print_offset_name(file, type_),
@@ -662,6 +670,71 @@ impl<'input> BaseType<'input> {
         match self.name {
             Some(name) => print!("{}", name.to_string_lossy()),
             None => print!("<anon-base-type>"),
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct TypeDef<'input> {
+    name: Option<&'input ffi::CStr>,
+    type_: Option<gimli::UnitOffset>,
+}
+
+impl<'input> TypeDef<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<TypeDef<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut typedef = TypeDef::default();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        typedef.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_type => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            typedef.type_ = Some(offset);
+                        }
+                    }
+                    _ => debug!("unknown typedef attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown typedef child tag: {}", tag);
+                }
+            }
+        }
+        Ok(typedef)
+    }
+
+    fn bit_size(&self, file: &File) -> Option<u64> {
+        self.type_.and_then(|t| Type::from_offset(file, t)).and_then(|v| v.bit_size(file))
+    }
+
+    fn print(&self, file: &File) {
+        print!("type ");
+        self.print_name();
+        if let Some(type_) = self.type_.and_then(|t| Type::from_offset(file, t)) {
+            print!(" = ");
+            type_.print_name(file);
+        }
+        println!("");
+    }
+
+    fn print_name(&self) {
+        match self.name {
+            Some(name) => print!("{}", name.to_string_lossy()),
+            None => print!("<anon-typedef>"),
         }
     }
 }
