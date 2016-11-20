@@ -145,6 +145,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
                         }
                     }
                 }
+                TypeKind::Array(_) |
                 TypeKind::Modifier(_) |
                 TypeKind::Unimplemented(_) => {}
             }
@@ -323,11 +324,11 @@ impl<'input> Unit<'input> {
                 gimli::DW_TAG_structure_type |
                 gimli::DW_TAG_union_type |
                 gimli::DW_TAG_enumeration_type |
-                gimli::DW_TAG_pointer_type |
                 gimli::DW_TAG_array_type |
                 gimli::DW_TAG_subroutine_type |
                 gimli::DW_TAG_typedef |
                 gimli::DW_TAG_const_type |
+                gimli::DW_TAG_pointer_type |
                 gimli::DW_TAG_restrict_type => {
                     self.types.push(try!(Type::parse_dwarf(dwarf, unit, child)));
                 }
@@ -395,6 +396,7 @@ enum TypeKind<'input> {
     Struct(StructType<'input>),
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
+    Array(ArrayType<'input>),
     Modifier(TypeModifier<'input>),
     Unimplemented(gimli::DwTag),
 }
@@ -429,6 +431,9 @@ impl<'input> Type<'input> {
             gimli::DW_TAG_enumeration_type => {
                 TypeKind::Enumeration(try!(EnumerationType::parse_dwarf(dwarf, unit, iter)))
             }
+            gimli::DW_TAG_array_type => {
+                TypeKind::Array(try!(ArrayType::parse_dwarf(dwarf, unit, iter)))
+            }
             gimli::DW_TAG_const_type => {
                 TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf, unit, iter, TypeModifierKind::Const)))
             }
@@ -452,6 +457,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.bit_size(file),
             TypeKind::Union(ref val) => val.bit_size(file),
             TypeKind::Enumeration(ref val) => val.bit_size(file),
+            TypeKind::Array(ref val) => val.bit_size(file),
             TypeKind::Modifier(ref val) => val.bit_size(file),
             TypeKind::Unimplemented(_) => None,
         }
@@ -462,6 +468,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.print(file),
             TypeKind::Union(ref val) => val.print(file),
             TypeKind::Enumeration(ref val) => val.print(file),
+            TypeKind::Array(ref val) => val.print(file),
             TypeKind::Modifier(ref val) => val.print(file),
             TypeKind::Unimplemented(_) => {
                 self.print_name(file);
@@ -475,6 +482,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.print_name(),
             TypeKind::Union(ref val) => val.print_name(),
             TypeKind::Enumeration(ref val) => val.print_name(),
+            TypeKind::Array(ref val) => val.print_name(file),
             TypeKind::Modifier(ref val) => val.print_name(file),
             TypeKind::Unimplemented(ref tag) => print!("<unimplemented {}>", tag),
         }
@@ -1047,6 +1055,87 @@ impl<'input> Enumerator<'input> {
 }
 
 #[derive(Debug, Default)]
+struct ArrayType<'input> {
+    type_: Option<gimli::UnitOffset>,
+    count: Option<u64>,
+    phantom: std::marker::PhantomData<&'input [u8]>,
+}
+
+impl<'input> ArrayType<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        _dwarf: &DwarfFileState<'input, Endian>,
+        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<ArrayType<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut array = ArrayType::default();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_type => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            array.type_ = Some(offset);
+                        }
+                    }
+                    gimli::DW_AT_sibling => {}
+                    _ => debug!("unknown array attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                gimli::DW_TAG_subrange_type => {
+                    let mut attrs = child.entry().unwrap().attrs();
+                    while let Some(attr) = try!(attrs.next()) {
+                        match attr.name() {
+                            gimli::DW_AT_count => {
+                                array.count = attr.udata_value();
+                            }
+                            gimli::DW_AT_type |
+                            gimli::DW_AT_lower_bound |
+                            gimli::DW_AT_upper_bound => {}
+                            _ => debug!("unknown array subrange attribute: {} {:?}", attr.name(), attr.value()),
+                        }
+                    }
+                }
+                tag => {
+                    debug!("unknown array child tag: {}", tag);
+                }
+            }
+        }
+        Ok(array)
+    }
+
+    fn bit_size(&self, file: &File) -> Option<u64> {
+        if let (Some(type_), Some(count)) = (self.type_, self.count) {
+            Type::from_offset(file, type_).and_then(|t| t.bit_size(file)).map(|v| v * count)
+        } else {
+            None
+        }
+    }
+
+    fn print(&self, _file: &File) {
+        // These aren't declarations, so don't print them.
+    }
+
+    fn print_name(&self, file: &File) {
+        print!("[");
+        match self.type_ {
+            Some(type_) => Type::print_offset_name(file, type_),
+            None => print!("<unknown-type>"),
+        }
+        if let Some(count) = self.count {
+            print!("; {}", count);
+        }
+        print!("]");
+    }
+}
+
+#[derive(Debug, Default)]
 struct Subprogram<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
@@ -1355,6 +1444,7 @@ fn disassemble_arch<A>(
                     _ => {}
                 }
             }
+            // FIXME: mnemonic is large, insert boxed value
             mnemonics.insert(mnemonic.area.start, mnemonic);
         }
 
