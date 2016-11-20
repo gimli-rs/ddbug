@@ -145,6 +145,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
                         }
                     }
                 }
+                TypeKind::Base(_) |
                 TypeKind::Array(_) |
                 TypeKind::Modifier(_) |
                 TypeKind::Unimplemented(_) => {}
@@ -393,6 +394,7 @@ struct Type<'input> {
 
 #[derive(Debug)]
 enum TypeKind<'input> {
+    Base(BaseType<'input>),
     Struct(StructType<'input>),
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
@@ -422,6 +424,9 @@ impl<'input> Type<'input> {
         let mut type_ = Type::default();
         type_.offset = iter.entry().unwrap().offset();
         type_.kind = match tag {
+            gimli::DW_TAG_base_type => {
+                TypeKind::Base(try!(BaseType::parse_dwarf(dwarf, unit, iter)))
+            }
             gimli::DW_TAG_structure_type => {
                 TypeKind::Struct(try!(StructType::parse_dwarf(dwarf, unit, iter)))
             }
@@ -454,6 +459,7 @@ impl<'input> Type<'input> {
 
     fn bit_size(&self, file: &File) -> Option<u64> {
         match self.kind {
+            TypeKind::Base(ref val) => val.bit_size(file),
             TypeKind::Struct(ref val) => val.bit_size(file),
             TypeKind::Union(ref val) => val.bit_size(file),
             TypeKind::Enumeration(ref val) => val.bit_size(file),
@@ -465,6 +471,7 @@ impl<'input> Type<'input> {
 
     fn print(&self, file: &File) {
         match self.kind {
+            TypeKind::Base(ref val) => val.print(file),
             TypeKind::Struct(ref val) => val.print(file),
             TypeKind::Union(ref val) => val.print(file),
             TypeKind::Enumeration(ref val) => val.print(file),
@@ -479,6 +486,7 @@ impl<'input> Type<'input> {
 
     fn print_name(&self, file: &File) {
         match self.kind {
+            TypeKind::Base(ref val) => val.print_name(),
             TypeKind::Struct(ref val) => val.print_name(),
             TypeKind::Union(ref val) => val.print_name(),
             TypeKind::Enumeration(ref val) => val.print_name(),
@@ -596,6 +604,64 @@ impl<'input> TypeModifier<'input> {
                 Some(type_) => Type::print_offset_name(file, type_),
                 None => print!("<unknown-type>"),
             }
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct BaseType<'input> {
+    name: Option<&'input ffi::CStr>,
+    byte_size: Option<u64>,
+}
+
+impl<'input> BaseType<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<BaseType<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut type_ = BaseType::default();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        type_.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_byte_size => {
+                        type_.byte_size = attr.udata_value();
+                    }
+                    gimli::DW_AT_encoding => {}
+                    _ => debug!("unknown base type attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown base type child tag: {}", tag);
+                }
+            }
+        }
+        Ok(type_)
+    }
+
+    fn bit_size(&self, _file: &File) -> Option<u64> {
+        self.byte_size.map(|v| v * 8)
+    }
+
+    fn print(&self, _file: &File) {
+        // These aren't declarations, so don't print them.
+    }
+
+    fn print_name(&self) {
+        match self.name {
+            Some(name) => print!("{}", name.to_string_lossy()),
+            None => print!("<anon-base-type>"),
         }
     }
 }
