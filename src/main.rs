@@ -758,6 +758,7 @@ impl<'input> TypeDef<'input> {
             type_.print_name(file);
         }
         println!("");
+        println!("");
     }
 
     fn print_name(&self) {
@@ -841,10 +842,15 @@ impl<'input> StructType<'input> {
             println!("\tsize: {}", size);
         }
 
-        let mut bit_offset = Some(0);
-        for member in self.members.iter() {
-            member.print(file, &mut bit_offset);
+        if !self.members.is_empty() {
+            println!("\tmembers:");
+            let mut bit_offset = Some(0);
+            for member in self.members.iter() {
+                member.print(file, &mut bit_offset);
+            }
         }
+
+        println!("");
 
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
@@ -938,10 +944,15 @@ impl<'input> UnionType<'input> {
             println!("\tsize: {}", size);
         }
 
-        for member in self.members.iter() {
-            let mut bit_offset = Some(0);
-            member.print(file, &mut bit_offset);
+        if !self.members.is_empty() {
+            println!("\tmembers:");
+            for member in self.members.iter() {
+                let mut bit_offset = Some(0);
+                member.print(file, &mut bit_offset);
+            }
         }
+
+        println!("");
 
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
@@ -1040,7 +1051,7 @@ impl<'input> Member<'input> {
         match (self.bit_offset, *end_bit_offset) {
             (Some(bit_offset), Some(end_bit_offset)) => {
                 if bit_offset > end_bit_offset {
-                    println!("\t{}[{}]\t<padding>",
+                    println!("\t\t{}[{}]\t<padding>",
                              format_bit(end_bit_offset),
                              format_bit(bit_offset - end_bit_offset));
                 }
@@ -1049,8 +1060,8 @@ impl<'input> Member<'input> {
         }
 
         match self.bit_offset {
-            Some(bit_offset) => print!("\t{}", format_bit(bit_offset)),
-            None => print!("\t??"),
+            Some(bit_offset) => print!("\t\t{}", format_bit(bit_offset)),
+            None => print!("\t\t??"),
         }
         match self.bit_size(file) {
             Some(bit_size) => print!("[{}]", format_bit(bit_size)),
@@ -1148,9 +1159,14 @@ impl<'input> EnumerationType<'input> {
             println!("\tsize: {}", size);
         }
 
-        for enumerator in self.enumerators.iter() {
-            enumerator.print(file);
+        if !self.enumerators.is_empty() {
+            println!("\tenumerators:");
+            for enumerator in self.enumerators.iter() {
+                enumerator.print(file);
+            }
         }
+
+        println!("");
 
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
@@ -1222,7 +1238,7 @@ impl<'input> Enumerator<'input> {
     }
 
     fn print(&self, _file: &File) {
-        print!("\t");
+        print!("\t\t");
         self.print_name();
         if let Some(value) = self.value {
             print!("({})", value);
@@ -1572,6 +1588,8 @@ impl<'input> Subprogram<'input> {
                 }
             }
         }
+
+        println!("");
     }
 }
 
