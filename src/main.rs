@@ -148,6 +148,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
                 TypeKind::Base(_) |
                 TypeKind::TypeDef(_) |
                 TypeKind::Array(_) |
+                TypeKind::Subroutine(_) |
                 TypeKind::Modifier(_) |
                 TypeKind::Unimplemented(_) => {}
             }
@@ -401,6 +402,7 @@ enum TypeKind<'input> {
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
     Array(ArrayType<'input>),
+    Subroutine(SubroutineType<'input>),
     Modifier(TypeModifier<'input>),
     Unimplemented(gimli::DwTag),
 }
@@ -444,6 +446,9 @@ impl<'input> Type<'input> {
             gimli::DW_TAG_array_type => {
                 TypeKind::Array(try!(ArrayType::parse_dwarf(dwarf, unit, iter)))
             }
+            gimli::DW_TAG_subroutine_type => {
+                TypeKind::Subroutine(try!(SubroutineType::parse_dwarf(dwarf, unit, iter)))
+            }
             gimli::DW_TAG_const_type => {
                 TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
                                                                   unit,
@@ -476,6 +481,7 @@ impl<'input> Type<'input> {
             TypeKind::Union(ref val) => val.bit_size(file),
             TypeKind::Enumeration(ref val) => val.bit_size(file),
             TypeKind::Array(ref val) => val.bit_size(file),
+            TypeKind::Subroutine(ref val) => val.bit_size(file),
             TypeKind::Modifier(ref val) => val.bit_size(file),
             TypeKind::Unimplemented(_) => None,
         }
@@ -483,13 +489,14 @@ impl<'input> Type<'input> {
 
     fn print(&self, file: &File) {
         match self.kind {
-            TypeKind::Base(ref val) => val.print(file),
             TypeKind::TypeDef(ref val) => val.print(file),
             TypeKind::Struct(ref val) => val.print(file),
             TypeKind::Union(ref val) => val.print(file),
             TypeKind::Enumeration(ref val) => val.print(file),
-            TypeKind::Array(ref val) => val.print(file),
-            TypeKind::Modifier(ref val) => val.print(file),
+            TypeKind::Base(..) |
+            TypeKind::Array(..) |
+            TypeKind::Subroutine(..) |
+            TypeKind::Modifier(..) => {}
             TypeKind::Unimplemented(_) => {
                 self.print_name(file);
                 println!("");
@@ -505,6 +512,7 @@ impl<'input> Type<'input> {
             TypeKind::Union(ref val) => val.print_name(),
             TypeKind::Enumeration(ref val) => val.print_name(),
             TypeKind::Array(ref val) => val.print_name(file),
+            TypeKind::Subroutine(ref val) => val.print_name(file),
             TypeKind::Modifier(ref val) => val.print_name(file),
             TypeKind::Unimplemented(ref tag) => print!("<unimplemented {}>", tag),
         }
@@ -599,10 +607,6 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print(&self, _file: &File) {
-        // These aren't declarations, so don't print them.
-    }
-
     fn print_name(&self, file: &File) {
         if let Some(name) = self.name {
             // Not sure namespace is required here.
@@ -676,10 +680,6 @@ impl<'input> BaseType<'input> {
         self.byte_size.map(|v| v * 8)
     }
 
-    fn print(&self, _file: &File) {
-        // These aren't declarations, so don't print them.
-    }
-
     fn print_name(&self) {
         match self.name {
             Some(name) => print!("{}", name.to_string_lossy()),
@@ -716,6 +716,8 @@ impl<'input> TypeDef<'input> {
                             typedef.type_ = Some(offset);
                         }
                     }
+                    gimli::DW_AT_decl_file |
+                    gimli::DW_AT_decl_line => {}
                     _ => {
                         debug!("unknown typedef attribute: {} {:?}",
                                attr.name(),
@@ -1299,10 +1301,6 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print(&self, _file: &File) {
-        // These aren't declarations, so don't print them.
-    }
-
     fn print_name(&self, file: &File) {
         print!("[");
         match self.type_ {
@@ -1313,6 +1311,79 @@ impl<'input> ArrayType<'input> {
             print!("; {}", count);
         }
         print!("]");
+    }
+}
+
+#[derive(Debug, Default)]
+struct SubroutineType<'input> {
+    parameters: Vec<Parameter<'input>>,
+    return_type: Option<gimli::UnitOffset>,
+}
+
+impl<'input> SubroutineType<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<SubroutineType<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut subroutine = SubroutineType::default();
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_type => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            subroutine.return_type = Some(offset);
+                        }
+                    }
+                    gimli::DW_AT_prototyped |
+                    gimli::DW_AT_sibling => {}
+                    _ => {
+                        debug!("unknown subroutine attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                gimli::DW_TAG_formal_parameter => {
+                    subroutine.parameters.push(try!(Parameter::parse_dwarf(dwarf, unit, child)));
+                }
+                tag => {
+                    debug!("unknown subroutine child tag: {}", tag);
+                }
+            }
+        }
+        Ok(subroutine)
+    }
+
+    fn bit_size(&self, _file: &File) -> Option<u64> {
+        None
+    }
+
+    fn print_name(&self, file: &File) {
+        let mut first = true;
+        print!("(");
+        for parameter in self.parameters.iter() {
+            if first {
+                first = false;
+            } else {
+                print!(", ");
+            }
+            parameter.print(file);
+        }
+        print!(")");
+
+        if let Some(return_type) = self.return_type {
+            print!(" -> ");
+            Type::print_offset_name(file, return_type);
+        }
     }
 }
 
@@ -1540,11 +1611,9 @@ impl<'input> Parameter<'input> {
     }
 
     fn print(&self, file: &File) {
-        match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+        if let Some(name) = self.name {
+            print!("{}: ", name.to_string_lossy());
         }
-        print!(": ");
         match self.type_ {
             Some(offset) => Type::print_offset_name(file, offset),
             None => print!(": <anon>"),
