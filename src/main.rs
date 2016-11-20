@@ -136,9 +136,9 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
     for unit in units.iter() {
         for type_ in unit.types.iter() {
             match type_.kind {
-                TypeKind::Struct(StructType { ref subprograms, ..}) |
-                TypeKind::Union(UnionType { ref subprograms, ..}) |
-                TypeKind::Enumeration(EnumerationType { ref subprograms, ..}) => {
+                TypeKind::Struct(StructType { ref subprograms, .. }) |
+                TypeKind::Union(UnionType { ref subprograms, .. }) |
+                TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
                     for subprogram in subprograms.iter() {
                         if let Some(low_pc) = subprogram.low_pc {
                             all_subprograms.insert(low_pc, subprogram);
@@ -445,10 +445,16 @@ impl<'input> Type<'input> {
                 TypeKind::Array(try!(ArrayType::parse_dwarf(dwarf, unit, iter)))
             }
             gimli::DW_TAG_const_type => {
-                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf, unit, iter, TypeModifierKind::Const)))
+                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
+                                                                  unit,
+                                                                  iter,
+                                                                  TypeModifierKind::Const)))
             }
             gimli::DW_TAG_pointer_type => {
-                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf, unit, iter, TypeModifierKind::Pointer)))
+                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
+                                                                  unit,
+                                                                  iter,
+                                                                  TypeModifierKind::Pointer)))
             }
             _ => TypeKind::Unimplemented(tag),
         };
@@ -532,7 +538,7 @@ impl<'input> TypeModifier<'input> {
         dwarf: &DwarfFileState<'input, Endian>,
         unit: &mut DwarfUnitState<'state, 'input, Endian>,
         mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>,
-        kind: TypeModifierKind,
+        kind: TypeModifierKind
     ) -> Result<TypeModifier<'input>>
         where Endian: gimli::Endianity
     {
@@ -560,7 +566,11 @@ impl<'input> TypeModifier<'input> {
                     gimli::DW_AT_byte_size => {
                         modifier.byte_size = attr.udata_value();
                     }
-                    _ => debug!("unknown type modifier attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown type modifier attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -643,7 +653,11 @@ impl<'input> BaseType<'input> {
                         type_.byte_size = attr.udata_value();
                     }
                     gimli::DW_AT_encoding => {}
-                    _ => debug!("unknown base type attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown base type attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -702,7 +716,11 @@ impl<'input> TypeDef<'input> {
                             typedef.type_ = Some(offset);
                         }
                     }
-                    _ => debug!("unknown typedef attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown typedef attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -773,7 +791,11 @@ impl<'input> StructType<'input> {
                     gimli::DW_AT_decl_line |
                     gimli::DW_AT_declaration |
                     gimli::DW_AT_sibling => {}
-                    _ => debug!("unknown struct attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown struct attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -866,7 +888,11 @@ impl<'input> UnionType<'input> {
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
                     gimli::DW_AT_sibling => {}
-                    _ => debug!("unknown union attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown union attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -1072,7 +1098,11 @@ impl<'input> EnumerationType<'input> {
                     gimli::DW_AT_sibling => {}
                     gimli::DW_AT_type |
                     gimli::DW_AT_enum_class => {}
-                    _ => debug!("unknown enumeration attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown enumeration attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -1161,7 +1191,11 @@ impl<'input> Enumerator<'input> {
                             debug!("unknown enumerator const_value: {:?}", attr.value());
                         }
                     }
-                    _ => debug!("unknown enumerator attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown enumerator attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -1179,7 +1213,7 @@ impl<'input> Enumerator<'input> {
     fn print(&self, _file: &File) {
         print!("\t");
         self.print_name();
-        if let Some(value) = self.value  {
+        if let Some(value) = self.value {
             print!("({})", value);
         }
         println!("");
@@ -1220,7 +1254,11 @@ impl<'input> ArrayType<'input> {
                         }
                     }
                     gimli::DW_AT_sibling => {}
-                    _ => debug!("unknown array attribute: {} {:?}", attr.name(), attr.value()),
+                    _ => {
+                        debug!("unknown array attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
                 }
             }
         }
@@ -1237,7 +1275,11 @@ impl<'input> ArrayType<'input> {
                             gimli::DW_AT_type |
                             gimli::DW_AT_lower_bound |
                             gimli::DW_AT_upper_bound => {}
-                            _ => debug!("unknown array subrange attribute: {} {:?}", attr.name(), attr.value()),
+                            _ => {
+                                debug!("unknown array subrange attribute: {} {:?}",
+                                       attr.name(),
+                                       attr.value())
+                            }
                         }
                     }
                 }
