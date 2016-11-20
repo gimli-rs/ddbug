@@ -1532,23 +1532,6 @@ impl<'input> Subprogram<'input> {
             None => print!("<anon>"),
         }
 
-        let mut first = true;
-        print!("(");
-        for parameter in self.parameters.iter() {
-            if first {
-                first = false;
-            } else {
-                print!(", ");
-            }
-            parameter.print(file);
-        }
-        print!(")");
-
-        if let Some(return_type) = self.return_type {
-            print!(" -> ");
-            Type::print_offset_name(file, return_type);
-        }
-
         println!("");
 
         if let Some(size) = self.size {
@@ -1559,6 +1542,32 @@ impl<'input> Subprogram<'input> {
             println!("\tinline: yes");
         } else {
             println!("\tinline: no");
+        }
+
+        if let Some(return_type) = self.return_type {
+            println!("\treturn type:");
+            print!("\t\t");
+            match Type::from_offset(file, return_type).and_then(|t| t.bit_size(file)) {
+                Some(bit_size) => print!("[{}]", format_bit(bit_size)),
+                None => print!("[??]"),
+            }
+            print!("\t");
+            Type::print_offset_name(file, return_type);
+            println!("");
+        }
+
+        if !self.parameters.is_empty() {
+            println!("\tparameters:");
+            for parameter in self.parameters.iter() {
+                print!("\t\t");
+                match parameter.bit_size(file) {
+                    Some(bit_size) => print!("[{}]", format_bit(bit_size)),
+                    None => print!("[??]"),
+                }
+                print!("\t");
+                parameter.print(file);
+                println!("");
+            }
         }
 
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
@@ -1635,6 +1644,12 @@ impl<'input> Parameter<'input> {
             }
         }
         Ok(parameter)
+    }
+
+    fn bit_size(&self, file: &File) -> Option<u64> {
+        self.type_
+            .and_then(|t| Type::from_offset(file, t))
+            .and_then(|t| t.bit_size(file))
     }
 
     fn print(&self, file: &File) {
