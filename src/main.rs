@@ -65,14 +65,16 @@ fn main() {
     }
 }
 
+// TODO: This is badly named; it contains unit-specific info too.
 struct File<'a, 'input>
     where 'input: 'a
 {
     // TODO: use format independent machine type
     machine: xmas_elf::header::Machine,
     region: panopticon::Region,
-    types: HashMap<usize, &'a Type<'input>>,
     subprograms: HashMap<u64, &'a Subprogram<'input>>,
+    types: HashMap<usize, &'a Type<'input>>,
+    address_size: Option<u64>,
 }
 
 fn parse_file(path: &ffi::OsStr) -> Result<()> {
@@ -143,6 +145,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
                         }
                     }
                 }
+                TypeKind::Modifier(_) |
                 TypeKind::Unimplemented(_) => {}
             }
         }
@@ -156,8 +159,9 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
     let mut file = File {
         machine: machine,
         region: region,
-        types: HashMap::new(),
         subprograms: all_subprograms,
+        types: HashMap::new(),
+        address_size: None,
     };
 
     for unit in units.iter() {
@@ -165,6 +169,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         for type_ in unit.types.iter() {
             file.types.insert(type_.offset.0, type_);
         }
+        file.address_size = unit.address_size;
         unit.print(&file);
     }
     Ok(())
@@ -218,6 +223,7 @@ struct Unit<'input> {
     dir: Option<&'input ffi::CStr>,
     name: Option<&'input ffi::CStr>,
     language: Option<gimli::DwLang>,
+    address_size: Option<u64>,
     low_pc: Option<u64>,
     high_pc: Option<u64>,
     size: Option<u64>,
@@ -245,6 +251,7 @@ impl<'input> Unit<'input> {
         let iter = tree.iter();
 
         let mut unit = Unit::default();
+        unit.address_size = Some(unit_header.address_size() as u64);
         if let Some(entry) = iter.entry() {
             if entry.tag() != gimli::DW_TAG_compile_unit {
                 return Err(format!("unknown CU tag: {}", entry.tag()).into());
@@ -388,6 +395,7 @@ enum TypeKind<'input> {
     Struct(StructType<'input>),
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
+    Modifier(TypeModifier<'input>),
     Unimplemented(gimli::DwTag),
 }
 
@@ -421,6 +429,12 @@ impl<'input> Type<'input> {
             gimli::DW_TAG_enumeration_type => {
                 TypeKind::Enumeration(try!(EnumerationType::parse_dwarf(dwarf, unit, iter)))
             }
+            gimli::DW_TAG_const_type => {
+                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf, unit, iter, TypeModifierKind::Const)))
+            }
+            gimli::DW_TAG_pointer_type => {
+                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf, unit, iter, TypeModifierKind::Pointer)))
+            }
             _ => TypeKind::Unimplemented(tag),
         };
         Ok(type_)
@@ -438,6 +452,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.bit_size(file),
             TypeKind::Union(ref val) => val.bit_size(file),
             TypeKind::Enumeration(ref val) => val.bit_size(file),
+            TypeKind::Modifier(ref val) => val.bit_size(file),
             TypeKind::Unimplemented(_) => None,
         }
     }
@@ -447,26 +462,132 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.print(file),
             TypeKind::Union(ref val) => val.print(file),
             TypeKind::Enumeration(ref val) => val.print(file),
+            TypeKind::Modifier(ref val) => val.print(file),
             TypeKind::Unimplemented(_) => {
-                self.print_name();
+                self.print_name(file);
                 println!("");
             }
         }
     }
 
-    fn print_name(&self) {
+    fn print_name(&self, file: &File) {
         match self.kind {
             TypeKind::Struct(ref val) => val.print_name(),
             TypeKind::Union(ref val) => val.print_name(),
             TypeKind::Enumeration(ref val) => val.print_name(),
+            TypeKind::Modifier(ref val) => val.print_name(file),
             TypeKind::Unimplemented(ref tag) => print!("<unimplemented {}>", tag),
         }
     }
 
     fn print_offset_name(file: &File, offset: gimli::UnitOffset) {
         match Type::from_offset(file, offset) {
-            Some(type_) => type_.print_name(),
+            Some(type_) => type_.print_name(file),
             None => print!("<invalid-type>"),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct TypeModifier<'input> {
+    kind: TypeModifierKind,
+    type_: Option<gimli::UnitOffset>,
+    namespace: Vec<Option<&'input ffi::CStr>>,
+    name: Option<&'input ffi::CStr>,
+    byte_size: Option<u64>,
+}
+
+#[derive(Debug)]
+enum TypeModifierKind {
+    Const,
+    Pointer,
+}
+
+impl<'input> TypeModifier<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>,
+        kind: TypeModifierKind,
+    ) -> Result<TypeModifier<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut modifier = TypeModifier {
+            kind: kind,
+            type_: None,
+            namespace: Vec::new(),
+            name: None,
+            byte_size: None,
+        };
+
+        {
+            let mut attrs = iter.entry().unwrap().attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        modifier.namespace = unit.namespaces.clone();
+                        modifier.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_type => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            modifier.type_ = Some(offset);
+                        }
+                    }
+                    gimli::DW_AT_byte_size => {
+                        modifier.byte_size = attr.udata_value();
+                    }
+                    _ => debug!("unknown type modifier attribute: {} {:?}", attr.name(), attr.value()),
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown type modifier child tag: {}", tag);
+                }
+            }
+        }
+        Ok(modifier)
+    }
+
+    fn bit_size(&self, file: &File) -> Option<u64> {
+        if let Some(byte_size) = self.byte_size {
+            return Some(byte_size * 8);
+        }
+        match self.kind {
+            TypeModifierKind::Const => {
+                self.type_
+                    .and_then(|v| Type::from_offset(file, v))
+                    .and_then(|v| v.bit_size(file))
+            }
+            TypeModifierKind::Pointer => file.address_size,
+        }
+    }
+
+    fn print(&self, _file: &File) {
+        // These aren't declarations, so don't print them.
+    }
+
+    fn print_name(&self, file: &File) {
+        if let Some(name) = self.name {
+            // Not sure namespace is required here.
+            for namespace in self.namespace.iter() {
+                match *namespace {
+                    Some(ref name) => print!("{}::", name.to_string_lossy()),
+                    None => print!("<anon>"),
+                }
+            }
+            print!("{}", name.to_string_lossy());
+        } else {
+            match self.kind {
+                TypeModifierKind::Const => print!("myconst "),
+                TypeModifierKind::Pointer => print!("mypointer* "),
+            }
+            match self.type_ {
+                Some(type_) => Type::print_offset_name(file, type_),
+                None => print!("<unknown-type>"),
+            }
         }
     }
 }
@@ -734,7 +855,7 @@ impl<'input> Member<'input> {
     fn print(&self, file: &File, end_bit_offset: &mut Option<u64>) {
         match (self.bit_offset, *end_bit_offset) {
             (Some(bit_offset), Some(end_bit_offset)) => {
-                if bit_offset != end_bit_offset {
+                if bit_offset > end_bit_offset {
                     println!("\t{}[{}]\t<padding>",
                              format_bit(end_bit_offset),
                              format_bit(bit_offset - end_bit_offset));
@@ -753,7 +874,7 @@ impl<'input> Member<'input> {
         }
         match (self.bit_offset, self.bit_size(file)) {
             (Some(bit_offset), Some(bit_size)) => {
-                *end_bit_offset = Some(bit_offset + bit_size);
+                *end_bit_offset = bit_offset.checked_add(bit_size);
             }
             _ => *end_bit_offset = None,
         }
@@ -1003,9 +1124,9 @@ impl<'input> Subprogram<'input> {
 
             if let Some(low_pc) = subprogram.low_pc {
                 if let Some(high_pc) = subprogram.high_pc {
-                    subprogram.size = Some(high_pc - low_pc);
+                    subprogram.size = high_pc.checked_sub(low_pc);
                 } else if let Some(size) = subprogram.size {
-                    subprogram.high_pc = Some(low_pc + size);
+                    subprogram.high_pc = low_pc.checked_add(size);
                 }
             }
         }
