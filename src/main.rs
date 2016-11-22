@@ -625,7 +625,7 @@ impl<'input> TypeModifier<'input> {
                     .and_then(|v| Type::from_offset(file, v))
                     .and_then(|v| v.bit_size(file))
             }
-            TypeModifierKind::Pointer => file.address_size,
+            TypeModifierKind::Pointer => file.address_size.map(|v| v * 8),
         }
     }
 
