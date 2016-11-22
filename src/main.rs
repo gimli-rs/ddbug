@@ -530,6 +530,20 @@ impl<'input> Type<'input> {
             None => print!("<invalid-type>"),
         }
     }
+
+    fn is_anon_member(&self) -> bool {
+        match self.kind {
+            TypeKind::Struct(ref val) => val.is_anon_member(),
+            TypeKind::Union(ref val) => val.is_anon_member(),
+            TypeKind::Base(..) |
+            TypeKind::TypeDef(..) |
+            TypeKind::Enumeration(..) |
+            TypeKind::Array(..) |
+            TypeKind::Subroutine(..) |
+            TypeKind::Modifier(..) |
+            TypeKind::Unimplemented(..) => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -844,16 +858,19 @@ impl<'input> StructType<'input> {
 
         if !self.members.is_empty() {
             println!("\tmembers:");
-            let mut bit_offset = Some(0);
-            for member in self.members.iter() {
-                member.print(file, &mut bit_offset);
-            }
+            self.print_members(file, Some(0), 2);
         }
 
         println!("");
 
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
+        }
+    }
+
+    fn print_members(&self, file: &File, mut bit_offset: Option<u64>, indent: usize) {
+        for member in self.members.iter() {
+            member.print(file, &mut bit_offset, indent);
         }
     }
 
@@ -869,6 +886,10 @@ impl<'input> StructType<'input> {
             Some(name) => print!("{}", name.to_string_lossy()),
             None => print!("<anon>"),
         }
+    }
+
+    fn is_anon_member(&self) -> bool {
+        self.name.is_none()
     }
 }
 
@@ -946,16 +967,20 @@ impl<'input> UnionType<'input> {
 
         if !self.members.is_empty() {
             println!("\tmembers:");
-            for member in self.members.iter() {
-                let mut bit_offset = Some(0);
-                member.print(file, &mut bit_offset);
-            }
+            self.print_members(file, Some(0), 2);
         }
 
         println!("");
 
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
+        }
+    }
+
+    fn print_members(&self, file: &File, bit_offset: Option<u64>, indent: usize) {
+        for member in self.members.iter() {
+            let mut bit_offset = bit_offset;
+            member.print(file, &mut bit_offset, indent);
         }
     }
 
@@ -971,6 +996,10 @@ impl<'input> UnionType<'input> {
             Some(name) => print!("{}", name.to_string_lossy()),
             None => print!("<anon>"),
         }
+    }
+
+    fn is_anon_member(&self) -> bool {
+        self.name.is_none()
     }
 }
 
@@ -1047,11 +1076,14 @@ impl<'input> Member<'input> {
         }
     }
 
-    fn print(&self, file: &File, end_bit_offset: &mut Option<u64>) {
+    fn print(&self, file: &File, end_bit_offset: &mut Option<u64>, indent: usize) {
         match (self.bit_offset, *end_bit_offset) {
             (Some(bit_offset), Some(end_bit_offset)) => {
                 if bit_offset > end_bit_offset {
-                    println!("\t\t{}[{}]\t<padding>",
+                    for _ in 0..indent {
+                        print!("\t");
+                    }
+                    println!("{}[{}]\t<padding>",
                              format_bit(end_bit_offset),
                              format_bit(bit_offset - end_bit_offset));
                 }
@@ -1059,9 +1091,12 @@ impl<'input> Member<'input> {
             _ => {}
         }
 
+        for _ in 0..indent {
+            print!("\t");
+        }
         match self.bit_offset {
-            Some(bit_offset) => print!("\t\t{}", format_bit(bit_offset)),
-            None => print!("\t\t??"),
+            Some(bit_offset) => print!("{}", format_bit(bit_offset)),
+            None => print!("??"),
         }
         match self.bit_size(file) {
             Some(bit_size) => print!("[{}]", format_bit(bit_size)),
@@ -1077,11 +1112,22 @@ impl<'input> Member<'input> {
             Some(name) => print!("\t{}", name.to_string_lossy()),
             None => print!("\t<anon>"),
         }
-        if let Some(type_) = self.type_ {
+        if let Some(type_) = self.type_.and_then(|v| Type::from_offset(file, v)) {
             print!(": ");
-            Type::print_offset_name(file, type_);
+            type_.print_name(file);
+            println!("");
+            if self.name.is_none() || type_.is_anon_member() {
+                match type_.kind {
+                    TypeKind::Struct(ref t) => t.print_members(file, self.bit_offset, indent + 1),
+                    TypeKind::Union(ref t) => t.print_members(file, self.bit_offset, indent + 1),
+                    _ => {
+                        debug!("unknown anon member: {:?}", type_);
+                    }
+                }
+            }
+        } else {
+            println!(": <invalid-type>");
         }
-        println!("");
     }
 }
 
