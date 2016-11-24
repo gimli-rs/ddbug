@@ -1,4 +1,5 @@
 extern crate env_logger;
+extern crate getopts;
 extern crate gimli;
 #[macro_use]
 extern crate log;
@@ -11,11 +12,13 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
+use std::error;
 use std::fmt;
 use std::fmt::Debug;
 use std::fs;
 use std::ffi;
-use std::error;
+use std::io;
+use std::io::Write;
 use std::result;
 
 use panopticon::amd64;
@@ -55,14 +58,44 @@ impl From<gimli::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
+#[derive(Default)]
+struct Flags {
+    calls: bool,
+}
+
 fn main() {
     env_logger::init().ok();
 
-    for path in env::args_os().skip(1) {
-        if let Err(e) = parse_file(&path) {
-            error!("{}: {}", path.to_string_lossy(), e);
+    let mut opts = getopts::Options::new();
+    opts.optflag("", "calls", "print subprogram calls");
+
+    let matches = match opts.parse(env::args().skip(1)) {
+        Ok(m) => m,
+        Err(e) => {
+            error!("{}", e);
+            print_usage(&opts);
+        }
+    };
+    if matches.free.is_empty() {
+        print_usage(&opts);
+    }
+
+    let mut flags = Flags::default();
+    if matches.opt_present("calls") {
+        flags.calls = true;
+    }
+
+    for path in &matches.free {
+        if let Err(e) = parse_file(path, &flags) {
+            error!("{}: {}", path, e);
         }
     }
+}
+
+fn print_usage(opts: &getopts::Options) -> ! {
+    let brief = format!("Usage: {} <options> <file>", env::args().next().unwrap());
+    write!(&mut io::stderr(), "{}", opts.usage(&brief)).ok();
+    std::process::exit(1);
 }
 
 // TODO: This is badly named; it contains unit-specific info too.
@@ -75,9 +108,10 @@ struct File<'a, 'input>
     subprograms: HashMap<u64, &'a Subprogram<'input>>,
     types: HashMap<usize, &'a Type<'input>>,
     address_size: Option<u64>,
+    flags: &'a Flags,
 }
 
-fn parse_file(path: &ffi::OsStr) -> Result<()> {
+fn parse_file(path: &str, flags: &Flags) -> Result<()> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(e) => {
@@ -166,6 +200,7 @@ fn parse_file(path: &ffi::OsStr) -> Result<()> {
         subprograms: all_subprograms,
         types: HashMap::new(),
         address_size: None,
+        flags: flags,
     };
 
     for unit in units.iter() {
@@ -1620,25 +1655,27 @@ impl<'input> Subprogram<'input> {
             if low_pc != 0 {
                 // TODO: is high_pc inclusive?
                 println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
-                let calls = disassemble(file.machine, &file.region, low_pc, high_pc);
-                if !calls.is_empty() {
-                    println!("\tcalls:");
-                    for call in &calls {
-                        print!("\t\t0x{:x}", call);
-                        if let Some(subprogram) = file.subprograms.get(call) {
-                            print!(" ");
-                            for namespace in subprogram.namespace.iter() {
-                                match *namespace {
-                                    Some(ref name) => print!("{}::", name.to_string_lossy()),
+                if file.flags.calls {
+                    let calls = disassemble(file.machine, &file.region, low_pc, high_pc);
+                    if !calls.is_empty() {
+                        println!("\tcalls:");
+                        for call in &calls {
+                            print!("\t\t0x{:x}", call);
+                            if let Some(subprogram) = file.subprograms.get(call) {
+                                print!(" ");
+                                for namespace in subprogram.namespace.iter() {
+                                    match *namespace {
+                                        Some(ref name) => print!("{}::", name.to_string_lossy()),
+                                        None => print!("<anon>"),
+                                    }
+                                }
+                                match subprogram.name {
+                                    Some(name) => print!("{}", name.to_string_lossy()),
                                     None => print!("<anon>"),
                                 }
                             }
-                            match subprogram.name {
-                                Some(name) => print!("{}", name.to_string_lossy()),
-                                None => print!("<anon>"),
-                            }
+                            println!("");
                         }
-                        println!("");
                     }
                 }
             }
