@@ -11,6 +11,7 @@ use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::env;
 use std::error;
 use std::fmt;
@@ -414,8 +415,28 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, file: &File) {
+        // The offsets of types that are unnamed struct and union members.
+        let mut anon_members = HashSet::new();
         for type_ in self.types.iter() {
-            type_.print(file);
+            type_.visit_members(&mut |t| {
+                if t.is_anon() {
+                    if let Some(offset) = t.type_ {
+                        anon_members.insert(offset.0);
+                    }
+                }
+            });
+        }
+
+        for type_ in self.types.iter() {
+            // We print unnamed struct and union members inline, so no need
+            // to print them again.
+            //
+            // Also don't print anonymous types. Normally these will have also
+            // been printed inline (eg in a TypeDef). We don't actually check
+            // that they have been printed already, but in future we could.
+            if !type_.is_anon() && !anon_members.contains(&type_.offset.0) {
+                type_.print(file);
+            }
         }
         for subprogram in self.subprograms.iter() {
             subprogram.print(file);
@@ -528,6 +549,20 @@ impl<'input> Type<'input> {
         }
     }
 
+    fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+        match self.kind {
+            TypeKind::Struct(ref val) => val.visit_members(f),
+            TypeKind::Union(ref val) => val.visit_members(f),
+            TypeKind::Enumeration(..) |
+            TypeKind::TypeDef(..) |
+            TypeKind::Base(..) |
+            TypeKind::Array(..) |
+            TypeKind::Subroutine(..) |
+            TypeKind::Modifier(..) |
+            TypeKind::Unimplemented(_) => {}
+        }
+    }
+
     fn print(&self, file: &File) {
         match self.kind {
             TypeKind::TypeDef(ref val) => val.print(file),
@@ -566,10 +601,10 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn is_anon_member(&self) -> bool {
+    fn is_anon(&self) -> bool {
         match self.kind {
-            TypeKind::Struct(ref val) => val.is_anon_member(),
-            TypeKind::Union(ref val) => val.is_anon_member(),
+            TypeKind::Struct(ref val) => val.is_anon(),
+            TypeKind::Union(ref val) => val.is_anon(),
             TypeKind::Base(..) |
             TypeKind::TypeDef(..) |
             TypeKind::Enumeration(..) |
@@ -804,9 +839,15 @@ impl<'input> TypeDef<'input> {
         self.print_name();
         if let Some(type_) = self.type_.and_then(|t| Type::from_offset(file, t)) {
             print!(" = ");
-            type_.print_name(file);
+            if type_.is_anon() {
+                type_.print(file);
+            } else {
+                type_.print_name(file);
+                println!("");
+            }
+        } else {
+            println!("");
         }
-        println!("");
         println!("");
     }
 
@@ -883,6 +924,12 @@ impl<'input> StructType<'input> {
         self.byte_size.map(|v| v * 8)
     }
 
+    fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+        for member in self.members.iter() {
+            f(member);
+        }
+    }
+
     fn print(&self, file: &File) {
         self.print_name();
         println!("");
@@ -923,7 +970,7 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn is_anon_member(&self) -> bool {
+    fn is_anon(&self) -> bool {
         self.name.is_none()
     }
 }
@@ -992,6 +1039,12 @@ impl<'input> UnionType<'input> {
         self.byte_size.map(|v| v * 8)
     }
 
+    fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+        for member in self.members.iter() {
+            f(member);
+        }
+    }
+
     fn print(&self, file: &File) {
         self.print_name();
         println!("");
@@ -1033,7 +1086,7 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn is_anon_member(&self) -> bool {
+    fn is_anon(&self) -> bool {
         self.name.is_none()
     }
 }
@@ -1151,7 +1204,7 @@ impl<'input> Member<'input> {
             print!(": ");
             type_.print_name(file);
             println!("");
-            if self.name.is_none() || type_.is_anon_member() {
+            if self.is_anon() || type_.is_anon() {
                 match type_.kind {
                     TypeKind::Struct(ref t) => t.print_members(file, self.bit_offset, indent + 1),
                     TypeKind::Union(ref t) => t.print_members(file, self.bit_offset, indent + 1),
@@ -1163,6 +1216,10 @@ impl<'input> Member<'input> {
         } else {
             println!(": <invalid-type>");
         }
+    }
+
+    fn is_anon(&self) -> bool {
+        self.name.is_none()
     }
 }
 
