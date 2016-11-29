@@ -251,7 +251,7 @@ struct DwarfUnitState<'state, 'input, Endian>
     where Endian: 'state + gimli::Endianity,
           'input: 'state
 {
-    _header: &'state gimli::CompilationUnitHeader<'input, Endian>,
+    header: &'state gimli::CompilationUnitHeader<'input, Endian>,
     _abbrev: &'state gimli::Abbreviations,
     line: Option<gimli::DebugLineOffset>,
     ranges: Option<gimli::DebugRangesOffset>,
@@ -280,7 +280,7 @@ impl<'input> Unit<'input> {
     {
         let abbrev = &try!(unit_header.abbreviations(dwarf.debug_abbrev));
         let mut unit_state = DwarfUnitState {
-            _header: unit_header,
+            header: unit_header,
             _abbrev: abbrev,
             line: None,
             ranges: None,
@@ -848,6 +848,9 @@ impl<'input> TypeDef<'input> {
         } else {
             println!("");
         }
+        if let Some(bit_size) = self.bit_size(file) {
+            println!("\tsize: {}", format_bit(bit_size));
+        }
         println!("");
     }
 
@@ -1102,7 +1105,7 @@ struct Member<'input> {
 impl<'input> Member<'input> {
     fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
         dwarf: &DwarfFileState<'input, Endian>,
-        _unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
         mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
     ) -> Result<Member<'input>>
         where Endian: gimli::Endianity
@@ -1122,7 +1125,27 @@ impl<'input> Member<'input> {
                         }
                     }
                     gimli::DW_AT_data_member_location => {
-                        member.bit_offset = attr.udata_value().map(|v| v * 8);
+                        match attr.value() {
+                            gimli::AttributeValue::Udata(v) => member.bit_offset = Some(v * 8),
+                            gimli::AttributeValue::Exprloc(expr) => {
+                                match evaluate(unit.header, expr.0) {
+                                    Ok(gimli::Location::Address { address }) => {
+                                        member.bit_offset = Some(address * 8)
+                                    }
+                                    Ok(loc) => {
+                                        debug!("unknown DW_AT_data_member_location result: {:?}",
+                                               loc)
+                                    }
+                                    Err(e) => {
+                                        debug!("DW_AT_data_member_location evaluation failed: {}",
+                                               e)
+                                    }
+                                }
+                            }
+                            _ => {
+                                debug!("unknown DW_AT_data_member_location: {:?}", attr.value());
+                            }
+                        }
                     }
                     gimli::DW_AT_bit_offset => {
                         member.bit_offset = attr.udata_value();
@@ -1138,7 +1161,7 @@ impl<'input> Member<'input> {
                     _ => {
                         debug!("unknown member attribute: {} {:?}",
                                attr.name(),
-                               attr.value())
+                               attr.value());
                     }
                 }
             }
@@ -1184,11 +1207,17 @@ impl<'input> Member<'input> {
         }
         match self.bit_offset {
             Some(bit_offset) => print!("{}", format_bit(bit_offset)),
-            None => print!("??"),
+            None => {
+                print!("??");
+                debug!("no offset for {:?}", self);
+            }
         }
         match self.bit_size(file) {
             Some(bit_size) => print!("[{}]", format_bit(bit_size)),
-            None => print!("[??]"),
+            None => {
+                print!("[??]");
+                debug!("no size for {:?}", self);
+            }
         }
         match (self.bit_offset, self.bit_size(file)) {
             (Some(bit_offset), Some(bit_size)) => {
@@ -1899,4 +1928,51 @@ fn format_bit(val: u64) -> String {
     } else {
         format!("{}.{}", byte, bit)
     }
+}
+
+#[derive(Debug)]
+struct SimpleContext;
+
+impl<'input> gimli::EvaluationContext<'input> for SimpleContext {
+    fn read_memory(&self, _addr: u64, _nbytes: u8, _space: Option<u64>) -> gimli::Result<u64> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+    fn read_register(&self, _regno: u64) -> gimli::Result<u64> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+    fn frame_base(&self) -> gimli::Result<u64> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+    fn read_tls(&self, _slot: u64) -> gimli::Result<u64> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+    fn call_frame_cfa(&self) -> gimli::Result<u64> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+    fn get_at_location(&self, _die: gimli::DieReference) -> gimli::Result<&'input [u8]> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+    fn evaluate_entry_value(&self, _expression: &[u8]) -> gimli::Result<u64> {
+        Err(gimli::Error::UnexpectedNull)
+    }
+}
+
+
+fn evaluate<'input, Endian>(
+    unit: &gimli::CompilationUnitHeader<Endian>,
+    bytecode: &'input [u8]
+) -> Result<gimli::Location<'input>>
+    where Endian: gimli::Endianity
+{
+    let mut context = SimpleContext {};
+    let mut evaluation = gimli::Evaluation::<Endian>::new(bytecode,
+                                                          unit.address_size(),
+                                                          unit.format(),
+                                                          &mut context);
+    evaluation.set_initial_value(0);
+    let pieces = try!(evaluation.evaluate());
+    if pieces.len() != 1 {
+        return Err(format!("unsupported number of evaluation pieces: {}", pieces.len()).into());
+    }
+    Ok(pieces[0].location)
 }
