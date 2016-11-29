@@ -955,7 +955,7 @@ impl<'input> StructType<'input> {
 
     fn print_members(&self, file: &File, mut bit_offset: Option<u64>, indent: usize) {
         for member in self.members.iter() {
-            member.print(file, &mut bit_offset, indent);
+            member.print(file, &mut bit_offset, false, indent);
         }
     }
 
@@ -1071,7 +1071,7 @@ impl<'input> UnionType<'input> {
     fn print_members(&self, file: &File, bit_offset: Option<u64>, indent: usize) {
         for member in self.members.iter() {
             let mut bit_offset = bit_offset;
-            member.print(file, &mut bit_offset, indent);
+            member.print(file, &mut bit_offset, true, indent);
         }
     }
 
@@ -1187,8 +1187,15 @@ impl<'input> Member<'input> {
         }
     }
 
-    fn print(&self, file: &File, end_bit_offset: &mut Option<u64>, indent: usize) {
-        match (self.bit_offset, *end_bit_offset) {
+    fn print(&self, file: &File, end_bit_offset: &mut Option<u64>, union: bool, indent: usize) {
+        // For unions, if bit_offset is not set then assume that members have no leading padding.
+        let bit_offset = match (self.bit_offset, *end_bit_offset, union) {
+            (Some(bit_offset), _, _) |
+            (None, Some(bit_offset), true) => Some(bit_offset),
+            _ => None,
+        };
+
+        match (bit_offset, *end_bit_offset) {
             (Some(bit_offset), Some(end_bit_offset)) => {
                 if bit_offset > end_bit_offset {
                     for _ in 0..indent {
@@ -1205,7 +1212,7 @@ impl<'input> Member<'input> {
         for _ in 0..indent {
             print!("\t");
         }
-        match self.bit_offset {
+        match bit_offset {
             Some(bit_offset) => print!("{}", format_bit(bit_offset)),
             None => {
                 print!("??");
@@ -1219,7 +1226,7 @@ impl<'input> Member<'input> {
                 debug!("no size for {:?}", self);
             }
         }
-        match (self.bit_offset, self.bit_size(file)) {
+        match (bit_offset, self.bit_size(file)) {
             (Some(bit_offset), Some(bit_size)) => {
                 *end_bit_offset = bit_offset.checked_add(bit_size);
             }
