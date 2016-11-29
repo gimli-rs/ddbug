@@ -1749,7 +1749,6 @@ impl<'input> Subprogram<'input> {
 
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if low_pc != 0 {
-                // TODO: is high_pc inclusive?
                 println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
                 if file.flags.calls {
                     let calls = disassemble(file.machine, &file.region, low_pc, high_pc);
@@ -1921,7 +1920,7 @@ fn disassemble_arch<A>(
 
         for (_origin, target, _guard) in m.jumps {
             if let panopticon::Rvalue::Constant { value, size: _ } = target {
-                if value > addr && value <= high_pc {
+                if value > addr && value < high_pc {
                     jumps.push(value);
                 }
             }
