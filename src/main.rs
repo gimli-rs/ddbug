@@ -1473,9 +1473,12 @@ impl<'input> ArrayType<'input> {
                             gimli::DW_AT_count => {
                                 array.count = attr.udata_value();
                             }
+                            gimli::DW_AT_upper_bound => {
+                                // TODO: use AT_lower_bound too
+                                array.count = attr.udata_value();
+                            }
                             gimli::DW_AT_type |
-                            gimli::DW_AT_lower_bound |
-                            gimli::DW_AT_upper_bound => {}
+                            gimli::DW_AT_lower_bound => {}
                             _ => {
                                 debug!("unknown array subrange attribute: {} {:?}",
                                        attr.name(),
