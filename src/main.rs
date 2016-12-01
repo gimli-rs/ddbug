@@ -106,7 +106,11 @@ struct File<'a, 'input>
     // TODO: use format independent machine type
     machine: xmas_elf::header::Machine,
     region: panopticon::Region,
-    subprograms: HashMap<u64, &'a Subprogram<'input>>,
+    // All subprograms by address.
+    all_subprograms: HashMap<u64, &'a Subprogram<'input>>,
+    // Unit subprograms by offset.
+    subprograms: HashMap<usize, &'a Subprogram<'input>>,
+    // Unit types by offset.
     types: HashMap<usize, &'a Type<'input>>,
     address_size: Option<u64>,
     flags: &'a Flags,
@@ -198,7 +202,8 @@ fn parse_file(path: &str, flags: &Flags) -> Result<()> {
     let mut file = File {
         machine: machine,
         region: region,
-        subprograms: all_subprograms,
+        all_subprograms: all_subprograms,
+        subprograms: HashMap::new(),
         types: HashMap::new(),
         address_size: None,
         flags: flags,
@@ -206,8 +211,27 @@ fn parse_file(path: &str, flags: &Flags) -> Result<()> {
 
     for unit in units.iter() {
         file.types.clear();
+        file.subprograms.clear();
         for type_ in unit.types.iter() {
             file.types.insert(type_.offset.0, type_);
+            match type_.kind {
+                TypeKind::Struct(StructType { ref subprograms, .. }) |
+                TypeKind::Union(UnionType { ref subprograms, .. }) |
+                TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
+                    for subprogram in subprograms.iter() {
+                        file.subprograms.insert(subprogram.offset.0, subprogram);
+                    }
+                }
+                TypeKind::Base(_) |
+                TypeKind::TypeDef(_) |
+                TypeKind::Array(_) |
+                TypeKind::Subroutine(_) |
+                TypeKind::Modifier(_) |
+                TypeKind::Unimplemented(_) => {}
+            }
+        }
+        for subprogram in unit.subprograms.iter() {
+            file.subprograms.insert(subprogram.offset.0, subprogram);
         }
         file.address_size = unit.address_size;
         unit.print(&file);
@@ -1589,8 +1613,9 @@ impl<'input> SubroutineType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct Subprogram<'input> {
+    offset: gimli::UnitOffset,
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     low_pc: Option<u64>,
@@ -1599,6 +1624,24 @@ struct Subprogram<'input> {
     inline: bool,
     parameters: Vec<Parameter<'input>>,
     return_type: Option<gimli::UnitOffset>,
+    inlined_subroutines: Vec<InlinedSubroutine>,
+}
+
+impl<'input> Default for Subprogram<'input> {
+    fn default() -> Self {
+        Subprogram {
+            offset: gimli::UnitOffset(0),
+            namespace: Vec::new(),
+            name: None,
+            low_pc: None,
+            high_pc: None,
+            size: None,
+            inline: false,
+            parameters: Vec::new(),
+            return_type: None,
+            inlined_subroutines: Vec::new(),
+        }
+    }
 }
 
 impl<'input> Subprogram<'input> {
@@ -1610,6 +1653,7 @@ impl<'input> Subprogram<'input> {
         where Endian: gimli::Endianity
     {
         let mut subprogram = Subprogram::default();
+        subprogram.offset = iter.entry().unwrap().offset();
         subprogram.namespace = unit.namespaces.clone();
 
         {
@@ -1679,9 +1723,13 @@ impl<'input> Subprogram<'input> {
                 gimli::DW_TAG_formal_parameter => {
                     subprogram.parameters.push(try!(Parameter::parse_dwarf(dwarf, unit, child)));
                 }
+                gimli::DW_TAG_inlined_subroutine => {
+                    subprogram.inlined_subroutines.push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
+                }
+                gimli::DW_TAG_lexical_block => {
+                    try!(parse_dwarf_lexical_block(&mut subprogram.inlined_subroutines, dwarf, unit, child));
+                }
                 gimli::DW_TAG_template_type_parameter |
-                gimli::DW_TAG_lexical_block |
-                gimli::DW_TAG_inlined_subroutine |
                 gimli::DW_TAG_variable |
                 gimli::DW_TAG_label |
                 gimli::DW_TAG_structure_type |
@@ -1694,6 +1742,13 @@ impl<'input> Subprogram<'input> {
         }
 
         Ok(subprogram)
+    }
+
+    fn from_offset<'a>(
+        file: &File<'a, 'input>,
+        offset: gimli::UnitOffset
+    ) -> Option<&'a Subprogram<'input>> {
+        file.subprograms.get(&offset.0).map(|v| *v)
     }
 
     fn print(&self, file: &File) {
@@ -1710,6 +1765,16 @@ impl<'input> Subprogram<'input> {
         }
 
         println!("");
+
+        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
+            if high_pc > low_pc {
+                println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
+            } else {
+                println!("\taddress: 0x{:x}", low_pc);
+            }
+        } else if !self.inline {
+            debug!("non-inline subprogram with no address");
+        }
 
         if let Some(size) = self.size {
             println!("\tsize: {}", size);
@@ -1747,27 +1812,24 @@ impl<'input> Subprogram<'input> {
             }
         }
 
+        if !self.inlined_subroutines.is_empty() {
+            println!("\tinlined subroutines:");
+            for subroutine in self.inlined_subroutines.iter() {
+                subroutine.print(file, 2);
+            }
+        }
+
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if low_pc != 0 {
-                println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
                 if file.flags.calls {
                     let calls = disassemble(file.machine, &file.region, low_pc, high_pc);
                     if !calls.is_empty() {
                         println!("\tcalls:");
                         for call in &calls {
                             print!("\t\t0x{:x}", call);
-                            if let Some(subprogram) = file.subprograms.get(call) {
+                            if let Some(subprogram) = file.all_subprograms.get(call) {
                                 print!(" ");
-                                for namespace in subprogram.namespace.iter() {
-                                    match *namespace {
-                                        Some(ref name) => print!("{}::", name.to_string_lossy()),
-                                        None => print!("<anon>"),
-                                    }
-                                }
-                                match subprogram.name {
-                                    Some(name) => print!("{}", name.to_string_lossy()),
-                                    None => print!("<anon>"),
-                                }
+                                subprogram.print_name();
                             }
                             println!("");
                         }
@@ -1777,6 +1839,19 @@ impl<'input> Subprogram<'input> {
         }
 
         println!("");
+    }
+
+    fn print_name(&self) {
+        for namespace in self.namespace.iter() {
+            match *namespace {
+                Some(ref name) => print!("{}::", name.to_string_lossy()),
+                None => print!("<anon>"),
+            }
+        }
+        match self.name {
+            Some(name) => print!("{}", name.to_string_lossy()),
+            None => print!("<anon>"),
+        }
     }
 }
 
@@ -1790,7 +1865,7 @@ impl<'input> Parameter<'input> {
     fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
         dwarf: &DwarfFileState<'input, Endian>,
         _unit: &mut DwarfUnitState<'state, 'input, Endian>,
-        iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
     ) -> Result<Parameter<'input>>
         where Endian: gimli::Endianity
     {
@@ -1821,6 +1896,14 @@ impl<'input> Parameter<'input> {
                 }
             }
         }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown parameter child tag: {}", tag);
+                }
+            }
+        }
         Ok(parameter)
     }
 
@@ -1837,6 +1920,121 @@ impl<'input> Parameter<'input> {
         match self.type_ {
             Some(offset) => Type::print_offset_name(file, offset),
             None => print!(": <anon>"),
+        }
+    }
+}
+
+fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    inlined_subroutines: &mut Vec<InlinedSubroutine>,
+    dwarf: &DwarfFileState<'input, Endian>,
+    unit: &mut DwarfUnitState<'state, 'input, Endian>,
+    mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+) -> Result<()>
+    where Endian: gimli::Endianity
+{
+    {
+        let entry = iter.entry().unwrap();
+        let mut attrs = entry.attrs();
+        while let Some(attr) = try!(attrs.next()) {
+            match attr.name() {
+                gimli::DW_AT_low_pc |
+                gimli::DW_AT_high_pc |
+                gimli::DW_AT_ranges |
+                gimli::DW_AT_sibling => {}
+                _ => {
+                    debug!("unknown lexical_block attribute: {} {:?}",
+                           attr.name(),
+                           attr.value())
+                }
+            }
+        }
+    }
+
+    while let Some(child) = try!(iter.next()) {
+        match child.entry().unwrap().tag() {
+            gimli::DW_TAG_inlined_subroutine => {
+                inlined_subroutines.push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
+            }
+            gimli::DW_TAG_lexical_block => {
+                try!(parse_dwarf_lexical_block(inlined_subroutines, dwarf, unit, child));
+            }
+            gimli::DW_TAG_variable => {}
+            tag => {
+                debug!("unknown lexical_block child tag: {}", tag);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Default)]
+struct InlinedSubroutine {
+    abstract_origin: Option<gimli::UnitOffset>,
+    inlined_subroutines: Vec<InlinedSubroutine>,
+}
+
+impl InlinedSubroutine {
+    fn parse_dwarf<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<InlinedSubroutine>
+        where Endian: gimli::Endianity
+    {
+        let mut subroutine = InlinedSubroutine::default();
+        {
+            let entry = iter.entry().unwrap();
+            let mut attrs = entry.attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_abstract_origin => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            subroutine.abstract_origin = Some(offset);
+                        }
+                    }
+                    gimli::DW_AT_low_pc |
+                    gimli::DW_AT_high_pc |
+                    gimli::DW_AT_ranges |
+                    gimli::DW_AT_call_file |
+                    gimli::DW_AT_call_line |
+                    gimli::DW_AT_sibling => {}
+                    _ => {
+                        debug!("unknown inlined_subroutine attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                gimli::DW_TAG_inlined_subroutine => {
+                    subroutine.inlined_subroutines.push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
+                }
+                gimli::DW_TAG_lexical_block => {
+                    try!(parse_dwarf_lexical_block(&mut subroutine.inlined_subroutines, dwarf, unit, child));
+                }
+                gimli::DW_TAG_formal_parameter => {}
+                tag => {
+                    debug!("unknown inlined_subroutine child tag: {}", tag);
+                }
+            }
+        }
+        Ok(subroutine)
+    }
+
+    fn print(&self, file: &File, indent: usize) {
+        for _ in 0..indent {
+            print!("\t");
+        }
+        match self.abstract_origin.and_then(|v| Subprogram::from_offset(file, v)) {
+            Some(subprogram) => subprogram.print_name(),
+            None => print!("<anon>"),
+        }
+        println!("");
+        for subroutine in self.inlined_subroutines.iter() {
+            subroutine.print(file, indent + 1);
         }
     }
 }
