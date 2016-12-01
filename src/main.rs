@@ -1943,26 +1943,28 @@ fn format_bit(val: u64) -> String {
 struct SimpleContext;
 
 impl<'input> gimli::EvaluationContext<'input> for SimpleContext {
-    fn read_memory(&self, _addr: u64, _nbytes: u8, _space: Option<u64>) -> gimli::Result<u64> {
-        Err(gimli::Error::UnexpectedNull)
+    type ContextError = Error;
+
+    fn read_memory(&self, _addr: u64, _nbytes: u8, _space: Option<u64>) -> Result<u64> {
+        Err("unsupported evalation read_memory callback".into())
     }
-    fn read_register(&self, _regno: u64) -> gimli::Result<u64> {
-        Err(gimli::Error::UnexpectedNull)
+    fn read_register(&self, _regno: u64) -> Result<u64> {
+        Err("unsupported evalation read_register callback".into())
     }
-    fn frame_base(&self) -> gimli::Result<u64> {
-        Err(gimli::Error::UnexpectedNull)
+    fn frame_base(&self) -> Result<u64> {
+        Err("unsupported evalation frame_base callback".into())
     }
-    fn read_tls(&self, _slot: u64) -> gimli::Result<u64> {
-        Err(gimli::Error::UnexpectedNull)
+    fn read_tls(&self, _slot: u64) -> Result<u64> {
+        Err("unsupported evalation read_tls callback".into())
     }
-    fn call_frame_cfa(&self) -> gimli::Result<u64> {
-        Err(gimli::Error::UnexpectedNull)
+    fn call_frame_cfa(&self) -> Result<u64> {
+        Err("unsupported evalation call_frame_cfa callback".into())
     }
-    fn get_at_location(&self, _die: gimli::DieReference) -> gimli::Result<&'input [u8]> {
-        Err(gimli::Error::UnexpectedNull)
+    fn get_at_location(&self, _die: gimli::DieReference) -> Result<&'input [u8]> {
+        Err("unsupported evalation get_at_location callback".into())
     }
-    fn evaluate_entry_value(&self, _expression: &[u8]) -> gimli::Result<u64> {
-        Err(gimli::Error::UnexpectedNull)
+    fn evaluate_entry_value(&self, _expression: &[u8]) -> Result<u64> {
+        Err("unsupported evalation evaluate_entry_value callback".into())
     }
 }
 
@@ -1974,10 +1976,10 @@ fn evaluate<'input, Endian>(
     where Endian: gimli::Endianity
 {
     let mut context = SimpleContext {};
-    let mut evaluation = gimli::Evaluation::<Endian>::new(bytecode,
-                                                          unit.address_size(),
-                                                          unit.format(),
-                                                          &mut context);
+    let mut evaluation = gimli::Evaluation::<Endian, SimpleContext>::new(bytecode,
+                                                                         unit.address_size(),
+                                                                         unit.format(),
+                                                                         &mut context);
     evaluation.set_initial_value(0);
     let pieces = try!(evaluation.evaluate());
     if pieces.len() != 1 {
