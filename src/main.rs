@@ -263,6 +263,7 @@ struct DwarfFileState<'input, Endian>
     debug_abbrev: gimli::DebugAbbrev<'input, Endian>,
     debug_info: gimli::DebugInfo<'input, Endian>,
     debug_str: gimli::DebugStr<'input, Endian>,
+    debug_ranges: gimli::DebugRanges<'input, Endian>,
 }
 
 fn parse_dwarf<'input, Endian>(elf: &xmas_elf::ElfFile<'input>) -> Result<Vec<Unit<'input>>>
@@ -274,11 +275,14 @@ fn parse_dwarf<'input, Endian>(elf: &xmas_elf::ElfFile<'input>) -> Result<Vec<Un
     let debug_info = gimli::DebugInfo::<Endian>::new(debug_info.unwrap_or(&[]));
     let debug_str = elf.find_section_by_name(".debug_str").map(|s| s.raw_data(elf));
     let debug_str = gimli::DebugStr::<Endian>::new(debug_str.unwrap_or(&[]));
+    let debug_ranges = elf.find_section_by_name(".debug_ranges").map(|s| s.raw_data(elf));
+    let debug_ranges = gimli::DebugRanges::<Endian>::new(debug_ranges.unwrap_or(&[]));
 
     let dwarf = DwarfFileState {
         debug_abbrev: debug_abbrev,
         debug_info: debug_info,
         debug_str: debug_str,
+        debug_ranges: debug_ranges,
     };
 
     let mut units = Vec::new();
@@ -1992,6 +1996,7 @@ fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 #[derive(Debug, Default)]
 struct InlinedSubroutine {
     abstract_origin: Option<gimli::UnitOffset>,
+    size: Option<u64>,
     inlined_subroutines: Vec<InlinedSubroutine>,
 }
 
@@ -2004,6 +2009,10 @@ impl InlinedSubroutine {
         where Endian: gimli::Endianity
     {
         let mut subroutine = InlinedSubroutine::default();
+        let mut low_pc = None;
+        let mut high_pc = None;
+        let mut size = None;
+        let mut ranges = None;
         {
             let entry = iter.entry().unwrap();
             let mut attrs = entry.attrs();
@@ -2014,9 +2023,23 @@ impl InlinedSubroutine {
                             subroutine.abstract_origin = Some(offset);
                         }
                     }
-                    gimli::DW_AT_low_pc |
-                    gimli::DW_AT_high_pc |
-                    gimli::DW_AT_ranges |
+                    gimli::DW_AT_low_pc => {
+                        if let gimli::AttributeValue::Addr(addr) = attr.value() {
+                            low_pc = Some(addr);
+                        }
+                    }
+                    gimli::DW_AT_high_pc => {
+                        match attr.value() {
+                            gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
+                            gimli::AttributeValue::Udata(val) => size = Some(val),
+                            _ => {}
+                        }
+                    }
+                    gimli::DW_AT_ranges => {
+                        if let gimli::AttributeValue::DebugRangesRef(val) = attr.value() {
+                            ranges = Some(val);
+                        }
+                    }
                     gimli::DW_AT_call_file |
                     gimli::DW_AT_call_line |
                     gimli::DW_AT_sibling => {}
@@ -2027,6 +2050,23 @@ impl InlinedSubroutine {
                     }
                 }
             }
+        }
+
+        if let Some(offset) = ranges {
+            let mut size = 0;
+            let low_pc = low_pc.unwrap_or(0);
+            let mut ranges = try!(dwarf.debug_ranges
+                .ranges(offset, unit.header.address_size(), low_pc));
+            while let Some(range) = try!(ranges.next()) {
+                size += range.end.wrapping_sub(range.begin);
+            }
+            subroutine.size = Some(size);
+        } else if let Some(size) = size {
+            subroutine.size = Some(size);
+        } else if let (Some(low_pc), Some(high_pc)) = (low_pc, high_pc) {
+            subroutine.size = Some(high_pc.wrapping_sub(low_pc));
+        } else {
+            debug!("unknown inlined_subroutine size");
         }
 
         while let Some(child) = try!(iter.next()) {
@@ -2054,6 +2094,11 @@ impl InlinedSubroutine {
         for _ in 0..depth + 1 {
             print!("\t");
         }
+        match self.size {
+            Some(size) => print!("[{}]", size),
+            None => print!("[??]"),
+        }
+        print!("\t");
         match self.abstract_origin.and_then(|v| Subprogram::from_offset(file, v)) {
             Some(subprogram) => subprogram.print_name(),
             None => print!("<anon>"),
