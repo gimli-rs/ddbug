@@ -59,9 +59,9 @@ impl From<gimli::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Default)]
 struct Flags {
     calls: bool,
+    inline_depth: usize,
 }
 
 fn main() {
@@ -69,6 +69,10 @@ fn main() {
 
     let mut opts = getopts::Options::new();
     opts.optflag("", "calls", "print subprogram calls");
+    opts.optopt("",
+                "inline-depth",
+                "depth of inlined subroutine calls (0 to disable)",
+                "DEPTH");
 
     let matches = match opts.parse(env::args().skip(1)) {
         Ok(m) => m,
@@ -81,9 +85,23 @@ fn main() {
         print_usage(&opts);
     }
 
-    let mut flags = Flags::default();
+    let mut flags = Flags {
+        calls: false,
+        inline_depth: 1,
+    };
     if matches.opt_present("calls") {
         flags.calls = true;
+    }
+    if let Some(inline_depth) = matches.opt_str("inline-depth") {
+        flags.inline_depth = match inline_depth.parse::<usize>() {
+            Ok(inline_depth) => inline_depth,
+            Err(e) => {
+                error!("Invalid Argument '{}' to option 'inline-depth': {}",
+                       inline_depth,
+                       e);
+                print_usage(&opts);
+            }
+        }
     }
 
     for path in &matches.free {
@@ -1724,10 +1742,14 @@ impl<'input> Subprogram<'input> {
                     subprogram.parameters.push(try!(Parameter::parse_dwarf(dwarf, unit, child)));
                 }
                 gimli::DW_TAG_inlined_subroutine => {
-                    subprogram.inlined_subroutines.push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
+                    subprogram.inlined_subroutines
+                        .push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
                 }
                 gimli::DW_TAG_lexical_block => {
-                    try!(parse_dwarf_lexical_block(&mut subprogram.inlined_subroutines, dwarf, unit, child));
+                    try!(parse_dwarf_lexical_block(&mut subprogram.inlined_subroutines,
+                                                   dwarf,
+                                                   unit,
+                                                   child));
                 }
                 gimli::DW_TAG_template_type_parameter |
                 gimli::DW_TAG_variable |
@@ -1812,10 +1834,10 @@ impl<'input> Subprogram<'input> {
             }
         }
 
-        if !self.inlined_subroutines.is_empty() {
+        if file.flags.inline_depth > 0 && !self.inlined_subroutines.is_empty() {
             println!("\tinlined subroutines:");
             for subroutine in self.inlined_subroutines.iter() {
-                subroutine.print(file, 2);
+                subroutine.print(file, 1);
             }
         }
 
@@ -2010,10 +2032,14 @@ impl InlinedSubroutine {
         while let Some(child) = try!(iter.next()) {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_inlined_subroutine => {
-                    subroutine.inlined_subroutines.push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
+                    subroutine.inlined_subroutines
+                        .push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
                 }
                 gimli::DW_TAG_lexical_block => {
-                    try!(parse_dwarf_lexical_block(&mut subroutine.inlined_subroutines, dwarf, unit, child));
+                    try!(parse_dwarf_lexical_block(&mut subroutine.inlined_subroutines,
+                                                   dwarf,
+                                                   unit,
+                                                   child));
                 }
                 gimli::DW_TAG_formal_parameter => {}
                 tag => {
@@ -2024,8 +2050,8 @@ impl InlinedSubroutine {
         Ok(subroutine)
     }
 
-    fn print(&self, file: &File, indent: usize) {
-        for _ in 0..indent {
+    fn print(&self, file: &File, depth: usize) {
+        for _ in 0..depth + 1 {
             print!("\t");
         }
         match self.abstract_origin.and_then(|v| Subprogram::from_offset(file, v)) {
@@ -2033,8 +2059,10 @@ impl InlinedSubroutine {
             None => print!("<anon>"),
         }
         println!("");
-        for subroutine in self.inlined_subroutines.iter() {
-            subroutine.print(file, indent + 1);
+        if file.flags.inline_depth > depth {
+            for subroutine in self.inlined_subroutines.iter() {
+                subroutine.print(file, depth + 1);
+            }
         }
     }
 }
