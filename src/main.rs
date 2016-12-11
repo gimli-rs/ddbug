@@ -105,7 +105,7 @@ fn main() {
     }
 
     for path in &matches.free {
-        if let Err(e) = parse_file(path, &flags) {
+        if let Err(e) = handle_file(path, &flags) {
             error!("{}: {}", path, e);
         }
     }
@@ -117,8 +117,7 @@ fn print_usage(opts: &getopts::Options) -> ! {
     std::process::exit(1);
 }
 
-// TODO: This is badly named; it contains unit-specific info too.
-struct File<'a, 'input>
+struct PrintState<'a, 'input>
     where 'input: 'a
 {
     // TODO: use format independent machine type
@@ -134,7 +133,7 @@ struct File<'a, 'input>
     flags: &'a Flags,
 }
 
-fn parse_file(path: &str, flags: &Flags) -> Result<()> {
+fn handle_file(path: &str, flags: &Flags) -> Result<()> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(e) => {
@@ -217,7 +216,7 @@ fn parse_file(path: &str, flags: &Flags) -> Result<()> {
         }
     }
 
-    let mut file = File {
+    let mut state = PrintState {
         machine: machine,
         region: region,
         all_subprograms: all_subprograms,
@@ -228,16 +227,16 @@ fn parse_file(path: &str, flags: &Flags) -> Result<()> {
     };
 
     for unit in units.iter() {
-        file.types.clear();
-        file.subprograms.clear();
+        state.types.clear();
+        state.subprograms.clear();
         for type_ in unit.types.iter() {
-            file.types.insert(type_.offset.0, type_);
+            state.types.insert(type_.offset.0, type_);
             match type_.kind {
                 TypeKind::Struct(StructType { ref subprograms, .. }) |
                 TypeKind::Union(UnionType { ref subprograms, .. }) |
                 TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
                     for subprogram in subprograms.iter() {
-                        file.subprograms.insert(subprogram.offset.0, subprogram);
+                        state.subprograms.insert(subprogram.offset.0, subprogram);
                     }
                 }
                 TypeKind::Base(_) |
@@ -249,10 +248,10 @@ fn parse_file(path: &str, flags: &Flags) -> Result<()> {
             }
         }
         for subprogram in unit.subprograms.iter() {
-            file.subprograms.insert(subprogram.offset.0, subprogram);
+            state.subprograms.insert(subprogram.offset.0, subprogram);
         }
-        file.address_size = unit.address_size;
-        unit.print(&file);
+        state.address_size = unit.address_size;
+        unit.print(&state);
     }
     Ok(())
 }
@@ -460,7 +459,7 @@ impl<'input> Unit<'input> {
         ret
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         // The offsets of types that are unnamed struct and union members.
         let mut anon_members = HashSet::new();
         for type_ in self.types.iter() {
@@ -481,11 +480,11 @@ impl<'input> Unit<'input> {
             // been printed inline (eg in a TypeDef). We don't actually check
             // that they have been printed already, but in future we could.
             if !type_.is_anon() && !anon_members.contains(&type_.offset.0) {
-                type_.print(file);
+                type_.print(state);
             }
         }
         for subprogram in self.subprograms.iter() {
-            subprogram.print(file);
+            subprogram.print(state);
         }
     }
 }
@@ -575,22 +574,22 @@ impl<'input> Type<'input> {
     }
 
     fn from_offset<'a>(
-        file: &File<'a, 'input>,
+        state: &PrintState<'a, 'input>,
         offset: gimli::UnitOffset
     ) -> Option<&'a Type<'input>> {
-        file.types.get(&offset.0).map(|v| *v)
+        state.types.get(&offset.0).map(|v| *v)
     }
 
-    fn bit_size(&self, file: &File) -> Option<u64> {
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
         match self.kind {
-            TypeKind::Base(ref val) => val.bit_size(file),
-            TypeKind::TypeDef(ref val) => val.bit_size(file),
-            TypeKind::Struct(ref val) => val.bit_size(file),
-            TypeKind::Union(ref val) => val.bit_size(file),
-            TypeKind::Enumeration(ref val) => val.bit_size(file),
-            TypeKind::Array(ref val) => val.bit_size(file),
-            TypeKind::Subroutine(ref val) => val.bit_size(file),
-            TypeKind::Modifier(ref val) => val.bit_size(file),
+            TypeKind::Base(ref val) => val.bit_size(state),
+            TypeKind::TypeDef(ref val) => val.bit_size(state),
+            TypeKind::Struct(ref val) => val.bit_size(state),
+            TypeKind::Union(ref val) => val.bit_size(state),
+            TypeKind::Enumeration(ref val) => val.bit_size(state),
+            TypeKind::Array(ref val) => val.bit_size(state),
+            TypeKind::Subroutine(ref val) => val.bit_size(state),
+            TypeKind::Modifier(ref val) => val.bit_size(state),
             TypeKind::Unimplemented(_) => None,
         }
     }
@@ -609,40 +608,40 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         match self.kind {
-            TypeKind::TypeDef(ref val) => val.print(file),
-            TypeKind::Struct(ref val) => val.print(file),
-            TypeKind::Union(ref val) => val.print(file),
-            TypeKind::Enumeration(ref val) => val.print(file),
+            TypeKind::TypeDef(ref val) => val.print(state),
+            TypeKind::Struct(ref val) => val.print(state),
+            TypeKind::Union(ref val) => val.print(state),
+            TypeKind::Enumeration(ref val) => val.print(state),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
             TypeKind::Modifier(..) => {}
             TypeKind::Unimplemented(_) => {
-                self.print_name(file);
+                self.print_name(state);
                 println!("");
             }
         }
     }
 
-    fn print_name(&self, file: &File) {
+    fn print_name(&self, state: &PrintState) {
         match self.kind {
             TypeKind::Base(ref val) => val.print_name(),
             TypeKind::TypeDef(ref val) => val.print_name(),
             TypeKind::Struct(ref val) => val.print_name(),
             TypeKind::Union(ref val) => val.print_name(),
             TypeKind::Enumeration(ref val) => val.print_name(),
-            TypeKind::Array(ref val) => val.print_name(file),
-            TypeKind::Subroutine(ref val) => val.print_name(file),
-            TypeKind::Modifier(ref val) => val.print_name(file),
+            TypeKind::Array(ref val) => val.print_name(state),
+            TypeKind::Subroutine(ref val) => val.print_name(state),
+            TypeKind::Modifier(ref val) => val.print_name(state),
             TypeKind::Unimplemented(ref tag) => print!("<unimplemented {}>", tag),
         }
     }
 
-    fn print_offset_name(file: &File, offset: gimli::UnitOffset) {
-        match Type::from_offset(file, offset) {
-            Some(type_) => type_.print_name(file),
+    fn print_offset_name(state: &PrintState, offset: gimli::UnitOffset) {
+        match Type::from_offset(state, offset) {
+            Some(type_) => type_.print_name(state),
             None => print!("<invalid-type>"),
         }
     }
@@ -730,7 +729,7 @@ impl<'input> TypeModifier<'input> {
         Ok(modifier)
     }
 
-    fn bit_size(&self, file: &File) -> Option<u64> {
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
         if let Some(byte_size) = self.byte_size {
             return Some(byte_size * 8);
         }
@@ -738,14 +737,14 @@ impl<'input> TypeModifier<'input> {
             TypeModifierKind::Const |
             TypeModifierKind::Restrict => {
                 self.type_
-                    .and_then(|v| Type::from_offset(file, v))
-                    .and_then(|v| v.bit_size(file))
+                    .and_then(|v| Type::from_offset(state, v))
+                    .and_then(|v| v.bit_size(state))
             }
-            TypeModifierKind::Pointer => file.address_size.map(|v| v * 8),
+            TypeModifierKind::Pointer => state.address_size.map(|v| v * 8),
         }
     }
 
-    fn print_name(&self, file: &File) {
+    fn print_name(&self, state: &PrintState) {
         if let Some(name) = self.name {
             // Not sure namespace is required here.
             for namespace in self.namespace.iter() {
@@ -762,7 +761,7 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Restrict => print!("restrict "),
             }
             match self.type_ {
-                Some(type_) => Type::print_offset_name(file, type_),
+                Some(type_) => Type::print_offset_name(state, type_),
                 None => print!("<unknown-type>"),
             }
         }
@@ -815,7 +814,7 @@ impl<'input> BaseType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &File) -> Option<u64> {
+    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
@@ -876,25 +875,25 @@ impl<'input> TypeDef<'input> {
         Ok(typedef)
     }
 
-    fn bit_size(&self, file: &File) -> Option<u64> {
-        self.type_.and_then(|t| Type::from_offset(file, t)).and_then(|v| v.bit_size(file))
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
+        self.type_.and_then(|t| Type::from_offset(state, t)).and_then(|v| v.bit_size(state))
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         print!("type ");
         self.print_name();
-        if let Some(type_) = self.type_.and_then(|t| Type::from_offset(file, t)) {
+        if let Some(type_) = self.type_.and_then(|t| Type::from_offset(state, t)) {
             print!(" = ");
             if type_.is_anon() {
-                type_.print(file);
+                type_.print(state);
             } else {
-                type_.print_name(file);
+                type_.print_name(state);
                 println!("");
             }
         } else {
             println!("");
         }
-        if let Some(bit_size) = self.bit_size(file) {
+        if let Some(bit_size) = self.bit_size(state) {
             println!("\tsize: {}", format_bit(bit_size));
         }
         println!("");
@@ -969,7 +968,7 @@ impl<'input> StructType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &File) -> Option<u64> {
+    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
@@ -979,7 +978,7 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         self.print_name();
         println!("");
 
@@ -989,19 +988,19 @@ impl<'input> StructType<'input> {
 
         if !self.members.is_empty() {
             println!("\tmembers:");
-            self.print_members(file, Some(0), 2);
+            self.print_members(state, Some(0), 2);
         }
 
         println!("");
 
         for subprogram in self.subprograms.iter() {
-            subprogram.print(file);
+            subprogram.print(state);
         }
     }
 
-    fn print_members(&self, file: &File, mut bit_offset: Option<u64>, indent: usize) {
+    fn print_members(&self, state: &PrintState, mut bit_offset: Option<u64>, indent: usize) {
         for member in self.members.iter() {
-            member.print(file, &mut bit_offset, false, indent);
+            member.print(state, &mut bit_offset, false, indent);
         }
     }
 
@@ -1084,7 +1083,7 @@ impl<'input> UnionType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &File) -> Option<u64> {
+    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
@@ -1094,7 +1093,7 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         self.print_name();
         println!("");
 
@@ -1104,20 +1103,20 @@ impl<'input> UnionType<'input> {
 
         if !self.members.is_empty() {
             println!("\tmembers:");
-            self.print_members(file, Some(0), 2);
+            self.print_members(state, Some(0), 2);
         }
 
         println!("");
 
         for subprogram in self.subprograms.iter() {
-            subprogram.print(file);
+            subprogram.print(state);
         }
     }
 
-    fn print_members(&self, file: &File, bit_offset: Option<u64>, indent: usize) {
+    fn print_members(&self, state: &PrintState, bit_offset: Option<u64>, indent: usize) {
         for member in self.members.iter() {
             let mut bit_offset = bit_offset;
-            member.print(file, &mut bit_offset, true, indent);
+            member.print(state, &mut bit_offset, true, indent);
         }
     }
 
@@ -1223,17 +1222,23 @@ impl<'input> Member<'input> {
         Ok(member)
     }
 
-    fn bit_size(&self, file: &File) -> Option<u64> {
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
         if self.bit_size.is_some() {
             self.bit_size
         } else if let Some(type_) = self.type_ {
-            Type::from_offset(file, type_).and_then(|v| v.bit_size(file))
+            Type::from_offset(state, type_).and_then(|v| v.bit_size(state))
         } else {
             None
         }
     }
 
-    fn print(&self, file: &File, end_bit_offset: &mut Option<u64>, union: bool, indent: usize) {
+    fn print(
+        &self,
+        state: &PrintState,
+        end_bit_offset: &mut Option<u64>,
+        union: bool,
+        indent: usize
+    ) {
         // For unions, if bit_offset is not set then assume that members have no leading padding.
         let bit_offset = match (self.bit_offset, *end_bit_offset, union) {
             (Some(bit_offset), _, _) |
@@ -1265,14 +1270,14 @@ impl<'input> Member<'input> {
                 debug!("no offset for {:?}", self);
             }
         }
-        match self.bit_size(file) {
+        match self.bit_size(state) {
             Some(bit_size) => print!("[{}]", format_bit(bit_size)),
             None => {
                 print!("[??]");
                 debug!("no size for {:?}", self);
             }
         }
-        match (bit_offset, self.bit_size(file)) {
+        match (bit_offset, self.bit_size(state)) {
             (Some(bit_offset), Some(bit_size)) => {
                 *end_bit_offset = bit_offset.checked_add(bit_size);
             }
@@ -1282,14 +1287,14 @@ impl<'input> Member<'input> {
             Some(name) => print!("\t{}", name.to_string_lossy()),
             None => print!("\t<anon>"),
         }
-        if let Some(type_) = self.type_.and_then(|v| Type::from_offset(file, v)) {
+        if let Some(type_) = self.type_.and_then(|v| Type::from_offset(state, v)) {
             print!(": ");
-            type_.print_name(file);
+            type_.print_name(state);
             println!("");
             if self.is_anon() || type_.is_anon() {
                 match type_.kind {
-                    TypeKind::Struct(ref t) => t.print_members(file, self.bit_offset, indent + 1),
-                    TypeKind::Union(ref t) => t.print_members(file, self.bit_offset, indent + 1),
+                    TypeKind::Struct(ref t) => t.print_members(state, self.bit_offset, indent + 1),
+                    TypeKind::Union(ref t) => t.print_members(state, self.bit_offset, indent + 1),
                     _ => {
                         debug!("unknown anon member: {:?}", type_);
                     }
@@ -1367,11 +1372,11 @@ impl<'input> EnumerationType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &File) -> Option<u64> {
+    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         self.print_name();
         println!("");
 
@@ -1382,14 +1387,14 @@ impl<'input> EnumerationType<'input> {
         if !self.enumerators.is_empty() {
             println!("\tenumerators:");
             for enumerator in self.enumerators.iter() {
-                enumerator.print(file);
+                enumerator.print(state);
             }
         }
 
         println!("");
 
         for subprogram in self.subprograms.iter() {
-            subprogram.print(file);
+            subprogram.print(state);
         }
     }
 
@@ -1457,7 +1462,7 @@ impl<'input> Enumerator<'input> {
         Ok(enumerator)
     }
 
-    fn print(&self, _file: &File) {
+    fn print(&self, _file: &PrintState) {
         print!("\t\t");
         self.print_name();
         if let Some(value) = self.value {
@@ -1541,18 +1546,18 @@ impl<'input> ArrayType<'input> {
         Ok(array)
     }
 
-    fn bit_size(&self, file: &File) -> Option<u64> {
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
         if let (Some(type_), Some(count)) = (self.type_, self.count) {
-            Type::from_offset(file, type_).and_then(|t| t.bit_size(file)).map(|v| v * count)
+            Type::from_offset(state, type_).and_then(|t| t.bit_size(state)).map(|v| v * count)
         } else {
             None
         }
     }
 
-    fn print_name(&self, file: &File) {
+    fn print_name(&self, state: &PrintState) {
         print!("[");
         match self.type_ {
-            Some(type_) => Type::print_offset_name(file, type_),
+            Some(type_) => Type::print_offset_name(state, type_),
             None => print!("<unknown-type>"),
         }
         if let Some(count) = self.count {
@@ -1611,11 +1616,11 @@ impl<'input> SubroutineType<'input> {
         Ok(subroutine)
     }
 
-    fn bit_size(&self, _file: &File) -> Option<u64> {
+    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
         None
     }
 
-    fn print_name(&self, file: &File) {
+    fn print_name(&self, state: &PrintState) {
         let mut first = true;
         print!("(");
         for parameter in self.parameters.iter() {
@@ -1624,13 +1629,13 @@ impl<'input> SubroutineType<'input> {
             } else {
                 print!(", ");
             }
-            parameter.print(file);
+            parameter.print(state);
         }
         print!(")");
 
         if let Some(return_type) = self.return_type {
             print!(" -> ");
-            Type::print_offset_name(file, return_type);
+            Type::print_offset_name(state, return_type);
         }
     }
 }
@@ -1771,13 +1776,13 @@ impl<'input> Subprogram<'input> {
     }
 
     fn from_offset<'a>(
-        file: &File<'a, 'input>,
+        state: &PrintState<'a, 'input>,
         offset: gimli::UnitOffset
     ) -> Option<&'a Subprogram<'input>> {
-        file.subprograms.get(&offset.0).map(|v| *v)
+        state.subprograms.get(&offset.0).map(|v| *v)
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         print!("fn ");
         for namespace in self.namespace.iter() {
             match *namespace {
@@ -1815,12 +1820,12 @@ impl<'input> Subprogram<'input> {
         if let Some(return_type) = self.return_type {
             println!("\treturn type:");
             print!("\t\t");
-            match Type::from_offset(file, return_type).and_then(|t| t.bit_size(file)) {
+            match Type::from_offset(state, return_type).and_then(|t| t.bit_size(state)) {
                 Some(bit_size) => print!("[{}]", format_bit(bit_size)),
                 None => print!("[??]"),
             }
             print!("\t");
-            Type::print_offset_name(file, return_type);
+            Type::print_offset_name(state, return_type);
             println!("");
         }
 
@@ -1828,32 +1833,32 @@ impl<'input> Subprogram<'input> {
             println!("\tparameters:");
             for parameter in self.parameters.iter() {
                 print!("\t\t");
-                match parameter.bit_size(file) {
+                match parameter.bit_size(state) {
                     Some(bit_size) => print!("[{}]", format_bit(bit_size)),
                     None => print!("[??]"),
                 }
                 print!("\t");
-                parameter.print(file);
+                parameter.print(state);
                 println!("");
             }
         }
 
-        if file.flags.inline_depth > 0 && !self.inlined_subroutines.is_empty() {
+        if state.flags.inline_depth > 0 && !self.inlined_subroutines.is_empty() {
             println!("\tinlined subroutines:");
             for subroutine in self.inlined_subroutines.iter() {
-                subroutine.print(file, 1);
+                subroutine.print(state, 1);
             }
         }
 
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if low_pc != 0 {
-                if file.flags.calls {
-                    let calls = disassemble(file.machine, &file.region, low_pc, high_pc);
+                if state.flags.calls {
+                    let calls = disassemble(state.machine, &state.region, low_pc, high_pc);
                     if !calls.is_empty() {
                         println!("\tcalls:");
                         for call in &calls {
                             print!("\t\t0x{:x}", call);
-                            if let Some(subprogram) = file.all_subprograms.get(call) {
+                            if let Some(subprogram) = state.all_subprograms.get(call) {
                                 print!(" ");
                                 subprogram.print_name();
                             }
@@ -1933,18 +1938,18 @@ impl<'input> Parameter<'input> {
         Ok(parameter)
     }
 
-    fn bit_size(&self, file: &File) -> Option<u64> {
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
         self.type_
-            .and_then(|t| Type::from_offset(file, t))
-            .and_then(|t| t.bit_size(file))
+            .and_then(|t| Type::from_offset(state, t))
+            .and_then(|t| t.bit_size(state))
     }
 
-    fn print(&self, file: &File) {
+    fn print(&self, state: &PrintState) {
         if let Some(name) = self.name {
             print!("{}: ", name.to_string_lossy());
         }
         match self.type_ {
-            Some(offset) => Type::print_offset_name(file, offset),
+            Some(offset) => Type::print_offset_name(state, offset),
             None => print!(": <anon>"),
         }
     }
@@ -2090,7 +2095,7 @@ impl InlinedSubroutine {
         Ok(subroutine)
     }
 
-    fn print(&self, file: &File, depth: usize) {
+    fn print(&self, state: &PrintState, depth: usize) {
         for _ in 0..depth + 1 {
             print!("\t");
         }
@@ -2099,14 +2104,14 @@ impl InlinedSubroutine {
             None => print!("[??]"),
         }
         print!("\t");
-        match self.abstract_origin.and_then(|v| Subprogram::from_offset(file, v)) {
+        match self.abstract_origin.and_then(|v| Subprogram::from_offset(state, v)) {
             Some(subprogram) => subprogram.print_name(),
             None => print!("<anon>"),
         }
         println!("");
-        if file.flags.inline_depth > depth {
+        if state.flags.inline_depth > depth {
             for subroutine in self.inlined_subroutines.iter() {
-                subroutine.print(file, depth + 1);
+                subroutine.print(state, depth + 1);
             }
         }
     }
