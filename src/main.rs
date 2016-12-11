@@ -1696,6 +1696,7 @@ struct Subprogram<'input> {
     offset: gimli::UnitOffset,
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
+    linkage_name: Option<&'input ffi::CStr>,
     low_pc: Option<u64>,
     high_pc: Option<u64>,
     size: Option<u64>,
@@ -1711,6 +1712,7 @@ impl<'input> Default for Subprogram<'input> {
             offset: gimli::UnitOffset(0),
             namespace: Vec::new(),
             name: None,
+            linkage_name: None,
             low_pc: None,
             high_pc: None,
             size: None,
@@ -1742,6 +1744,9 @@ impl<'input> Subprogram<'input> {
                     gimli::DW_AT_name => {
                         subprogram.name = attr.string_value(&dwarf.debug_str);
                     }
+                    gimli::DW_AT_linkage_name => {
+                        subprogram.linkage_name = attr.string_value(&dwarf.debug_str);
+                    }
                     gimli::DW_AT_inline => {
                         if let gimli::AttributeValue::Inline(val) = attr.value() {
                             match val {
@@ -1768,7 +1773,6 @@ impl<'input> Subprogram<'input> {
                             subprogram.return_type = Some(offset);
                         }
                     }
-                    gimli::DW_AT_linkage_name |
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
                     gimli::DW_AT_frame_base |
@@ -1847,6 +1851,10 @@ impl<'input> Subprogram<'input> {
         }
 
         writeln!(w, "")?;
+
+        if let Some(linkage_name) = self.linkage_name {
+            writeln!(w, "\tlinkage name: {}", linkage_name.to_string_lossy())?;
+        }
 
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if high_pc > low_pc {
