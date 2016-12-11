@@ -51,6 +51,12 @@ impl From<String> for Error {
     }
 }
 
+impl From<std::io::Error> for Error {
+    fn from(e: std::io::Error) -> Error {
+        Error(Cow::Owned(format!("IO error: {}", e)))
+    }
+}
+
 impl From<gimli::Error> for Error {
     fn from(e: gimli::Error) -> Error {
         Error(Cow::Owned(format!("DWARF error: {}", e)))
@@ -216,6 +222,8 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
         }
     }
 
+    let stdout = std::io::stdout();
+    let mut writer = stdout.lock();
     let mut state = PrintState {
         machine: machine,
         region: region,
@@ -251,7 +259,7 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
             state.subprograms.insert(subprogram.offset.0, subprogram);
         }
         state.address_size = unit.address_size;
-        unit.print(&state);
+        unit.print(&mut writer, &state)?;
     }
     Ok(())
 }
@@ -459,7 +467,7 @@ impl<'input> Unit<'input> {
         ret
     }
 
-    fn print(&self, state: &PrintState) {
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         // The offsets of types that are unnamed struct and union members.
         let mut anon_members = HashSet::new();
         for type_ in self.types.iter() {
@@ -480,12 +488,13 @@ impl<'input> Unit<'input> {
             // been printed inline (eg in a TypeDef). We don't actually check
             // that they have been printed already, but in future we could.
             if !type_.is_anon() && !anon_members.contains(&type_.offset.0) {
-                type_.print(state);
+                type_.print(w, state)?;
             }
         }
         for subprogram in self.subprograms.iter() {
-            subprogram.print(state);
+            subprogram.print(w, state)?;
         }
+        Ok(())
     }
 }
 
@@ -608,42 +617,49 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn print(&self, state: &PrintState) {
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         match self.kind {
-            TypeKind::TypeDef(ref val) => val.print(state),
-            TypeKind::Struct(ref val) => val.print(state),
-            TypeKind::Union(ref val) => val.print(state),
-            TypeKind::Enumeration(ref val) => val.print(state),
+            TypeKind::TypeDef(ref val) => val.print(w, state)?,
+            TypeKind::Struct(ref val) => val.print(w, state)?,
+            TypeKind::Union(ref val) => val.print(w, state)?,
+            TypeKind::Enumeration(ref val) => val.print(w, state)?,
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
             TypeKind::Modifier(..) => {}
             TypeKind::Unimplemented(_) => {
-                self.print_name(state);
-                println!("");
+                self.print_name(w, state)?;
+                writeln!(w, "")?;
             }
         }
+        Ok(())
     }
 
-    fn print_name(&self, state: &PrintState) {
+    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         match self.kind {
-            TypeKind::Base(ref val) => val.print_name(),
-            TypeKind::TypeDef(ref val) => val.print_name(),
-            TypeKind::Struct(ref val) => val.print_name(),
-            TypeKind::Union(ref val) => val.print_name(),
-            TypeKind::Enumeration(ref val) => val.print_name(),
-            TypeKind::Array(ref val) => val.print_name(state),
-            TypeKind::Subroutine(ref val) => val.print_name(state),
-            TypeKind::Modifier(ref val) => val.print_name(state),
-            TypeKind::Unimplemented(ref tag) => print!("<unimplemented {}>", tag),
+            TypeKind::Base(ref val) => val.print_name(w)?,
+            TypeKind::TypeDef(ref val) => val.print_name(w)?,
+            TypeKind::Struct(ref val) => val.print_name(w)?,
+            TypeKind::Union(ref val) => val.print_name(w)?,
+            TypeKind::Enumeration(ref val) => val.print_name(w)?,
+            TypeKind::Array(ref val) => val.print_name(w, state)?,
+            TypeKind::Subroutine(ref val) => val.print_name(w, state)?,
+            TypeKind::Modifier(ref val) => val.print_name(w, state)?,
+            TypeKind::Unimplemented(ref tag) => write!(w, "<unimplemented {}>", tag)?,
         }
+        Ok(())
     }
 
-    fn print_offset_name(state: &PrintState, offset: gimli::UnitOffset) {
+    fn print_offset_name(
+        w: &mut Write,
+        state: &PrintState,
+        offset: gimli::UnitOffset
+    ) -> Result<()> {
         match Type::from_offset(state, offset) {
-            Some(type_) => type_.print_name(state),
-            None => print!("<invalid-type>"),
+            Some(type_) => type_.print_name(w, state)?,
+            None => write!(w, "<invalid-type>")?,
         }
+        Ok(())
     }
 
     fn is_anon(&self) -> bool {
@@ -744,27 +760,28 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print_name(&self, state: &PrintState) {
+    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if let Some(name) = self.name {
             // Not sure namespace is required here.
             for namespace in self.namespace.iter() {
                 match *namespace {
-                    Some(ref name) => print!("{}::", name.to_string_lossy()),
-                    None => print!("<anon>"),
+                    Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                    None => write!(w, "<anon>")?,
                 }
             }
-            print!("{}", name.to_string_lossy());
+            write!(w, "{}", name.to_string_lossy())?;
         } else {
             match self.kind {
-                TypeModifierKind::Const => print!("const "),
-                TypeModifierKind::Pointer => print!("* "),
-                TypeModifierKind::Restrict => print!("restrict "),
+                TypeModifierKind::Const => write!(w, "const ")?,
+                TypeModifierKind::Pointer => write!(w, "* ")?,
+                TypeModifierKind::Restrict => write!(w, "restrict ")?,
             }
             match self.type_ {
-                Some(type_) => Type::print_offset_name(state, type_),
-                None => print!("<unknown-type>"),
+                Some(type_) => Type::print_offset_name(w, state, type_)?,
+                None => write!(w, "<unknown-type>")?,
             }
         }
+        Ok(())
     }
 }
 
@@ -814,15 +831,16 @@ impl<'input> BaseType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
+    fn bit_size(&self, _state: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
-    fn print_name(&self) {
+    fn print_name(&self, w: &mut Write) -> Result<()> {
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon-base-type>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon-base-type>")?,
         }
+        Ok(())
     }
 }
 
@@ -879,31 +897,33 @@ impl<'input> TypeDef<'input> {
         self.type_.and_then(|t| Type::from_offset(state, t)).and_then(|v| v.bit_size(state))
     }
 
-    fn print(&self, state: &PrintState) {
-        print!("type ");
-        self.print_name();
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        write!(w, "type ")?;
+        self.print_name(w)?;
         if let Some(type_) = self.type_.and_then(|t| Type::from_offset(state, t)) {
-            print!(" = ");
+            write!(w, " = ")?;
             if type_.is_anon() {
-                type_.print(state);
+                type_.print(w, state)?;
             } else {
-                type_.print_name(state);
-                println!("");
+                type_.print_name(w, state)?;
+                writeln!(w, "")?;
             }
         } else {
-            println!("");
+            writeln!(w, "")?;
         }
         if let Some(bit_size) = self.bit_size(state) {
-            println!("\tsize: {}", format_bit(bit_size));
+            writeln!(w, "\tsize: {}", format_bit(bit_size))?;
         }
-        println!("");
+        writeln!(w, "")?;
+        Ok(())
     }
 
-    fn print_name(&self) {
+    fn print_name(&self, w: &mut Write) -> Result<()> {
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon-typedef>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon-typedef>")?,
         }
+        Ok(())
     }
 }
 
@@ -968,7 +988,7 @@ impl<'input> StructType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
+    fn bit_size(&self, _state: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
@@ -978,44 +998,53 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn print(&self, state: &PrintState) {
-        self.print_name();
-        println!("");
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        self.print_name(w)?;
+        writeln!(w, "")?;
 
         if let Some(size) = self.byte_size {
-            println!("\tsize: {}", size);
+            writeln!(w, "\tsize: {}", size)?;
         }
 
         if !self.members.is_empty() {
-            println!("\tmembers:");
-            self.print_members(state, Some(0), 2);
+            writeln!(w, "\tmembers:")?;
+            self.print_members(w, state, Some(0), 2)?;
         }
 
-        println!("");
+        writeln!(w, "")?;
 
         for subprogram in self.subprograms.iter() {
-            subprogram.print(state);
+            subprogram.print(w, state)?;
         }
+        Ok(())
     }
 
-    fn print_members(&self, state: &PrintState, mut bit_offset: Option<u64>, indent: usize) {
+    fn print_members(
+        &self,
+        w: &mut Write,
+        state: &PrintState,
+        mut bit_offset: Option<u64>,
+        indent: usize
+    ) -> Result<()> {
         for member in self.members.iter() {
-            member.print(state, &mut bit_offset, false, indent);
+            member.print(w, state, &mut bit_offset, false, indent)?;
         }
+        Ok(())
     }
 
-    fn print_name(&self) {
-        print!("struct ");
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        write!(w, "struct ")?;
         for namespace in self.namespace.iter() {
             match *namespace {
-                Some(ref name) => print!("{}::", name.to_string_lossy()),
-                None => print!("<anon>"),
+                Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                None => write!(w, "<anon>")?,
             }
         }
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
+        Ok(())
     }
 
     fn is_anon(&self) -> bool {
@@ -1083,7 +1112,7 @@ impl<'input> UnionType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
+    fn bit_size(&self, _state: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
@@ -1093,45 +1122,54 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn print(&self, state: &PrintState) {
-        self.print_name();
-        println!("");
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        self.print_name(w)?;
+        writeln!(w, "")?;
 
         if let Some(size) = self.byte_size {
-            println!("\tsize: {}", size);
+            writeln!(w, "\tsize: {}", size)?;
         }
 
         if !self.members.is_empty() {
-            println!("\tmembers:");
-            self.print_members(state, Some(0), 2);
+            writeln!(w, "\tmembers:")?;
+            self.print_members(w, state, Some(0), 2)?;
         }
 
-        println!("");
+        writeln!(w, "")?;
 
         for subprogram in self.subprograms.iter() {
-            subprogram.print(state);
+            subprogram.print(w, state)?;
         }
+        Ok(())
     }
 
-    fn print_members(&self, state: &PrintState, bit_offset: Option<u64>, indent: usize) {
+    fn print_members(
+        &self,
+        w: &mut Write,
+        state: &PrintState,
+        bit_offset: Option<u64>,
+        indent: usize
+    ) -> Result<()> {
         for member in self.members.iter() {
             let mut bit_offset = bit_offset;
-            member.print(state, &mut bit_offset, true, indent);
+            member.print(w, state, &mut bit_offset, true, indent)?;
         }
+        Ok(())
     }
 
-    fn print_name(&self) {
-        print!("union ");
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        write!(w, "union ")?;
         for namespace in self.namespace.iter() {
             match *namespace {
-                Some(ref name) => print!("{}::", name.to_string_lossy()),
-                None => print!("<anon>"),
+                Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                None => write!(w, "<anon>")?,
             }
         }
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
+        Ok(())
     }
 
     fn is_anon(&self) -> bool {
@@ -1234,11 +1272,12 @@ impl<'input> Member<'input> {
 
     fn print(
         &self,
+        w: &mut Write,
         state: &PrintState,
         end_bit_offset: &mut Option<u64>,
         union: bool,
         indent: usize
-    ) {
+    ) -> Result<()> {
         // For unions, if bit_offset is not set then assume that members have no leading padding.
         let bit_offset = match (self.bit_offset, *end_bit_offset, union) {
             (Some(bit_offset), _, _) |
@@ -1250,30 +1289,31 @@ impl<'input> Member<'input> {
             (Some(bit_offset), Some(end_bit_offset)) => {
                 if bit_offset > end_bit_offset {
                     for _ in 0..indent {
-                        print!("\t");
+                        write!(w, "\t")?;
                     }
-                    println!("{}[{}]\t<padding>",
+                    writeln!(w,
+                             "{}[{}]\t<padding>",
                              format_bit(end_bit_offset),
-                             format_bit(bit_offset - end_bit_offset));
+                             format_bit(bit_offset - end_bit_offset))?;
                 }
             }
             _ => {}
         }
 
         for _ in 0..indent {
-            print!("\t");
+            write!(w, "\t")?;
         }
         match bit_offset {
-            Some(bit_offset) => print!("{}", format_bit(bit_offset)),
+            Some(bit_offset) => write!(w, "{}", format_bit(bit_offset))?,
             None => {
-                print!("??");
+                write!(w, "??")?;
                 debug!("no offset for {:?}", self);
             }
         }
         match self.bit_size(state) {
-            Some(bit_size) => print!("[{}]", format_bit(bit_size)),
+            Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
             None => {
-                print!("[??]");
+                write!(w, "[??]")?;
                 debug!("no size for {:?}", self);
             }
         }
@@ -1284,25 +1324,30 @@ impl<'input> Member<'input> {
             _ => *end_bit_offset = None,
         }
         match self.name {
-            Some(name) => print!("\t{}", name.to_string_lossy()),
-            None => print!("\t<anon>"),
+            Some(name) => write!(w, "\t{}", name.to_string_lossy())?,
+            None => write!(w, "\t<anon>")?,
         }
         if let Some(type_) = self.type_.and_then(|v| Type::from_offset(state, v)) {
-            print!(": ");
-            type_.print_name(state);
-            println!("");
+            write!(w, ": ")?;
+            type_.print_name(w, state)?;
+            writeln!(w, "")?;
             if self.is_anon() || type_.is_anon() {
                 match type_.kind {
-                    TypeKind::Struct(ref t) => t.print_members(state, self.bit_offset, indent + 1),
-                    TypeKind::Union(ref t) => t.print_members(state, self.bit_offset, indent + 1),
+                    TypeKind::Struct(ref t) => {
+                        t.print_members(w, state, self.bit_offset, indent + 1)?
+                    }
+                    TypeKind::Union(ref t) => {
+                        t.print_members(w, state, self.bit_offset, indent + 1)?
+                    }
                     _ => {
                         debug!("unknown anon member: {:?}", type_);
                     }
                 }
             }
         } else {
-            println!(": <invalid-type>");
+            writeln!(w, ": <invalid-type>")?;
         }
+        Ok(())
     }
 
     fn is_anon(&self) -> bool {
@@ -1372,44 +1417,46 @@ impl<'input> EnumerationType<'input> {
         Ok(type_)
     }
 
-    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
+    fn bit_size(&self, _state: &PrintState) -> Option<u64> {
         self.byte_size.map(|v| v * 8)
     }
 
-    fn print(&self, state: &PrintState) {
-        self.print_name();
-        println!("");
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        self.print_name(w)?;
+        writeln!(w, "")?;
 
         if let Some(size) = self.byte_size {
-            println!("\tsize: {}", size);
+            writeln!(w, "\tsize: {}", size)?;
         }
 
         if !self.enumerators.is_empty() {
-            println!("\tenumerators:");
+            writeln!(w, "\tenumerators:")?;
             for enumerator in self.enumerators.iter() {
-                enumerator.print(state);
+                enumerator.print(w, state)?;
             }
         }
 
-        println!("");
+        writeln!(w, "")?;
 
         for subprogram in self.subprograms.iter() {
-            subprogram.print(state);
+            subprogram.print(w, state)?;
         }
+        Ok(())
     }
 
-    fn print_name(&self) {
-        print!("enum ");
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        write!(w, "enum ")?;
         for namespace in self.namespace.iter() {
             match *namespace {
-                Some(ref name) => print!("{}::", name.to_string_lossy()),
-                None => print!("<anon>"),
+                Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                None => write!(w, "<anon>")?,
             }
         }
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
+        Ok(())
     }
 }
 
@@ -1462,20 +1509,22 @@ impl<'input> Enumerator<'input> {
         Ok(enumerator)
     }
 
-    fn print(&self, _file: &PrintState) {
-        print!("\t\t");
-        self.print_name();
+    fn print(&self, w: &mut Write, _state: &PrintState) -> Result<()> {
+        write!(w, "\t\t")?;
+        self.print_name(w)?;
         if let Some(value) = self.value {
-            print!("({})", value);
+            write!(w, "({})", value)?;
         }
-        println!("");
+        writeln!(w, "")?;
+        Ok(())
     }
 
-    fn print_name(&self) {
+    fn print_name(&self, w: &mut Write) -> Result<()> {
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
+        Ok(())
     }
 }
 
@@ -1554,16 +1603,17 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print_name(&self, state: &PrintState) {
-        print!("[");
+    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        write!(w, "[")?;
         match self.type_ {
-            Some(type_) => Type::print_offset_name(state, type_),
-            None => print!("<unknown-type>"),
+            Some(type_) => Type::print_offset_name(w, state, type_)?,
+            None => write!(w, "<unknown-type>")?,
         }
         if let Some(count) = self.count {
-            print!("; {}", count);
+            write!(w, "; {}", count)?;
         }
-        print!("]");
+        write!(w, "]")?;
+        Ok(())
     }
 }
 
@@ -1616,27 +1666,28 @@ impl<'input> SubroutineType<'input> {
         Ok(subroutine)
     }
 
-    fn bit_size(&self, _file: &PrintState) -> Option<u64> {
+    fn bit_size(&self, _state: &PrintState) -> Option<u64> {
         None
     }
 
-    fn print_name(&self, state: &PrintState) {
+    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         let mut first = true;
-        print!("(");
+        write!(w, "(")?;
         for parameter in self.parameters.iter() {
             if first {
                 first = false;
             } else {
-                print!(", ");
+                write!(w, ", ")?;
             }
-            parameter.print(state);
+            parameter.print(w, state)?;
         }
-        print!(")");
+        write!(w, ")")?;
 
         if let Some(return_type) = self.return_type {
-            print!(" -> ");
-            Type::print_offset_name(state, return_type);
+            write!(w, " -> ")?;
+            Type::print_offset_name(w, state, return_type)?;
         }
+        Ok(())
     }
 }
 
@@ -1782,71 +1833,71 @@ impl<'input> Subprogram<'input> {
         state.subprograms.get(&offset.0).map(|v| *v)
     }
 
-    fn print(&self, state: &PrintState) {
-        print!("fn ");
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        write!(w, "fn ")?;
         for namespace in self.namespace.iter() {
             match *namespace {
-                Some(ref name) => print!("{}::", name.to_string_lossy()),
-                None => print!("<anon>"),
+                Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                None => write!(w, "<anon>")?,
             }
         }
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
 
-        println!("");
+        writeln!(w, "")?;
 
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if high_pc > low_pc {
-                println!("\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1);
+                writeln!(w, "\taddress: 0x{:x}-0x{:x}", low_pc, high_pc - 1)?;
             } else {
-                println!("\taddress: 0x{:x}", low_pc);
+                writeln!(w, "\taddress: 0x{:x}", low_pc)?;
             }
         } else if !self.inline {
             debug!("non-inline subprogram with no address");
         }
 
         if let Some(size) = self.size {
-            println!("\tsize: {}", size);
+            writeln!(w, "\tsize: {}", size)?;
         }
 
         if self.inline {
-            println!("\tinline: yes");
+            writeln!(w, "\tinline: yes")?;
         } else {
-            println!("\tinline: no");
+            writeln!(w, "\tinline: no")?;
         }
 
         if let Some(return_type) = self.return_type {
-            println!("\treturn type:");
-            print!("\t\t");
+            writeln!(w, "\treturn type:")?;
+            write!(w, "\t\t")?;
             match Type::from_offset(state, return_type).and_then(|t| t.bit_size(state)) {
-                Some(bit_size) => print!("[{}]", format_bit(bit_size)),
-                None => print!("[??]"),
+                Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+                None => write!(w, "[??]")?,
             }
-            print!("\t");
-            Type::print_offset_name(state, return_type);
-            println!("");
+            write!(w, "\t")?;
+            Type::print_offset_name(w, state, return_type)?;
+            writeln!(w, "")?;
         }
 
         if !self.parameters.is_empty() {
-            println!("\tparameters:");
+            writeln!(w, "\tparameters:")?;
             for parameter in self.parameters.iter() {
-                print!("\t\t");
+                write!(w, "\t\t")?;
                 match parameter.bit_size(state) {
-                    Some(bit_size) => print!("[{}]", format_bit(bit_size)),
-                    None => print!("[??]"),
+                    Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+                    None => write!(w, "[??]")?,
                 }
-                print!("\t");
-                parameter.print(state);
-                println!("");
+                write!(w, "\t")?;
+                parameter.print(w, state)?;
+                writeln!(w, "")?;
             }
         }
 
         if state.flags.inline_depth > 0 && !self.inlined_subroutines.is_empty() {
-            println!("\tinlined subroutines:");
+            writeln!(w, "\tinlined subroutines:")?;
             for subroutine in self.inlined_subroutines.iter() {
-                subroutine.print(state, 1);
+                subroutine.print(w, state, 1)?;
             }
         }
 
@@ -1855,34 +1906,36 @@ impl<'input> Subprogram<'input> {
                 if state.flags.calls {
                     let calls = disassemble(state.machine, &state.region, low_pc, high_pc);
                     if !calls.is_empty() {
-                        println!("\tcalls:");
+                        writeln!(w, "\tcalls:")?;
                         for call in &calls {
-                            print!("\t\t0x{:x}", call);
+                            write!(w, "\t\t0x{:x}", call)?;
                             if let Some(subprogram) = state.all_subprograms.get(call) {
-                                print!(" ");
-                                subprogram.print_name();
+                                write!(w, " ")?;
+                                subprogram.print_name(w)?;
                             }
-                            println!("");
+                            writeln!(w, "")?;
                         }
                     }
                 }
             }
         }
 
-        println!("");
+        writeln!(w, "")?;
+        Ok(())
     }
 
-    fn print_name(&self) {
+    fn print_name(&self, w: &mut Write) -> Result<()> {
         for namespace in self.namespace.iter() {
             match *namespace {
-                Some(ref name) => print!("{}::", name.to_string_lossy()),
-                None => print!("<anon>"),
+                Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                None => write!(w, "<anon>")?,
             }
         }
         match self.name {
-            Some(name) => print!("{}", name.to_string_lossy()),
-            None => print!("<anon>"),
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
+        Ok(())
     }
 }
 
@@ -1944,14 +1997,15 @@ impl<'input> Parameter<'input> {
             .and_then(|t| t.bit_size(state))
     }
 
-    fn print(&self, state: &PrintState) {
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if let Some(name) = self.name {
-            print!("{}: ", name.to_string_lossy());
+            write!(w, "{}: ", name.to_string_lossy())?;
         }
         match self.type_ {
-            Some(offset) => Type::print_offset_name(state, offset),
-            None => print!(": <anon>"),
+            Some(offset) => Type::print_offset_name(w, state, offset)?,
+            None => write!(w, ": <anon>")?,
         }
+        Ok(())
     }
 }
 
@@ -2095,25 +2149,26 @@ impl InlinedSubroutine {
         Ok(subroutine)
     }
 
-    fn print(&self, state: &PrintState, depth: usize) {
+    fn print(&self, w: &mut Write, state: &PrintState, depth: usize) -> Result<()> {
         for _ in 0..depth + 1 {
-            print!("\t");
+            write!(w, "\t")?;
         }
         match self.size {
-            Some(size) => print!("[{}]", size),
-            None => print!("[??]"),
+            Some(size) => write!(w, "[{}]", size)?,
+            None => write!(w, "[??]")?,
         }
-        print!("\t");
+        write!(w, "\t")?;
         match self.abstract_origin.and_then(|v| Subprogram::from_offset(state, v)) {
-            Some(subprogram) => subprogram.print_name(),
-            None => print!("<anon>"),
+            Some(subprogram) => subprogram.print_name(w)?,
+            None => write!(w, "<anon>")?,
         }
-        println!("");
+        writeln!(w, "")?;
         if state.flags.inline_depth > depth {
             for subroutine in self.inlined_subroutines.iter() {
-                subroutine.print(state, depth + 1);
+                subroutine.print(w, state, depth + 1)?;
             }
         }
+        Ok(())
     }
 }
 
@@ -2157,24 +2212,24 @@ fn disassemble_arch<A>(
         };
 
         for mnemonic in m.mnemonics {
-            //println!("\t{:?}", mnemonic);
+            //writeln!(w, "\t{:?}", mnemonic);
             /*
-            print!("\t{}", mnemonic.opcode);
+            write!(w, "\t{}", mnemonic.opcode);
             let mut first = true;
             for operand in &mnemonic.operands {
                 if first {
-                    print!("\t");
+                    write!(w, "\t");
                     first = false;
                 } else {
-                    print!(", ");
+                    write!(w, ", ");
                 }
                 match *operand {
-                    panopticon::Rvalue::Variable { ref name, .. } => print!("{}", name),
-                    panopticon::Rvalue::Constant { ref value, .. } => print!("0x{:x}", value),
-                    _ => print!("?"),
+                    panopticon::Rvalue::Variable { ref name, .. } => write!(w, "{}", name),
+                    panopticon::Rvalue::Constant { ref value, .. } => write!(w, "0x{:x}", value),
+                    _ => write!(w, "?"),
                 }
             }
-            println!("");
+            writeln!(w, "");
             */
 
             for instruction in mnemonic.instructions.iter() {
