@@ -932,6 +932,7 @@ struct StructType<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     byte_size: Option<u64>,
+    declaration: bool,
     members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
 }
@@ -957,9 +958,13 @@ impl<'input> StructType<'input> {
                     gimli::DW_AT_byte_size => {
                         type_.byte_size = attr.udata_value();
                     }
+                    gimli::DW_AT_declaration => {
+                        if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                            type_.declaration = flag;
+                        }
+                    }
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
-                    gimli::DW_AT_declaration |
                     gimli::DW_AT_sibling => {}
                     _ => {
                         debug!("unknown struct attribute: {} {:?}",
@@ -1004,6 +1009,12 @@ impl<'input> StructType<'input> {
 
         if let Some(size) = self.byte_size {
             writeln!(w, "\tsize: {}", size)?;
+        } else if !self.declaration {
+            debug!("struct with no size");
+        }
+
+        if self.declaration {
+            writeln!(w, "\tdeclaration: yes")?;
         }
 
         if !self.members.is_empty() {
@@ -1057,6 +1068,7 @@ struct UnionType<'input> {
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     byte_size: Option<u64>,
+    declaration: bool,
     members: Vec<Member<'input>>,
     subprograms: Vec<Subprogram<'input>>,
 }
@@ -1081,6 +1093,11 @@ impl<'input> UnionType<'input> {
                     }
                     gimli::DW_AT_byte_size => {
                         type_.byte_size = attr.udata_value();
+                    }
+                    gimli::DW_AT_declaration => {
+                        if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                            type_.declaration = flag;
+                        }
                     }
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
@@ -1128,6 +1145,12 @@ impl<'input> UnionType<'input> {
 
         if let Some(size) = self.byte_size {
             writeln!(w, "\tsize: {}", size)?;
+        } else if !self.declaration {
+            debug!("union with no size");
+        }
+
+        if self.declaration {
+            writeln!(w, "\tdeclaration: yes")?;
         }
 
         if !self.members.is_empty() {
@@ -1722,6 +1745,7 @@ struct Subprogram<'input> {
     high_pc: Option<u64>,
     size: Option<u64>,
     inline: bool,
+    declaration: bool,
     parameters: Vec<Parameter<'input>>,
     return_type: Option<gimli::UnitOffset>,
     inlined_subroutines: Vec<InlinedSubroutine>,
@@ -1738,6 +1762,7 @@ impl<'input> Default for Subprogram<'input> {
             high_pc: None,
             size: None,
             inline: false,
+            declaration: false,
             parameters: Vec::new(),
             return_type: None,
             inlined_subroutines: Vec::new(),
@@ -1794,6 +1819,11 @@ impl<'input> Subprogram<'input> {
                             subprogram.return_type = Some(offset);
                         }
                     }
+                    gimli::DW_AT_declaration => {
+                        if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                            subprogram.declaration = flag;
+                        }
+                    }
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
                     gimli::DW_AT_frame_base |
@@ -1802,7 +1832,6 @@ impl<'input> Subprogram<'input> {
                     gimli::DW_AT_GNU_all_call_sites |
                     gimli::DW_AT_GNU_all_tail_call_sites |
                     gimli::DW_AT_prototyped |
-                    gimli::DW_AT_declaration |
                     gimli::DW_AT_sibling => {}
                     _ => {
                         debug!("unknown subprogram attribute: {} {:?}",
@@ -1883,7 +1912,7 @@ impl<'input> Subprogram<'input> {
             } else {
                 writeln!(w, "\taddress: 0x{:x}", low_pc)?;
             }
-        } else if !self.inline {
+        } else if !self.inline && !self.declaration {
             debug!("non-inline subprogram with no address");
         }
 
@@ -1893,8 +1922,9 @@ impl<'input> Subprogram<'input> {
 
         if self.inline {
             writeln!(w, "\tinline: yes")?;
-        } else {
-            writeln!(w, "\tinline: no")?;
+        }
+        if self.declaration {
+            writeln!(w, "\tdeclaration: yes")?;
         }
 
         if let Some(return_type) = self.return_type {
