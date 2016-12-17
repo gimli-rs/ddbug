@@ -1754,7 +1754,8 @@ struct Subprogram<'input> {
     declaration: bool,
     parameters: Vec<Parameter<'input>>,
     return_type: Option<gimli::UnitOffset>,
-    inlined_subroutines: Vec<InlinedSubroutine>,
+    inlined_subroutines: Vec<InlinedSubroutine<'input>>,
+    variables: Vec<Variable<'input>>,
 }
 
 impl<'input> Default for Subprogram<'input> {
@@ -1772,6 +1773,7 @@ impl<'input> Default for Subprogram<'input> {
             parameters: Vec::new(),
             return_type: None,
             inlined_subroutines: Vec::new(),
+            variables: Vec::new(),
         }
     }
 }
@@ -1865,14 +1867,18 @@ impl<'input> Subprogram<'input> {
                     subprogram.inlined_subroutines
                         .push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
                 }
+                gimli::DW_TAG_variable => {
+                    subprogram.variables
+                        .push(try!(Variable::parse_dwarf(dwarf, unit, child)));
+                }
                 gimli::DW_TAG_lexical_block => {
                     try!(parse_dwarf_lexical_block(&mut subprogram.inlined_subroutines,
+                                                   &mut subprogram.variables,
                                                    dwarf,
                                                    unit,
                                                    child));
                 }
                 gimli::DW_TAG_template_type_parameter |
-                gimli::DW_TAG_variable |
                 gimli::DW_TAG_label |
                 gimli::DW_TAG_structure_type |
                 gimli::DW_TAG_union_type |
@@ -2075,7 +2081,8 @@ impl<'input> Parameter<'input> {
 }
 
 fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
-    inlined_subroutines: &mut Vec<InlinedSubroutine>,
+    inlined_subroutines: &mut Vec<InlinedSubroutine<'input>>,
+    variables: &mut Vec<Variable<'input>>,
     dwarf: &DwarfFileState<'input, Endian>,
     unit: &mut DwarfUnitState<'state, 'input, Endian>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
@@ -2105,10 +2112,12 @@ fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_inlined_subroutine => {
                 inlined_subroutines.push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, child)));
             }
-            gimli::DW_TAG_lexical_block => {
-                try!(parse_dwarf_lexical_block(inlined_subroutines, dwarf, unit, child));
+            gimli::DW_TAG_variable => {
+                variables.push(try!(Variable::parse_dwarf(dwarf, unit, child)));
             }
-            gimli::DW_TAG_variable => {}
+            gimli::DW_TAG_lexical_block => {
+                try!(parse_dwarf_lexical_block(inlined_subroutines, variables, dwarf, unit, child));
+            }
             tag => {
                 debug!("unknown lexical_block child tag: {}", tag);
             }
@@ -2118,18 +2127,19 @@ fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 }
 
 #[derive(Debug, Default)]
-struct InlinedSubroutine {
+struct InlinedSubroutine<'input> {
     abstract_origin: Option<gimli::UnitOffset>,
     size: Option<u64>,
-    inlined_subroutines: Vec<InlinedSubroutine>,
+    inlined_subroutines: Vec<InlinedSubroutine<'input>>,
+    variables: Vec<Variable<'input>>,
 }
 
-impl InlinedSubroutine {
-    fn parse_dwarf<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+impl<'input> InlinedSubroutine<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
         dwarf: &DwarfFileState<'input, Endian>,
         unit: &mut DwarfUnitState<'state, 'input, Endian>,
         mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-    ) -> Result<InlinedSubroutine>
+    ) -> Result<InlinedSubroutine<'input>>
         where Endian: gimli::Endianity
     {
         let mut subroutine = InlinedSubroutine::default();
@@ -2201,6 +2211,7 @@ impl InlinedSubroutine {
                 }
                 gimli::DW_TAG_lexical_block => {
                     try!(parse_dwarf_lexical_block(&mut subroutine.inlined_subroutines,
+                                                   &mut subroutine.variables,
                                                    dwarf,
                                                    unit,
                                                    child));
@@ -2278,6 +2289,9 @@ impl<'input> Variable<'input> {
                             variable.declaration = flag;
                         }
                     }
+                    gimli::DW_AT_abstract_origin |
+                    gimli::DW_AT_artificial |
+                    gimli::DW_AT_const_value |
                     gimli::DW_AT_location |
                     gimli::DW_AT_external |
                     gimli::DW_AT_decl_file |
