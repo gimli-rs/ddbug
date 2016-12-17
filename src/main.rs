@@ -196,8 +196,8 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
     let mut all_subprograms = HashMap::new();
     // TODO: insert symbol table names too
     for unit in units.iter() {
-        for type_ in unit.types.iter() {
-            match type_.kind {
+        for ty in unit.types.iter() {
+            match ty.kind {
                 TypeKind::Struct(StructType { ref subprograms, .. }) |
                 TypeKind::Union(UnionType { ref subprograms, .. }) |
                 TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
@@ -237,9 +237,9 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
     for unit in units.iter() {
         state.types.clear();
         state.subprograms.clear();
-        for type_ in unit.types.iter() {
-            state.types.insert(type_.offset.0, type_);
-            match type_.kind {
+        for ty in unit.types.iter() {
+            state.types.insert(ty.offset.0, ty);
+            match ty.kind {
                 TypeKind::Struct(StructType { ref subprograms, .. }) |
                 TypeKind::Union(UnionType { ref subprograms, .. }) |
                 TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
@@ -470,25 +470,25 @@ impl<'input> Unit<'input> {
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         // The offsets of types that are unnamed struct and union members.
         let mut anon_members = HashSet::new();
-        for type_ in self.types.iter() {
-            type_.visit_members(&mut |t| {
+        for ty in self.types.iter() {
+            ty.visit_members(&mut |t| {
                 if t.is_anon() {
-                    if let Some(offset) = t.type_ {
+                    if let Some(offset) = t.ty {
                         anon_members.insert(offset.0);
                     }
                 }
             });
         }
 
-        for type_ in self.types.iter() {
+        for ty in self.types.iter() {
             // We print unnamed struct and union members inline, so no need
             // to print them again.
             //
             // Also don't print anonymous types. Normally these will have also
             // been printed inline (eg in a TypeDef). We don't actually check
             // that they have been printed already, but in future we could.
-            if !type_.is_anon() && !anon_members.contains(&type_.offset.0) {
-                type_.print(w, state)?;
+            if !ty.is_anon() && !anon_members.contains(&ty.offset.0) {
+                ty.print(w, state)?;
             }
         }
         for subprogram in self.subprograms.iter() {
@@ -535,9 +535,9 @@ impl<'input> Type<'input> {
         where Endian: gimli::Endianity
     {
         let tag = iter.entry().unwrap().tag();
-        let mut type_ = Type::default();
-        type_.offset = iter.entry().unwrap().offset();
-        type_.kind = match tag {
+        let mut ty = Type::default();
+        ty.offset = iter.entry().unwrap().offset();
+        ty.kind = match tag {
             gimli::DW_TAG_base_type => {
                 TypeKind::Base(try!(BaseType::parse_dwarf(dwarf, unit, iter)))
             }
@@ -579,7 +579,7 @@ impl<'input> Type<'input> {
             }
             _ => TypeKind::Unimplemented(tag),
         };
-        Ok(type_)
+        Ok(ty)
     }
 
     fn from_offset<'a>(
@@ -656,7 +656,7 @@ impl<'input> Type<'input> {
         offset: gimli::UnitOffset
     ) -> Result<()> {
         match Type::from_offset(state, offset) {
-            Some(type_) => type_.print_name(w, state)?,
+            Some(ty) => ty.print_name(w, state)?,
             None => write!(w, "<invalid-type>")?,
         }
         Ok(())
@@ -680,7 +680,7 @@ impl<'input> Type<'input> {
 #[derive(Debug)]
 struct TypeModifier<'input> {
     kind: TypeModifierKind,
-    type_: Option<gimli::UnitOffset>,
+    ty: Option<gimli::UnitOffset>,
     namespace: Vec<Option<&'input ffi::CStr>>,
     name: Option<&'input ffi::CStr>,
     byte_size: Option<u64>,
@@ -704,7 +704,7 @@ impl<'input> TypeModifier<'input> {
     {
         let mut modifier = TypeModifier {
             kind: kind,
-            type_: None,
+            ty: None,
             namespace: Vec::new(),
             name: None,
             byte_size: None,
@@ -720,7 +720,7 @@ impl<'input> TypeModifier<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            modifier.type_ = Some(offset);
+                            modifier.ty = Some(offset);
                         }
                     }
                     gimli::DW_AT_byte_size => {
@@ -752,7 +752,7 @@ impl<'input> TypeModifier<'input> {
         match self.kind {
             TypeModifierKind::Const |
             TypeModifierKind::Restrict => {
-                self.type_
+                self.ty
                     .and_then(|v| Type::from_offset(state, v))
                     .and_then(|v| v.bit_size(state))
             }
@@ -776,8 +776,8 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Pointer => write!(w, "* ")?,
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
             }
-            match self.type_ {
-                Some(type_) => Type::print_offset_name(w, state, type_)?,
+            match self.ty {
+                Some(ty) => Type::print_offset_name(w, state, ty)?,
                 None => write!(w, "<unknown-type>")?,
             }
         }
@@ -799,17 +799,17 @@ impl<'input> BaseType<'input> {
     ) -> Result<BaseType<'input>>
         where Endian: gimli::Endianity
     {
-        let mut type_ = BaseType::default();
+        let mut ty = BaseType::default();
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
             while let Some(attr) = try!(attrs.next()) {
                 match attr.name() {
                     gimli::DW_AT_name => {
-                        type_.name = attr.string_value(&dwarf.debug_str);
+                        ty.name = attr.string_value(&dwarf.debug_str);
                     }
                     gimli::DW_AT_byte_size => {
-                        type_.byte_size = attr.udata_value();
+                        ty.byte_size = attr.udata_value();
                     }
                     gimli::DW_AT_encoding => {}
                     _ => {
@@ -828,7 +828,7 @@ impl<'input> BaseType<'input> {
                 }
             }
         }
-        Ok(type_)
+        Ok(ty)
     }
 
     fn bit_size(&self, _state: &PrintState) -> Option<u64> {
@@ -847,7 +847,7 @@ impl<'input> BaseType<'input> {
 #[derive(Debug, Default)]
 struct TypeDef<'input> {
     name: Option<&'input ffi::CStr>,
-    type_: Option<gimli::UnitOffset>,
+    ty: Option<gimli::UnitOffset>,
 }
 
 impl<'input> TypeDef<'input> {
@@ -869,7 +869,7 @@ impl<'input> TypeDef<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            typedef.type_ = Some(offset);
+                            typedef.ty = Some(offset);
                         }
                     }
                     gimli::DW_AT_decl_file |
@@ -894,18 +894,18 @@ impl<'input> TypeDef<'input> {
     }
 
     fn bit_size(&self, state: &PrintState) -> Option<u64> {
-        self.type_.and_then(|t| Type::from_offset(state, t)).and_then(|v| v.bit_size(state))
+        self.ty.and_then(|t| Type::from_offset(state, t)).and_then(|v| v.bit_size(state))
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         write!(w, "type ")?;
         self.print_name(w)?;
-        if let Some(type_) = self.type_.and_then(|t| Type::from_offset(state, t)) {
+        if let Some(ty) = self.ty.and_then(|t| Type::from_offset(state, t)) {
             write!(w, " = ")?;
-            if type_.is_anon() {
-                type_.print(w, state)?;
+            if ty.is_anon() {
+                ty.print(w, state)?;
             } else {
-                type_.print_name(w, state)?;
+                ty.print_name(w, state)?;
                 writeln!(w, "")?;
             }
         } else {
@@ -945,22 +945,22 @@ impl<'input> StructType<'input> {
     ) -> Result<StructType<'input>>
         where Endian: gimli::Endianity
     {
-        let mut type_ = StructType::default();
-        type_.namespace = unit.namespaces.clone();
+        let mut ty = StructType::default();
+        ty.namespace = unit.namespaces.clone();
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
             while let Some(attr) = try!(attrs.next()) {
                 match attr.name() {
                     gimli::DW_AT_name => {
-                        type_.name = attr.string_value(&dwarf.debug_str);
+                        ty.name = attr.string_value(&dwarf.debug_str);
                     }
                     gimli::DW_AT_byte_size => {
-                        type_.byte_size = attr.udata_value();
+                        ty.byte_size = attr.udata_value();
                     }
                     gimli::DW_AT_declaration => {
                         if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                            type_.declaration = flag;
+                            ty.declaration = flag;
                         }
                     }
                     gimli::DW_AT_decl_file |
@@ -975,14 +975,14 @@ impl<'input> StructType<'input> {
             }
         }
 
-        unit.namespaces.push(type_.name);
+        unit.namespaces.push(ty.name);
         while let Some(child) = try!(iter.next()) {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_subprogram => {
-                    type_.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
+                    ty.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
                 }
                 gimli::DW_TAG_member => {
-                    type_.members.push(try!(Member::parse_dwarf(dwarf, unit, child)));
+                    ty.members.push(try!(Member::parse_dwarf(dwarf, unit, child)));
                 }
                 tag => {
                     debug!("unknown struct child tag: {}", tag);
@@ -990,7 +990,7 @@ impl<'input> StructType<'input> {
             }
         }
         unit.namespaces.pop();
-        Ok(type_)
+        Ok(ty)
     }
 
     fn bit_size(&self, _state: &PrintState) -> Option<u64> {
@@ -1081,22 +1081,22 @@ impl<'input> UnionType<'input> {
     ) -> Result<UnionType<'input>>
         where Endian: gimli::Endianity
     {
-        let mut type_ = UnionType::default();
-        type_.namespace = unit.namespaces.clone();
+        let mut ty = UnionType::default();
+        ty.namespace = unit.namespaces.clone();
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
             while let Some(attr) = try!(attrs.next()) {
                 match attr.name() {
                     gimli::DW_AT_name => {
-                        type_.name = attr.string_value(&dwarf.debug_str);
+                        ty.name = attr.string_value(&dwarf.debug_str);
                     }
                     gimli::DW_AT_byte_size => {
-                        type_.byte_size = attr.udata_value();
+                        ty.byte_size = attr.udata_value();
                     }
                     gimli::DW_AT_declaration => {
                         if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                            type_.declaration = flag;
+                            ty.declaration = flag;
                         }
                     }
                     gimli::DW_AT_decl_file |
@@ -1111,14 +1111,14 @@ impl<'input> UnionType<'input> {
             }
         }
 
-        unit.namespaces.push(type_.name);
+        unit.namespaces.push(ty.name);
         while let Some(child) = try!(iter.next()) {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_subprogram => {
-                    type_.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
+                    ty.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
                 }
                 gimli::DW_TAG_member => {
-                    type_.members.push(try!(Member::parse_dwarf(dwarf, unit, child)));
+                    ty.members.push(try!(Member::parse_dwarf(dwarf, unit, child)));
                 }
                 tag => {
                     debug!("unknown union child tag: {}", tag);
@@ -1126,7 +1126,7 @@ impl<'input> UnionType<'input> {
             }
         }
         unit.namespaces.pop();
-        Ok(type_)
+        Ok(ty)
     }
 
     fn bit_size(&self, _state: &PrintState) -> Option<u64> {
@@ -1203,7 +1203,7 @@ impl<'input> UnionType<'input> {
 #[derive(Debug, Default)]
 struct Member<'input> {
     name: Option<&'input ffi::CStr>,
-    type_: Option<gimli::UnitOffset>,
+    ty: Option<gimli::UnitOffset>,
     // Defaults to 0, so always present.
     bit_offset: u64,
     bit_size: Option<u64>,
@@ -1230,7 +1230,7 @@ impl<'input> Member<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            member.type_ = Some(offset);
+                            member.ty = Some(offset);
                         }
                     }
                     gimli::DW_AT_data_member_location => {
@@ -1325,8 +1325,8 @@ impl<'input> Member<'input> {
     fn bit_size(&self, state: &PrintState) -> Option<u64> {
         if self.bit_size.is_some() {
             self.bit_size
-        } else if let Some(type_) = self.type_ {
-            Type::from_offset(state, type_).and_then(|v| v.bit_size(state))
+        } else if let Some(ty) = self.ty {
+            Type::from_offset(state, ty).and_then(|v| v.bit_size(state))
         } else {
             None
         }
@@ -1371,12 +1371,12 @@ impl<'input> Member<'input> {
             Some(name) => write!(w, "\t{}", name.to_string_lossy())?,
             None => write!(w, "\t<anon>")?,
         }
-        if let Some(type_) = self.type_.and_then(|v| Type::from_offset(state, v)) {
+        if let Some(ty) = self.ty.and_then(|v| Type::from_offset(state, v)) {
             write!(w, ": ")?;
-            type_.print_name(w, state)?;
+            ty.print_name(w, state)?;
             writeln!(w, "")?;
-            if self.is_anon() || type_.is_anon() {
-                match type_.kind {
+            if self.is_anon() || ty.is_anon() {
+                match ty.kind {
                     TypeKind::Struct(ref t) => {
                         t.print_members(w, state, Some(self.bit_offset), indent + 1)?
                     }
@@ -1384,7 +1384,7 @@ impl<'input> Member<'input> {
                         t.print_members(w, state, Some(self.bit_offset), indent + 1)?
                     }
                     _ => {
-                        debug!("unknown anon member: {:?}", type_);
+                        debug!("unknown anon member: {:?}", ty);
                     }
                 }
             }
@@ -1416,18 +1416,18 @@ impl<'input> EnumerationType<'input> {
     ) -> Result<EnumerationType<'input>>
         where Endian: gimli::Endianity
     {
-        let mut type_ = EnumerationType::default();
-        type_.namespace = unit.namespaces.clone();
+        let mut ty = EnumerationType::default();
+        ty.namespace = unit.namespaces.clone();
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
             while let Some(attr) = try!(attrs.next()) {
                 match attr.name() {
                     gimli::DW_AT_name => {
-                        type_.name = attr.string_value(&dwarf.debug_str);
+                        ty.name = attr.string_value(&dwarf.debug_str);
                     }
                     gimli::DW_AT_byte_size => {
-                        type_.byte_size = attr.udata_value();
+                        ty.byte_size = attr.udata_value();
                     }
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
@@ -1443,14 +1443,14 @@ impl<'input> EnumerationType<'input> {
             }
         }
 
-        unit.namespaces.push(type_.name);
+        unit.namespaces.push(ty.name);
         while let Some(child) = try!(iter.next()) {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_enumerator => {
-                    type_.enumerators.push(try!(Enumerator::parse_dwarf(dwarf, unit, child)));
+                    ty.enumerators.push(try!(Enumerator::parse_dwarf(dwarf, unit, child)));
                 }
                 gimli::DW_TAG_subprogram => {
-                    type_.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
+                    ty.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
                 }
                 tag => {
                     debug!("unknown enumeration child tag: {}", tag);
@@ -1458,7 +1458,7 @@ impl<'input> EnumerationType<'input> {
             }
         }
         unit.namespaces.pop();
-        Ok(type_)
+        Ok(ty)
     }
 
     fn bit_size(&self, _state: &PrintState) -> Option<u64> {
@@ -1574,7 +1574,7 @@ impl<'input> Enumerator<'input> {
 
 #[derive(Debug, Default)]
 struct ArrayType<'input> {
-    type_: Option<gimli::UnitOffset>,
+    ty: Option<gimli::UnitOffset>,
     count: Option<u64>,
     phantom: std::marker::PhantomData<&'input [u8]>,
 }
@@ -1595,7 +1595,7 @@ impl<'input> ArrayType<'input> {
                 match attr.name() {
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            array.type_ = Some(offset);
+                            array.ty = Some(offset);
                         }
                     }
                     gimli::DW_AT_sibling => {}
@@ -1640,8 +1640,8 @@ impl<'input> ArrayType<'input> {
     }
 
     fn bit_size(&self, state: &PrintState) -> Option<u64> {
-        if let (Some(type_), Some(count)) = (self.type_, self.count) {
-            Type::from_offset(state, type_).and_then(|t| t.bit_size(state)).map(|v| v * count)
+        if let (Some(ty), Some(count)) = (self.ty, self.count) {
+            Type::from_offset(state, ty).and_then(|t| t.bit_size(state)).map(|v| v * count)
         } else {
             None
         }
@@ -1649,8 +1649,8 @@ impl<'input> ArrayType<'input> {
 
     fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         write!(w, "[")?;
-        match self.type_ {
-            Some(type_) => Type::print_offset_name(w, state, type_)?,
+        match self.ty {
+            Some(ty) => Type::print_offset_name(w, state, ty)?,
             None => write!(w, "<unknown-type>")?,
         }
         if let Some(count) = self.count {
@@ -2001,7 +2001,7 @@ impl<'input> Subprogram<'input> {
 #[derive(Debug, Default)]
 struct Parameter<'input> {
     name: Option<&'input ffi::CStr>,
-    type_: Option<gimli::UnitOffset>,
+    ty: Option<gimli::UnitOffset>,
 }
 
 impl<'input> Parameter<'input> {
@@ -2024,7 +2024,7 @@ impl<'input> Parameter<'input> {
                     }
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
-                            parameter.type_ = Some(offset);
+                            parameter.ty = Some(offset);
                         }
                     }
                     gimli::DW_AT_decl_file |
@@ -2051,7 +2051,7 @@ impl<'input> Parameter<'input> {
     }
 
     fn bit_size(&self, state: &PrintState) -> Option<u64> {
-        self.type_
+        self.ty
             .and_then(|t| Type::from_offset(state, t))
             .and_then(|t| t.bit_size(state))
     }
@@ -2060,7 +2060,7 @@ impl<'input> Parameter<'input> {
         if let Some(name) = self.name {
             write!(w, "{}: ", name.to_string_lossy())?;
         }
-        match self.type_ {
+        match self.ty {
             Some(offset) => Type::print_offset_name(w, state, offset)?,
             None => write!(w, ": <anon>")?,
         }
