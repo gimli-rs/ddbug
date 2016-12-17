@@ -157,7 +157,7 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
 
     let input = unsafe { file.as_slice() };
     let elf = xmas_elf::ElfFile::new(input);
-    let machine = try!(elf.header.pt2).machine();
+    let machine = elf.header.pt2?.machine();
     let mut region = match machine {
         xmas_elf::header::Machine::X86_64 => {
             panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF)
@@ -187,8 +187,8 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
     }
 
     let units = match elf.header.pt1.data {
-        xmas_elf::header::Data::LittleEndian => try!(parse_dwarf::<gimli::LittleEndian>(&elf)),
-        xmas_elf::header::Data::BigEndian => try!(parse_dwarf::<gimli::BigEndian>(&elf)),
+        xmas_elf::header::Data::LittleEndian => parse_dwarf::<gimli::LittleEndian>(&elf)?,
+        xmas_elf::header::Data::BigEndian => parse_dwarf::<gimli::BigEndian>(&elf)?,
         _ => {
             return Err("Unknown endianity".into());
         }
@@ -295,8 +295,8 @@ fn parse_dwarf<'input, Endian>(elf: &xmas_elf::ElfFile<'input>) -> Result<Vec<Un
 
     let mut units = Vec::new();
     let mut unit_headers = dwarf.debug_info.units();
-    while let Some(unit_header) = try!(unit_headers.next()) {
-        units.push(try!(Unit::parse_dwarf(&dwarf, &unit_header)));
+    while let Some(unit_header) = unit_headers.next()? {
+        units.push(Unit::parse_dwarf(&dwarf, &unit_header)?);
     }
     Ok(units)
 }
@@ -371,7 +371,7 @@ impl<'input> Unit<'input> {
     ) -> Result<Unit<'input>>
         where Endian: gimli::Endianity
     {
-        let abbrev = &try!(unit_header.abbreviations(dwarf.debug_abbrev));
+        let abbrev = &unit_header.abbreviations(dwarf.debug_abbrev)?;
         let mut unit_state = DwarfUnitState {
             header: unit_header,
             _abbrev: abbrev,
@@ -379,7 +379,7 @@ impl<'input> Unit<'input> {
             ranges: None,
         };
 
-        let mut tree = try!(unit_header.entries_tree(abbrev, None));
+        let mut tree = unit_header.entries_tree(abbrev, None)?;
         let iter = tree.iter();
 
         let mut unit = Unit::default();
@@ -389,7 +389,7 @@ impl<'input> Unit<'input> {
                 return Err(format!("unknown CU tag: {}", entry.tag()).into());
             }
             let mut attrs = entry.attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_producer => {}
                     gimli::DW_AT_name => unit.name = attr.string_value(&dwarf.debug_str),
@@ -431,7 +431,7 @@ impl<'input> Unit<'input> {
         };
 
         let namespace = Namespace::root();
-        try!(unit.parse_dwarf_children(&dwarf, &mut unit_state, &namespace, iter));
+        unit.parse_dwarf_children(&dwarf, &mut unit_state, &namespace, iter)?;
         Ok(unit)
     }
 
@@ -444,17 +444,17 @@ impl<'input> Unit<'input> {
     ) -> Result<()>
         where Endian: gimli::Endianity
     {
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_namespace => {
-                    try!(self.parse_dwarf_namespace(dwarf, unit, namespace, child));
+                    self.parse_dwarf_namespace(dwarf, unit, namespace, child)?;
                 }
                 gimli::DW_TAG_subprogram => {
                     self.subprograms
-                        .push(try!(Subprogram::parse_dwarf(dwarf, unit, namespace, child)));
+                        .push(Subprogram::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 gimli::DW_TAG_variable => {
-                    self.variables.push(try!(Variable::parse_dwarf(dwarf, unit, namespace, child)));
+                    self.variables.push(Variable::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 gimli::DW_TAG_base_type |
                 gimli::DW_TAG_structure_type |
@@ -466,7 +466,7 @@ impl<'input> Unit<'input> {
                 gimli::DW_TAG_const_type |
                 gimli::DW_TAG_pointer_type |
                 gimli::DW_TAG_restrict_type => {
-                    self.types.push(try!(Type::parse_dwarf(dwarf, unit, namespace, child)));
+                    self.types.push(Type::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 tag => {
                     debug!("unknown namespace child tag: {}", tag);
@@ -490,7 +490,7 @@ impl<'input> Unit<'input> {
         {
             let entry = iter.entry().unwrap();
             let mut attrs = entry.attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         name = attr.string_value(&dwarf.debug_str);
@@ -587,52 +587,46 @@ impl<'input> Type<'input> {
         ty.offset = iter.entry().unwrap().offset();
         ty.kind = match tag {
             gimli::DW_TAG_base_type => {
-                TypeKind::Base(try!(BaseType::parse_dwarf(dwarf, unit, namespace, iter)))
+                TypeKind::Base(BaseType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_typedef => {
-                TypeKind::TypeDef(try!(TypeDef::parse_dwarf(dwarf, unit, namespace, iter)))
+                TypeKind::TypeDef(TypeDef::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_structure_type => {
-                TypeKind::Struct(try!(StructType::parse_dwarf(dwarf, unit, namespace, iter)))
+                TypeKind::Struct(StructType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_union_type => {
-                TypeKind::Union(try!(UnionType::parse_dwarf(dwarf, unit, namespace, iter)))
+                TypeKind::Union(UnionType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_enumeration_type => {
-                TypeKind::Enumeration(try!(EnumerationType::parse_dwarf(dwarf,
-                                                                        unit,
-                                                                        namespace,
-                                                                        iter)))
+                TypeKind::Enumeration(EnumerationType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_array_type => {
-                TypeKind::Array(try!(ArrayType::parse_dwarf(dwarf, unit, namespace, iter)))
+                TypeKind::Array(ArrayType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_subroutine_type => {
-                TypeKind::Subroutine(try!(SubroutineType::parse_dwarf(dwarf,
-                                                                      unit,
-                                                                      namespace,
-                                                                      iter)))
+                TypeKind::Subroutine(SubroutineType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_const_type => {
-                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
-                                                                  unit,
-                                                                  namespace,
-                                                                  iter,
-                                                                  TypeModifierKind::Const)))
+                TypeKind::Modifier(TypeModifier::parse_dwarf(dwarf,
+                                                             unit,
+                                                             namespace,
+                                                             iter,
+                                                             TypeModifierKind::Const)?)
             }
             gimli::DW_TAG_pointer_type => {
-                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
-                                                                  unit,
-                                                                  namespace,
-                                                                  iter,
-                                                                  TypeModifierKind::Pointer)))
+                TypeKind::Modifier(TypeModifier::parse_dwarf(dwarf,
+                                                             unit,
+                                                             namespace,
+                                                             iter,
+                                                             TypeModifierKind::Pointer)?)
             }
             gimli::DW_TAG_restrict_type => {
-                TypeKind::Modifier(try!(TypeModifier::parse_dwarf(dwarf,
-                                                                  unit,
-                                                                  namespace,
-                                                                  iter,
-                                                                  TypeModifierKind::Restrict)))
+                TypeKind::Modifier(TypeModifier::parse_dwarf(dwarf,
+                                                             unit,
+                                                             namespace,
+                                                             iter,
+                                                             TypeModifierKind::Restrict)?)
             }
             _ => TypeKind::Unimplemented(tag),
         };
@@ -770,7 +764,7 @@ impl<'input> TypeModifier<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         modifier.name = attr.string_value(&dwarf.debug_str);
@@ -792,7 +786,7 @@ impl<'input> TypeModifier<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown type modifier child tag: {}", tag);
@@ -856,7 +850,7 @@ impl<'input> BaseType<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         ty.name = attr.string_value(&dwarf.debug_str);
@@ -874,7 +868,7 @@ impl<'input> BaseType<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown base type child tag: {}", tag);
@@ -916,7 +910,7 @@ impl<'input> TypeDef<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         typedef.name = attr.string_value(&dwarf.debug_str);
@@ -937,7 +931,7 @@ impl<'input> TypeDef<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown typedef child tag: {}", tag);
@@ -1005,7 +999,7 @@ impl<'input> StructType<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         ty.name = attr.string_value(&dwarf.debug_str);
@@ -1031,14 +1025,14 @@ impl<'input> StructType<'input> {
         }
 
         let namespace = Namespace::new(&ty.namespace, ty.name);
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_subprogram => {
                     ty.subprograms
-                        .push(try!(Subprogram::parse_dwarf(dwarf, unit, &namespace, child)));
+                        .push(Subprogram::parse_dwarf(dwarf, unit, &namespace, child)?);
                 }
                 gimli::DW_TAG_member => {
-                    ty.members.push(try!(Member::parse_dwarf(dwarf, unit, &namespace, child)));
+                    ty.members.push(Member::parse_dwarf(dwarf, unit, &namespace, child)?);
                 }
                 tag => {
                     debug!("unknown struct child tag: {}", tag);
@@ -1137,7 +1131,7 @@ impl<'input> UnionType<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         ty.name = attr.string_value(&dwarf.debug_str);
@@ -1163,14 +1157,14 @@ impl<'input> UnionType<'input> {
         }
 
         let namespace = Namespace::new(&ty.namespace, ty.name);
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_subprogram => {
                     ty.subprograms
-                        .push(try!(Subprogram::parse_dwarf(dwarf, unit, &namespace, child)));
+                        .push(Subprogram::parse_dwarf(dwarf, unit, &namespace, child)?);
                 }
                 gimli::DW_TAG_member => {
-                    ty.members.push(try!(Member::parse_dwarf(dwarf, unit, &namespace, child)));
+                    ty.members.push(Member::parse_dwarf(dwarf, unit, &namespace, child)?);
                 }
                 tag => {
                     debug!("unknown union child tag: {}", tag);
@@ -1270,7 +1264,7 @@ impl<'input> Member<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         member.name = attr.string_value(&dwarf.debug_str);
@@ -1359,7 +1353,7 @@ impl<'input> Member<'input> {
             debug!("ignored member byte_size");
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown member child tag: {}", tag);
@@ -1469,7 +1463,7 @@ impl<'input> EnumerationType<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         ty.name = attr.string_value(&dwarf.debug_str);
@@ -1492,15 +1486,15 @@ impl<'input> EnumerationType<'input> {
         }
 
         let namespace = Namespace::new(&ty.namespace, ty.name);
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_enumerator => {
                     ty.enumerators
-                        .push(try!(Enumerator::parse_dwarf(dwarf, unit, &namespace, child)));
+                        .push(Enumerator::parse_dwarf(dwarf, unit, &namespace, child)?);
                 }
                 gimli::DW_TAG_subprogram => {
                     ty.subprograms
-                        .push(try!(Subprogram::parse_dwarf(dwarf, unit, &namespace, child)));
+                        .push(Subprogram::parse_dwarf(dwarf, unit, &namespace, child)?);
                 }
                 tag => {
                     debug!("unknown enumeration child tag: {}", tag);
@@ -1567,7 +1561,7 @@ impl<'input> Enumerator<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(ref attr) = try!(attrs.next()) {
+            while let Some(ref attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         enumerator.name = attr.string_value(&dwarf.debug_str);
@@ -1588,7 +1582,7 @@ impl<'input> Enumerator<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown enumerator child tag: {}", tag);
@@ -1637,7 +1631,7 @@ impl<'input> ArrayType<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -1654,11 +1648,11 @@ impl<'input> ArrayType<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_subrange_type => {
                     let mut attrs = child.entry().unwrap().attrs();
-                    while let Some(attr) = try!(attrs.next()) {
+                    while let Some(attr) = attrs.next()? {
                         match attr.name() {
                             gimli::DW_AT_count => {
                                 array.count = attr.udata_value();
@@ -1726,7 +1720,7 @@ impl<'input> SubroutineType<'input> {
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_type => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -1744,11 +1738,11 @@ impl<'input> SubroutineType<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_formal_parameter => {
                     subroutine.parameters
-                        .push(try!(Parameter::parse_dwarf(dwarf, unit, namespace, child)));
+                        .push(Parameter::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 tag => {
                     debug!("unknown subroutine child tag: {}", tag);
@@ -1828,7 +1822,7 @@ impl<'input> Subprogram<'input> {
         {
             let entry = iter.entry().unwrap();
             let mut attrs = entry.attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         subprogram.name = attr.string_value(&dwarf.debug_str);
@@ -1893,27 +1887,27 @@ impl<'input> Subprogram<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_formal_parameter => {
                     subprogram.parameters
-                        .push(try!(Parameter::parse_dwarf(dwarf, unit, namespace, child)));
+                        .push(Parameter::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 gimli::DW_TAG_inlined_subroutine => {
                     subprogram.inlined_subroutines
-                        .push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, namespace, child)));
+                        .push(InlinedSubroutine::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 gimli::DW_TAG_variable => {
                     subprogram.variables
-                        .push(try!(Variable::parse_dwarf(dwarf, unit, namespace, child)));
+                        .push(Variable::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 gimli::DW_TAG_lexical_block => {
-                    try!(parse_dwarf_lexical_block(&mut subprogram.inlined_subroutines,
-                                                   &mut subprogram.variables,
-                                                   dwarf,
-                                                   unit,
-                                                   namespace,
-                                                   child));
+                    parse_dwarf_lexical_block(&mut subprogram.inlined_subroutines,
+                                              &mut subprogram.variables,
+                                              dwarf,
+                                              unit,
+                                              namespace,
+                                              child)?;
                 }
                 gimli::DW_TAG_template_type_parameter |
                 gimli::DW_TAG_label |
@@ -2057,7 +2051,7 @@ impl<'input> Parameter<'input> {
         {
             let entry = iter.entry().unwrap();
             let mut attrs = entry.attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         parameter.name = attr.string_value(&dwarf.debug_str);
@@ -2080,7 +2074,7 @@ impl<'input> Parameter<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown parameter child tag: {}", tag);
@@ -2121,7 +2115,7 @@ fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     {
         let entry = iter.entry().unwrap();
         let mut attrs = entry.attrs();
-        while let Some(attr) = try!(attrs.next()) {
+        while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_low_pc |
                 gimli::DW_AT_high_pc |
@@ -2136,22 +2130,22 @@ fn parse_dwarf_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
-    while let Some(child) = try!(iter.next()) {
+    while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
                 inlined_subroutines
-                    .push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, namespace, child)));
+                    .push(InlinedSubroutine::parse_dwarf(dwarf, unit, namespace, child)?);
             }
             gimli::DW_TAG_variable => {
-                variables.push(try!(Variable::parse_dwarf(dwarf, unit, namespace, child)));
+                variables.push(Variable::parse_dwarf(dwarf, unit, namespace, child)?);
             }
             gimli::DW_TAG_lexical_block => {
-                try!(parse_dwarf_lexical_block(inlined_subroutines,
-                                               variables,
-                                               dwarf,
-                                               unit,
-                                               namespace,
-                                               child));
+                parse_dwarf_lexical_block(inlined_subroutines,
+                                          variables,
+                                          dwarf,
+                                          unit,
+                                          namespace,
+                                          child)?;
             }
             tag => {
                 debug!("unknown lexical_block child tag: {}", tag);
@@ -2186,7 +2180,7 @@ impl<'input> InlinedSubroutine<'input> {
         {
             let entry = iter.entry().unwrap();
             let mut attrs = entry.attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_abstract_origin => {
                         if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -2225,9 +2219,9 @@ impl<'input> InlinedSubroutine<'input> {
         if let Some(offset) = ranges {
             let mut size = 0;
             let low_pc = low_pc.unwrap_or(0);
-            let mut ranges = try!(dwarf.debug_ranges
-                .ranges(offset, unit.header.address_size(), low_pc));
-            while let Some(range) = try!(ranges.next()) {
+            let mut ranges = dwarf.debug_ranges
+                .ranges(offset, unit.header.address_size(), low_pc)?;
+            while let Some(range) = ranges.next()? {
                 size += range.end.wrapping_sub(range.begin);
             }
             subroutine.size = Some(size);
@@ -2239,19 +2233,19 @@ impl<'input> InlinedSubroutine<'input> {
             debug!("unknown inlined_subroutine size");
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 gimli::DW_TAG_inlined_subroutine => {
                     subroutine.inlined_subroutines
-                        .push(try!(InlinedSubroutine::parse_dwarf(dwarf, unit, namespace, child)));
+                        .push(InlinedSubroutine::parse_dwarf(dwarf, unit, namespace, child)?);
                 }
                 gimli::DW_TAG_lexical_block => {
-                    try!(parse_dwarf_lexical_block(&mut subroutine.inlined_subroutines,
-                                                   &mut subroutine.variables,
-                                                   dwarf,
-                                                   unit,
-                                                   namespace,
-                                                   child));
+                    parse_dwarf_lexical_block(&mut subroutine.inlined_subroutines,
+                                              &mut subroutine.variables,
+                                              dwarf,
+                                              unit,
+                                              namespace,
+                                              child)?;
                 }
                 gimli::DW_TAG_formal_parameter => {}
                 tag => {
@@ -2309,7 +2303,7 @@ impl<'input> Variable<'input> {
         {
             let entry = iter.entry().unwrap();
             let mut attrs = entry.attrs();
-            while let Some(attr) = try!(attrs.next()) {
+            while let Some(attr) = attrs.next()? {
                 match attr.name() {
                     gimli::DW_AT_name => {
                         variable.name = attr.string_value(&dwarf.debug_str);
@@ -2343,7 +2337,7 @@ impl<'input> Variable<'input> {
             }
         }
 
-        while let Some(child) = try!(iter.next()) {
+        while let Some(child) = iter.next()? {
             match child.entry().unwrap().tag() {
                 tag => {
                     debug!("unknown variable child tag: {}", tag);
@@ -2537,7 +2531,7 @@ fn evaluate<'input, Endian>(
                                                                          unit.format(),
                                                                          &mut context);
     evaluation.set_initial_value(0);
-    let pieces = try!(evaluation.evaluate());
+    let pieces = evaluation.evaluate()?;
     if pieces.len() != 1 {
         return Err(format!("unsupported number of evaluation pieces: {}", pieces.len()).into());
     }
