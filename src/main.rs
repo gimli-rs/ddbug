@@ -1027,7 +1027,7 @@ impl<'input> StructType<'input> {
         indent: usize
     ) -> Result<()> {
         for member in self.members.iter() {
-            member.print(w, state, &mut bit_offset, false, indent)?;
+            member.print(w, state, &mut bit_offset, indent)?;
         }
         Ok(())
     }
@@ -1152,7 +1152,7 @@ impl<'input> UnionType<'input> {
     ) -> Result<()> {
         for member in self.members.iter() {
             let mut bit_offset = bit_offset;
-            member.print(w, state, &mut bit_offset, true, indent)?;
+            member.print(w, state, &mut bit_offset, indent)?;
         }
         Ok(())
     }
@@ -1181,7 +1181,8 @@ impl<'input> UnionType<'input> {
 struct Member<'input> {
     name: Option<&'input ffi::CStr>,
     type_: Option<gimli::UnitOffset>,
-    bit_offset: Option<u64>,
+    // Defaults to 0, so always present.
+    bit_offset: u64,
     bit_size: Option<u64>,
 }
 
@@ -1194,6 +1195,8 @@ impl<'input> Member<'input> {
         where Endian: gimli::Endianity
     {
         let mut member = Member::default();
+        let mut bit_offset = None;
+        let mut byte_size = None;
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
@@ -1209,11 +1212,11 @@ impl<'input> Member<'input> {
                     }
                     gimli::DW_AT_data_member_location => {
                         match attr.value() {
-                            gimli::AttributeValue::Udata(v) => member.bit_offset = Some(v * 8),
+                            gimli::AttributeValue::Udata(v) => member.bit_offset = v * 8,
                             gimli::AttributeValue::Exprloc(expr) => {
                                 match evaluate(unit.header, expr.0) {
                                     Ok(gimli::Location::Address { address }) => {
-                                        member.bit_offset = Some(address * 8)
+                                        member.bit_offset = address * 8;
                                     }
                                     Ok(loc) => {
                                         debug!("unknown DW_AT_data_member_location result: {:?}",
@@ -1230,11 +1233,16 @@ impl<'input> Member<'input> {
                             }
                         }
                     }
+                    gimli::DW_AT_data_bit_offset => {
+                        if let Some(bit_offset) = attr.udata_value() {
+                            member.bit_offset = bit_offset;
+                        }
+                    }
                     gimli::DW_AT_bit_offset => {
-                        member.bit_offset = attr.udata_value();
+                        bit_offset = attr.udata_value();
                     }
                     gimli::DW_AT_byte_size => {
-                        member.bit_size = attr.udata_value().map(|v| v * 8);
+                        byte_size = attr.udata_value();
                     }
                     gimli::DW_AT_bit_size => {
                         member.bit_size = attr.udata_value();
@@ -1248,6 +1256,37 @@ impl<'input> Member<'input> {
                     }
                 }
             }
+        }
+
+        if let (Some(bit_offset), Some(bit_size)) = (bit_offset, member.bit_size) {
+            // DWARF version 2/3, but allowed in later versions for compatibility.
+            // The data member is a bit field contained in an anonymous object.
+            // member.bit_offset starts as the offset of the anonymous object.
+            // byte_size is the size of the anonymous object.
+            // bit_offset is the offset from the anonymous object MSB to the bit field MSB.
+            // bit_size is the size of the bit field.
+            if Endian::is_big_endian() {
+                // For big endian, the MSB is the first bit, so we simply add bit_offset,
+                // and byte_size is unneeded.
+                member.bit_offset = member.bit_offset.wrapping_add(bit_offset);
+            } else {
+                // For little endian, we have to work backwards, so we need byte_size.
+                if let Some(byte_size) = byte_size {
+                    // First find the offset of the MSB of the anonymous object.
+                    member.bit_offset = member.bit_offset.wrapping_add(byte_size * 8);
+                    // Then go backwards to the LSB of the bit field.
+                    member.bit_offset = member.bit_offset
+                        .wrapping_sub(bit_offset.wrapping_add(bit_size));
+                } else {
+                    // DWARF version 2/3 says the byte_size can be inferred,
+                    // but it is unclear when this would be useful.
+                    // Delay implementing this until needed.
+                    debug!("missing byte_size for bit field offset");
+                }
+            }
+        } else if byte_size.is_some() {
+            // TODO: should this set member.bit_size?
+            debug!("ignored member byte_size");
         }
 
         while let Some(child) = try!(iter.next()) {
@@ -1275,53 +1314,35 @@ impl<'input> Member<'input> {
         w: &mut Write,
         state: &PrintState,
         end_bit_offset: &mut Option<u64>,
-        union: bool,
         indent: usize
     ) -> Result<()> {
-        // For unions, if bit_offset is not set then assume that members have no leading padding.
-        let bit_offset = match (self.bit_offset, *end_bit_offset, union) {
-            (Some(bit_offset), _, _) |
-            (None, Some(bit_offset), true) => Some(bit_offset),
-            _ => None,
-        };
-
-        match (bit_offset, *end_bit_offset) {
-            (Some(bit_offset), Some(end_bit_offset)) => {
-                if bit_offset > end_bit_offset {
-                    for _ in 0..indent {
-                        write!(w, "\t")?;
-                    }
-                    writeln!(w,
-                             "{}[{}]\t<padding>",
-                             format_bit(end_bit_offset),
-                             format_bit(bit_offset - end_bit_offset))?;
+        if let Some(end_bit_offset) = *end_bit_offset {
+            if self.bit_offset > end_bit_offset {
+                for _ in 0..indent {
+                    write!(w, "\t")?;
                 }
+                writeln!(w,
+                         "{}[{}]\t<padding>",
+                         format_bit(end_bit_offset),
+                         format_bit(self.bit_offset - end_bit_offset))?;
             }
-            _ => {}
         }
 
         for _ in 0..indent {
             write!(w, "\t")?;
         }
-        match bit_offset {
-            Some(bit_offset) => write!(w, "{}", format_bit(bit_offset))?,
-            None => {
-                write!(w, "??")?;
-                debug!("no offset for {:?}", self);
-            }
-        }
+        write!(w, "{}", format_bit(self.bit_offset))?;
         match self.bit_size(state) {
-            Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+            Some(bit_size) => {
+                write!(w, "[{}]", format_bit(bit_size))?;
+                *end_bit_offset = self.bit_offset.checked_add(bit_size);
+            }
             None => {
-                write!(w, "[??]")?;
+                // TODO: show element size for unsized arrays.
                 debug!("no size for {:?}", self);
+                write!(w, "[??]")?;
+                *end_bit_offset = None;
             }
-        }
-        match (bit_offset, self.bit_size(state)) {
-            (Some(bit_offset), Some(bit_size)) => {
-                *end_bit_offset = bit_offset.checked_add(bit_size);
-            }
-            _ => *end_bit_offset = None,
         }
         match self.name {
             Some(name) => write!(w, "\t{}", name.to_string_lossy())?,
@@ -1334,10 +1355,10 @@ impl<'input> Member<'input> {
             if self.is_anon() || type_.is_anon() {
                 match type_.kind {
                     TypeKind::Struct(ref t) => {
-                        t.print_members(w, state, self.bit_offset, indent + 1)?
+                        t.print_members(w, state, Some(self.bit_offset), indent + 1)?
                     }
                     TypeKind::Union(ref t) => {
-                        t.print_members(w, state, self.bit_offset, indent + 1)?
+                        t.print_members(w, state, Some(self.bit_offset), indent + 1)?
                     }
                     _ => {
                         debug!("unknown anon member: {:?}", type_);
