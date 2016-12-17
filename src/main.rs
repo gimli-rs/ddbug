@@ -66,9 +66,10 @@ impl From<gimli::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
-struct Flags {
+struct Flags<'a> {
     calls: bool,
     inline_depth: usize,
+    namespace: Vec<&'a str>,
 }
 
 fn main() {
@@ -80,6 +81,10 @@ fn main() {
                 "inline-depth",
                 "depth of inlined subroutine calls (0 to disable)",
                 "DEPTH");
+    opts.optopt("",
+                "namespace",
+                "print only members of the given namespace",
+                "NAMESPACE");
 
     let matches = match opts.parse(env::args().skip(1)) {
         Ok(m) => m,
@@ -92,15 +97,9 @@ fn main() {
         print_usage(&opts);
     }
 
-    let mut flags = Flags {
-        calls: false,
-        inline_depth: 1,
-    };
-    if matches.opt_present("calls") {
-        flags.calls = true;
-    }
-    if let Some(inline_depth) = matches.opt_str("inline-depth") {
-        flags.inline_depth = match inline_depth.parse::<usize>() {
+    let calls = matches.opt_present("calls");
+    let inline_depth = if let Some(inline_depth) = matches.opt_str("inline-depth") {
+        match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
             Err(e) => {
                 error!("Invalid Argument '{}' to option 'inline-depth': {}",
@@ -109,7 +108,19 @@ fn main() {
                 print_usage(&opts);
             }
         }
-    }
+    } else {
+        1
+    };
+    let namespace = matches.opt_str("namespace");
+    let namespace = match namespace {
+        Some(ref namespace) => namespace.split("::").collect(),
+        None => Vec::new(),
+    };
+    let flags = Flags {
+        calls: calls,
+        inline_depth: inline_depth,
+        namespace: namespace,
+    };
 
     for path in &matches.free {
         if let Err(e) = handle_file(path, &flags) {
@@ -137,7 +148,7 @@ struct PrintState<'a, 'input>
     // Unit types by offset.
     types: HashMap<usize, &'a Type<'input>>,
     address_size: Option<u64>,
-    flags: &'a Flags,
+    flags: &'a Flags<'a>,
 }
 
 fn handle_file(path: &str, flags: &Flags) -> Result<()> {
@@ -347,6 +358,36 @@ impl<'input> Namespace<'input> {
             write!(w, "::")?;
         }
         Ok(())
+    }
+
+    fn _filter(&self, namespace: &[&str]) -> (bool, usize) {
+        match self.parent {
+            Some(ref parent) => {
+                let (ret, offset) = parent._filter(namespace);
+                if !ret {
+                    return (false, 0);
+                }
+                if offset < namespace.len() {
+                    match self.name {
+                        Some(name) => {
+                            return (name.to_bytes() == namespace[offset].as_bytes(), offset + 1);
+                        }
+                        None => {
+                            return (false, 0);
+                        }
+                    }
+                } else {
+                    return (true, offset);
+                }
+            }
+            None => {
+                (true, 0)
+            }
+        }
+    }
+
+    fn filter(&self, namespace: &[&str]) -> bool {
+        self._filter(namespace) == (true, namespace.len())
     }
 }
 
@@ -893,6 +934,7 @@ impl<'input> BaseType<'input> {
 
 #[derive(Debug, Default)]
 struct TypeDef<'input> {
+    namespace: Rc<Namespace<'input>>,
     name: Option<&'input ffi::CStr>,
     ty: Option<gimli::UnitOffset>,
 }
@@ -901,12 +943,13 @@ impl<'input> TypeDef<'input> {
     fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
         dwarf: &DwarfFileState<'input, Endian>,
         _unit: &mut DwarfUnitState<'state, 'input, Endian>,
-        _namespace: &Rc<Namespace<'input>>,
+        namespace: &Rc<Namespace<'input>>,
         mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
     ) -> Result<TypeDef<'input>>
         where Endian: gimli::Endianity
     {
         let mut typedef = TypeDef::default();
+        typedef.namespace = namespace.clone();
 
         {
             let mut attrs = iter.entry().unwrap().attrs();
@@ -946,6 +989,10 @@ impl<'input> TypeDef<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if !self.namespace.filter(&state.flags.namespace) {
+            return Ok(());
+        }
+
         write!(w, "type ")?;
         self.print_name(w)?;
         if let Some(ty) = self.ty.and_then(|t| Type::from_offset(state, t)) {
@@ -967,6 +1014,7 @@ impl<'input> TypeDef<'input> {
     }
 
     fn print_name(&self, w: &mut Write) -> Result<()> {
+        self.namespace.print(w)?;
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
             None => write!(w, "<anon-typedef>")?,
@@ -1053,6 +1101,10 @@ impl<'input> StructType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if !self.namespace.filter(&state.flags.namespace) {
+            return Ok(());
+        }
+
         self.print_name(w)?;
         writeln!(w, "")?;
 
@@ -1185,6 +1237,10 @@ impl<'input> UnionType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if !self.namespace.filter(&state.flags.namespace) {
+            return Ok(());
+        }
+
         self.print_name(w)?;
         writeln!(w, "")?;
 
@@ -1509,6 +1565,10 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if !self.namespace.filter(&state.flags.namespace) {
+            return Ok(());
+        }
+
         self.print_name(w)?;
         writeln!(w, "")?;
 
@@ -1931,6 +1991,10 @@ impl<'input> Subprogram<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if !self.namespace.filter(&state.flags.namespace) {
+            return Ok(());
+        }
+
         write!(w, "fn ")?;
         self.namespace.print(w)?;
         match self.name {
@@ -2354,6 +2418,10 @@ impl<'input> Variable<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if !self.namespace.filter(&state.flags.namespace) {
+            return Ok(());
+        }
+
         write!(w, "var ")?;
         self.print_name(w)?;
         write!(w, ": ")?;
