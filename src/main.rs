@@ -380,9 +380,7 @@ impl<'input> Namespace<'input> {
                     return (true, offset);
                 }
             }
-            None => {
-                (true, 0)
-            }
+            None => (true, 0),
         }
     }
 
@@ -1140,6 +1138,17 @@ impl<'input> StructType<'input> {
     ) -> Result<()> {
         for member in self.members.iter() {
             member.print(w, state, &mut bit_offset, indent)?;
+        }
+        if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
+            if bit_offset < size * 8 {
+                for _ in 0..indent {
+                    write!(w, "\t")?;
+                }
+                writeln!(w,
+                         "{}[{}]\t<padding>",
+                         format_bit(bit_offset),
+                         format_bit(size * 8 - bit_offset))?;
+            }
         }
         Ok(())
     }
