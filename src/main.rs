@@ -322,6 +322,7 @@ struct Unit<'input> {
     size: Option<u64>,
     types: Vec<Type<'input>>,
     subprograms: Vec<Subprogram<'input>>,
+    variables: Vec<Variable<'input>>,
 }
 
 impl<'input> Unit<'input> {
@@ -411,7 +412,9 @@ impl<'input> Unit<'input> {
                 gimli::DW_TAG_subprogram => {
                     self.subprograms.push(try!(Subprogram::parse_dwarf(dwarf, unit, child)));
                 }
-                gimli::DW_TAG_variable => {}
+                gimli::DW_TAG_variable => {
+                    self.variables.push(try!(Variable::parse_dwarf(dwarf, unit, child)));
+                }
                 gimli::DW_TAG_base_type |
                 gimli::DW_TAG_structure_type |
                 gimli::DW_TAG_union_type |
@@ -493,6 +496,9 @@ impl<'input> Unit<'input> {
         }
         for subprogram in self.subprograms.iter() {
             subprogram.print(w, state)?;
+        }
+        for variable in self.variables.iter() {
+            variable.print(w, state)?;
         }
         Ok(())
     }
@@ -2062,7 +2068,7 @@ impl<'input> Parameter<'input> {
         }
         match self.ty {
             Some(offset) => Type::print_offset_name(w, state, offset)?,
-            None => write!(w, ": <anon>")?,
+            None => write!(w, "<anon>")?,
         }
         Ok(())
     }
@@ -2226,6 +2232,119 @@ impl InlinedSubroutine {
             for subroutine in self.inlined_subroutines.iter() {
                 subroutine.print(w, state, depth + 1)?;
             }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Default)]
+struct Variable<'input> {
+    namespace: Vec<Option<&'input ffi::CStr>>,
+    name: Option<&'input ffi::CStr>,
+    linkage_name: Option<&'input ffi::CStr>,
+    ty: Option<gimli::UnitOffset>,
+    declaration: bool,
+}
+
+impl<'input> Variable<'input> {
+    fn parse_dwarf<'state, 'abbrev, 'unit, 'tree, Endian>(
+        dwarf: &DwarfFileState<'input, Endian>,
+        unit: &mut DwarfUnitState<'state, 'input, Endian>,
+        mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    ) -> Result<Variable<'input>>
+        where Endian: gimli::Endianity
+    {
+        let mut variable = Variable::default();
+        variable.namespace = unit.namespaces.clone();
+
+        {
+            let entry = iter.entry().unwrap();
+            let mut attrs = entry.attrs();
+            while let Some(attr) = try!(attrs.next()) {
+                match attr.name() {
+                    gimli::DW_AT_name => {
+                        variable.name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_linkage_name => {
+                        variable.linkage_name = attr.string_value(&dwarf.debug_str);
+                    }
+                    gimli::DW_AT_type => {
+                        if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                            variable.ty = Some(offset);
+                        }
+                    }
+                    gimli::DW_AT_declaration => {
+                        if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                            variable.declaration = flag;
+                        }
+                    }
+                    gimli::DW_AT_location |
+                    gimli::DW_AT_external |
+                    gimli::DW_AT_decl_file |
+                    gimli::DW_AT_decl_line => {}
+                    _ => {
+                        debug!("unknown variable attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
+                    }
+                }
+            }
+        }
+
+        while let Some(child) = try!(iter.next()) {
+            match child.entry().unwrap().tag() {
+                tag => {
+                    debug!("unknown variable child tag: {}", tag);
+                }
+            }
+        }
+        Ok(variable)
+    }
+
+    fn bit_size(&self, state: &PrintState) -> Option<u64> {
+        self.ty
+            .and_then(|t| Type::from_offset(state, t))
+            .and_then(|t| t.bit_size(state))
+    }
+
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        write!(w, "var ")?;
+        self.print_name(w)?;
+        write!(w, ": ")?;
+        match self.ty {
+            Some(offset) => Type::print_offset_name(w, state, offset)?,
+            None => write!(w, "<anon>")?,
+        }
+        writeln!(w, "")?;
+
+        if let Some(linkage_name) = self.linkage_name {
+            writeln!(w, "\tlinkage name: {}", linkage_name.to_string_lossy())?;
+        }
+
+        if let Some(bit_size) = self.bit_size(state) {
+            writeln!(w, "\tsize: {}", format_bit(bit_size))?;
+        } else if !self.declaration {
+            debug!("variable with no size");
+        }
+
+        if self.declaration {
+            writeln!(w, "\tdeclaration: yes")?;
+        }
+
+        writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        for namespace in self.namespace.iter() {
+            match *namespace {
+                Some(ref name) => write!(w, "{}::", name.to_string_lossy())?,
+                None => write!(w, "<anon>")?,
+            }
+        }
+        match self.name {
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
         }
         Ok(())
     }
