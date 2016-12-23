@@ -69,6 +69,7 @@ pub type Result<T> = result::Result<T, Error>;
 struct Flags<'a> {
     calls: bool,
     inline_depth: usize,
+    name: Option<&'a str>,
     namespace: Vec<&'a str>,
 }
 
@@ -81,6 +82,7 @@ fn main() {
                 "inline-depth",
                 "depth of inlined subroutine calls (0 to disable)",
                 "DEPTH");
+    opts.optopt("", "name", "print only members with the given name", "NAME");
     opts.optopt("",
                 "namespace",
                 "print only members of the given namespace",
@@ -111,6 +113,8 @@ fn main() {
     } else {
         1
     };
+    let name = matches.opt_str("name");
+    let name = name.as_ref().map(|s| &s[..]);
     let namespace = matches.opt_str("namespace");
     let namespace = match namespace {
         Some(ref namespace) => namespace.split("::").collect(),
@@ -119,6 +123,7 @@ fn main() {
     let flags = Flags {
         calls: calls,
         inline_depth: inline_depth,
+        name: name,
         namespace: namespace,
     };
 
@@ -149,6 +154,29 @@ struct PrintState<'a, 'input>
     types: HashMap<usize, &'a Type<'input>>,
     address_size: Option<u64>,
     flags: &'a Flags<'a>,
+}
+
+impl<'a, 'input> PrintState<'a, 'input>
+    where 'input: 'a
+{
+    fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
+        if let Some(filter) = self.flags.name {
+            filter_name(name, filter)
+        } else {
+            true
+        }
+    }
+
+    fn filter_namespace(&self, namespace: &Namespace) -> bool {
+        namespace.filter(&self.flags.namespace)
+    }
+}
+
+fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
+    match name {
+        Some(name) => name.to_bytes() == filter.as_bytes(),
+        None => false,
+    }
 }
 
 fn handle_file(path: &str, flags: &Flags) -> Result<()> {
@@ -368,14 +396,7 @@ impl<'input> Namespace<'input> {
                     return (false, 0);
                 }
                 if offset < namespace.len() {
-                    match self.name {
-                        Some(name) => {
-                            return (name.to_bytes() == namespace[offset].as_bytes(), offset + 1);
-                        }
-                        None => {
-                            return (false, 0);
-                        }
-                    }
+                    return (filter_name(self.name, namespace[offset]), offset + 1);
                 } else {
                     return (true, offset);
                 }
@@ -987,7 +1008,7 @@ impl<'input> TypeDef<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if !self.namespace.filter(&state.flags.namespace) {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
             return Ok(());
         }
 
@@ -1099,7 +1120,7 @@ impl<'input> StructType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if !self.namespace.filter(&state.flags.namespace) {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
             return Ok(());
         }
 
@@ -1246,7 +1267,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if !self.namespace.filter(&state.flags.namespace) {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
             return Ok(());
         }
 
@@ -1574,7 +1595,7 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if !self.namespace.filter(&state.flags.namespace) {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
             return Ok(());
         }
 
@@ -2000,7 +2021,7 @@ impl<'input> Subprogram<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if !self.namespace.filter(&state.flags.namespace) {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
             return Ok(());
         }
 
@@ -2427,7 +2448,7 @@ impl<'input> Variable<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if !self.namespace.filter(&state.flags.namespace) {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
             return Ok(());
         }
 
