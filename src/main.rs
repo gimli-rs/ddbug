@@ -12,6 +12,7 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::cmp;
 use std::env;
 use std::error;
 use std::fmt;
@@ -68,6 +69,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 struct Flags<'a> {
     calls: bool,
+    sort: bool,
     inline_depth: usize,
     name: Option<&'a str>,
     namespace: Vec<&'a str>,
@@ -78,6 +80,7 @@ fn main() {
 
     let mut opts = getopts::Options::new();
     opts.optflag("", "calls", "print subprogram calls");
+    opts.optflag("", "sort", "sort entries by type and name");
     opts.optopt("",
                 "inline-depth",
                 "depth of inlined subroutine calls (0 to disable)",
@@ -100,6 +103,7 @@ fn main() {
     }
 
     let calls = matches.opt_present("calls");
+    let sort = matches.opt_present("sort");
     let inline_depth = if let Some(inline_depth) = matches.opt_str("inline-depth") {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
@@ -122,6 +126,7 @@ fn main() {
     };
     let flags = Flags {
         calls: calls,
+        sort: sort,
         inline_depth: inline_depth,
         name: name,
         namespace: namespace,
@@ -225,13 +230,21 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
         }
     }
 
-    let units = match elf.header.pt1.data {
+    let mut units = match elf.header.pt1.data {
         xmas_elf::header::Data::LittleEndian => parse_dwarf::<gimli::LittleEndian>(&elf)?,
         xmas_elf::header::Data::BigEndian => parse_dwarf::<gimli::BigEndian>(&elf)?,
         _ => {
             return Err("Unknown endianity".into());
         }
     };
+
+    if flags.sort {
+        for unit in units.iter_mut() {
+            unit.types.sort_by(|a, b| cmp_type(a, b));
+            unit.subprograms.sort_by(|a, b| cmp_subprogram(a, b));
+            unit.variables.sort_by(|a, b| cmp_variable(a, b));
+        }
+    }
 
     let mut all_subprograms = HashMap::new();
     // TODO: insert symbol table names too
@@ -407,6 +420,25 @@ impl<'input> Namespace<'input> {
 
     fn filter(&self, namespace: &[&str]) -> bool {
         self._filter(namespace) == (true, namespace.len())
+    }
+}
+
+fn cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
+    match (a.parent.as_ref(), b.parent.as_ref()) {
+        (Some(p1), Some(p2)) => {
+            match cmp_namespace(p1, p2) {
+                cmp::Ordering::Equal => a.name.cmp(&b.name),
+                o => o,
+            }
+        }
+        _ => cmp::Ordering::Equal,
+    }
+}
+
+fn cmp_ns_and_name(ns1: &Namespace, name1: Option<&ffi::CStr>, ns2: &Namespace, name2: Option<&ffi::CStr>) -> cmp::Ordering {
+    match cmp_namespace(ns1, ns2) {
+        cmp::Ordering::Equal => name1.cmp(&name2),
+        o => o,
     }
 }
 
@@ -605,11 +637,6 @@ impl<'input> Unit<'input> {
     }
 }
 
-#[derive(Debug)]
-struct Type<'input> {
-    offset: gimli::UnitOffset,
-    kind: TypeKind<'input>,
-}
 
 #[derive(Debug)]
 enum TypeKind<'input> {
@@ -622,6 +649,28 @@ enum TypeKind<'input> {
     Subroutine(SubroutineType<'input>),
     Modifier(TypeModifier<'input>),
     Unimplemented(gimli::DwTag),
+}
+
+impl<'input> TypeKind<'input> {
+    fn discriminant_value(&self) -> u8 {
+        match *self {
+            TypeKind::Base(..) => 0,
+            TypeKind::TypeDef(..) => 1,
+            TypeKind::Struct(..) => 2,
+            TypeKind::Union(..) => 3,
+            TypeKind::Enumeration(..) => 4,
+            TypeKind::Array(..) => 5,
+            TypeKind::Subroutine(..) => 6,
+            TypeKind::Modifier(..) => 7,
+            TypeKind::Unimplemented(..) => 8,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Type<'input> {
+    offset: gimli::UnitOffset,
+    kind: TypeKind<'input>,
 }
 
 impl<'input> Default for Type<'input> {
@@ -785,6 +834,17 @@ impl<'input> Type<'input> {
             TypeKind::Modifier(..) |
             TypeKind::Unimplemented(..) => false,
         }
+    }
+}
+
+fn cmp_type(a: &Type, b: &Type) -> cmp::Ordering {
+    use TypeKind::*;
+    match (&a.kind, &b.kind) {
+        (&TypeDef(ref a), &TypeDef(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
+        (&Struct(ref a), &Struct(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
+        (&Union(ref a), &Union(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
+        (&Enumeration(ref a), &Enumeration(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
+        _ => a.kind.discriminant_value().cmp(&b.kind.discriminant_value()),
     }
 }
 
@@ -2125,6 +2185,10 @@ impl<'input> Subprogram<'input> {
     }
 }
 
+fn cmp_subprogram(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+}
+
 #[derive(Debug, Default)]
 struct Parameter<'input> {
     name: Option<&'input ffi::CStr>,
@@ -2487,6 +2551,10 @@ impl<'input> Variable<'input> {
         }
         Ok(())
     }
+}
+
+fn cmp_variable(a: &Variable, b: &Variable) -> cmp::Ordering {
+    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
 }
 
 fn disassemble(
