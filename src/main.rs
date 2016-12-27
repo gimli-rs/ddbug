@@ -72,6 +72,7 @@ fn main() {
 
     let mut opts = getopts::Options::new();
     opts.optflag("", "calls", "print subprogram calls");
+    opts.optflag("", "diff", "print difference between two files");
     opts.optflag("", "sort", "sort entries by type and name");
     opts.optopt("",
                 "inline-depth",
@@ -90,18 +91,15 @@ fn main() {
             print_usage(&opts);
         }
     };
-    if matches.free.len() != 1 {
-        print_usage(&opts);
-    }
-    let path = &matches.free[0];
 
     let calls = matches.opt_present("calls");
+    let diff = matches.opt_present("diff");
     let sort = matches.opt_present("sort");
     let inline_depth = if let Some(inline_depth) = matches.opt_str("inline-depth") {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
             Err(e) => {
-                error!("Invalid Argument '{}' to option 'inline-depth': {}",
+                error!("Invalid argument '{}' to option 'inline-depth': {}",
                        inline_depth,
                        e);
                 print_usage(&opts);
@@ -117,16 +115,51 @@ fn main() {
         Some(ref namespace) => namespace.split("::").collect(),
         None => Vec::new(),
     };
+
     let flags = Flags {
         calls: calls,
+        diff: diff,
         sort: sort,
         inline_depth: inline_depth,
         name: name,
         namespace: namespace,
     };
 
-    if let Err(e) = parse_file(path, &mut |file| print_file(file, &flags)) {
-        error!("{}: {}", path, e);
+    if flags.diff {
+        if matches.free.len() != 2 {
+            error!("Invalid filename arguments (expected 2 filenames, found {})",
+                   matches.free.len());
+            print_usage(&opts);
+        }
+        let path1 = &matches.free[0];
+        let path2 = &matches.free[1];
+
+        if let Err(e) = parse_file(path1,
+                                   &mut |file1| {
+            if let Err(e) = parse_file(path2,
+                                       &mut |file2| {
+                                           if let Err(e) = diff_file(file1, file2, &flags) {
+                                               error!("{}", e);
+                                           }
+                                           Ok(())
+                                       }) {
+                error!("{}: {}", path2, e);
+            }
+            Ok(())
+        }) {
+            error!("{}: {}", path1, e);
+        }
+    } else {
+        if matches.free.len() != 1 {
+            error!("Invalid filename arguments (expected 1 filename, found {})",
+                   matches.free.len());
+            print_usage(&opts);
+        }
+        let path = &matches.free[0];
+
+        if let Err(e) = parse_file(path, &mut |file| print_file(file, &flags)) {
+            error!("{}: {}", path, e);
+        }
     }
 }
 
@@ -138,6 +171,7 @@ fn print_usage(opts: &getopts::Options) -> ! {
 
 struct Flags<'a> {
     calls: bool,
+    diff: bool,
     sort: bool,
     inline_depth: usize,
     name: Option<&'a str>,
@@ -327,6 +361,12 @@ fn print_file(file: &mut File, flags: &Flags) -> Result<()> {
         state.address_size = unit.address_size;
         unit.print(&mut writer, &state)?;
     }
+    Ok(())
+}
+
+fn diff_file(file1: &mut File, file2: &mut File, flags: &Flags) -> Result<()> {
+    print_file(file1, flags)?;
+    print_file(file2, flags)?;
     Ok(())
 }
 
