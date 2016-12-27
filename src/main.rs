@@ -67,14 +67,6 @@ impl From<gimli::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
-struct Flags<'a> {
-    calls: bool,
-    sort: bool,
-    inline_depth: usize,
-    name: Option<&'a str>,
-    namespace: Vec<&'a str>,
-}
-
 fn main() {
     env_logger::init().ok();
 
@@ -144,41 +136,12 @@ fn print_usage(opts: &getopts::Options) -> ! {
     std::process::exit(1);
 }
 
-struct PrintState<'a, 'input>
-    where 'input: 'a
-{
-    file: &'a File<'input>,
-    // All subprograms by address.
-    all_subprograms: HashMap<u64, &'a Subprogram<'input>>,
-    // Unit subprograms by offset.
-    subprograms: HashMap<usize, &'a Subprogram<'input>>,
-    // Unit types by offset.
-    types: HashMap<usize, &'a Type<'input>>,
-    address_size: Option<u64>,
-    flags: &'a Flags<'a>,
-}
-
-impl<'a, 'input> PrintState<'a, 'input>
-    where 'input: 'a
-{
-    fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
-        if let Some(filter) = self.flags.name {
-            filter_name(name, filter)
-        } else {
-            true
-        }
-    }
-
-    fn filter_namespace(&self, namespace: &Namespace) -> bool {
-        namespace.filter(&self.flags.namespace)
-    }
-}
-
-fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
-    match name {
-        Some(name) => name.to_bytes() == filter.as_bytes(),
-        None => false,
-    }
+struct Flags<'a> {
+    calls: bool,
+    sort: bool,
+    inline_depth: usize,
+    name: Option<&'a str>,
+    namespace: Vec<&'a str>,
 }
 
 #[derive(Debug)]
@@ -252,6 +215,43 @@ fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()>
     cb(&mut file)
 }
 
+struct PrintState<'a, 'input>
+    where 'input: 'a
+{
+    file: &'a File<'input>,
+    flags: &'a Flags<'a>,
+    // All subprograms by address.
+    all_subprograms: HashMap<u64, &'a Subprogram<'input>>,
+    // Unit subprograms by offset.
+    subprograms: HashMap<usize, &'a Subprogram<'input>>,
+    // Unit types by offset.
+    types: HashMap<usize, &'a Type<'input>>,
+    address_size: Option<u64>,
+}
+
+impl<'a, 'input> PrintState<'a, 'input>
+    where 'input: 'a
+{
+    fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
+        if let Some(filter) = self.flags.name {
+            filter_name(name, filter)
+        } else {
+            true
+        }
+    }
+
+    fn filter_namespace(&self, namespace: &Namespace) -> bool {
+        namespace.filter(&self.flags.namespace)
+    }
+}
+
+fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
+    match name {
+        Some(name) => name.to_bytes() == filter.as_bytes(),
+        None => false,
+    }
+}
+
 fn print_file(file: &mut File, flags: &Flags) -> Result<()> {
     if flags.sort {
         for unit in file.units.iter_mut() {
@@ -263,11 +263,11 @@ fn print_file(file: &mut File, flags: &Flags) -> Result<()> {
 
     let mut state = PrintState {
         file: file,
+        flags: flags,
         all_subprograms: HashMap::new(),
         subprograms: HashMap::new(),
         types: HashMap::new(),
         address_size: None,
-        flags: flags,
     };
 
     // TODO: insert symbol table names too
