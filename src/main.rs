@@ -98,9 +98,10 @@ fn main() {
             print_usage(&opts);
         }
     };
-    if matches.free.is_empty() {
+    if matches.free.len() != 1 {
         print_usage(&opts);
     }
+    let path = &matches.free[0];
 
     let calls = matches.opt_present("calls");
     let sort = matches.opt_present("sort");
@@ -132,10 +133,8 @@ fn main() {
         namespace: namespace,
     };
 
-    for path in &matches.free {
-        if let Err(e) = handle_file(path, &flags) {
-            error!("{}: {}", path, e);
-        }
+    if let Err(e) = parse_file(path, &mut |file| print_file(file, &flags)) {
+        error!("{}: {}", path, e);
     }
 }
 
@@ -148,9 +147,7 @@ fn print_usage(opts: &getopts::Options) -> ! {
 struct PrintState<'a, 'input>
     where 'input: 'a
 {
-    // TODO: use format independent machine type
-    machine: xmas_elf::header::Machine,
-    region: panopticon::Region,
+    file: &'a File<'input>,
     // All subprograms by address.
     all_subprograms: HashMap<u64, &'a Subprogram<'input>>,
     // Unit subprograms by offset.
@@ -184,7 +181,15 @@ fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
     }
 }
 
-fn handle_file(path: &str, flags: &Flags) -> Result<()> {
+#[derive(Debug)]
+struct File<'input> {
+    // TODO: use format independent machine type
+    machine: xmas_elf::header::Machine,
+    region: panopticon::Region,
+    units: Vec<Unit<'input>>,
+}
+
+fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let file = match fs::File::open(path) {
         Ok(file) => file,
         Err(e) => {
@@ -230,7 +235,7 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
         }
     }
 
-    let mut units = match elf.header.pt1.data {
+    let units = match elf.header.pt1.data {
         xmas_elf::header::Data::LittleEndian => parse_dwarf::<gimli::LittleEndian>(&elf)?,
         xmas_elf::header::Data::BigEndian => parse_dwarf::<gimli::BigEndian>(&elf)?,
         _ => {
@@ -238,17 +243,35 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
         }
     };
 
+    let mut file = File {
+        machine: machine,
+        region: region,
+        units: units,
+    };
+
+    cb(&mut file)
+}
+
+fn print_file(file: &mut File, flags: &Flags) -> Result<()> {
     if flags.sort {
-        for unit in units.iter_mut() {
+        for unit in file.units.iter_mut() {
             unit.types.sort_by(|a, b| cmp_type(a, b));
             unit.subprograms.sort_by(|a, b| cmp_subprogram(a, b));
             unit.variables.sort_by(|a, b| cmp_variable(a, b));
         }
     }
 
-    let mut all_subprograms = HashMap::new();
+    let mut state = PrintState {
+        file: file,
+        all_subprograms: HashMap::new(),
+        subprograms: HashMap::new(),
+        types: HashMap::new(),
+        address_size: None,
+        flags: flags,
+    };
+
     // TODO: insert symbol table names too
-    for unit in units.iter() {
+    for unit in file.units.iter() {
         for ty in unit.types.iter() {
             match ty.kind {
                 TypeKind::Struct(StructType { ref subprograms, .. }) |
@@ -256,7 +279,7 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
                 TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
                     for subprogram in subprograms.iter() {
                         if let Some(low_pc) = subprogram.low_pc {
-                            all_subprograms.insert(low_pc, subprogram);
+                            state.all_subprograms.insert(low_pc, subprogram);
                         }
                     }
                 }
@@ -270,24 +293,14 @@ fn handle_file(path: &str, flags: &Flags) -> Result<()> {
         }
         for subprogram in unit.subprograms.iter() {
             if let Some(low_pc) = subprogram.low_pc {
-                all_subprograms.insert(low_pc, subprogram);
+                state.all_subprograms.insert(low_pc, subprogram);
             }
         }
     }
 
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    let mut state = PrintState {
-        machine: machine,
-        region: region,
-        all_subprograms: all_subprograms,
-        subprograms: HashMap::new(),
-        types: HashMap::new(),
-        address_size: None,
-        flags: flags,
-    };
-
-    for unit in units.iter() {
+    for unit in file.units.iter() {
         state.types.clear();
         state.subprograms.clear();
         for ty in unit.types.iter() {
@@ -2155,7 +2168,8 @@ impl<'input> Subprogram<'input> {
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if low_pc != 0 {
                 if state.flags.calls {
-                    let calls = disassemble(state.machine, &state.region, low_pc, high_pc);
+                    let calls =
+                        disassemble(state.file.machine, &state.file.region, low_pc, high_pc);
                     if !calls.is_empty() {
                         writeln!(w, "\tcalls:")?;
                         for call in &calls {
