@@ -448,7 +448,12 @@ fn cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
     }
 }
 
-fn cmp_ns_and_name(ns1: &Namespace, name1: Option<&ffi::CStr>, ns2: &Namespace, name2: Option<&ffi::CStr>) -> cmp::Ordering {
+fn cmp_ns_and_name(
+    ns1: &Namespace,
+    name1: Option<&ffi::CStr>,
+    ns2: &Namespace,
+    name2: Option<&ffi::CStr>
+) -> cmp::Ordering {
     match cmp_namespace(ns1, ns2) {
         cmp::Ordering::Equal => name1.cmp(&name2),
         o => o,
@@ -853,10 +858,18 @@ impl<'input> Type<'input> {
 fn cmp_type(a: &Type, b: &Type) -> cmp::Ordering {
     use TypeKind::*;
     match (&a.kind, &b.kind) {
-        (&TypeDef(ref a), &TypeDef(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
-        (&Struct(ref a), &Struct(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
-        (&Union(ref a), &Union(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
-        (&Enumeration(ref a), &Enumeration(ref b)) => cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name),
+        (&TypeDef(ref a), &TypeDef(ref b)) => {
+            cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        }
+        (&Struct(ref a), &Struct(ref b)) => {
+            cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        }
+        (&Union(ref a), &Union(ref b)) => {
+            cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        }
+        (&Enumeration(ref a), &Enumeration(ref b)) => {
+            cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        }
         _ => a.kind.discriminant_value().cmp(&b.kind.discriminant_value()),
     }
 }
