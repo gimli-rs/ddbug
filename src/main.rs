@@ -746,17 +746,7 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        // The offsets of types that are unnamed struct and union members.
-        let mut anon_members = HashSet::new();
-        for ty in self.types.iter() {
-            ty.visit_members(&mut |t| {
-                if t.is_anon() {
-                    if let Some(offset) = t.ty {
-                        anon_members.insert(offset.0);
-                    }
-                }
-            });
-        }
+        let anon_members = self.anon_members();
 
         for ty in self.types.iter() {
             // We print unnamed struct and union members inline, so no need
@@ -777,6 +767,21 @@ impl<'input> Unit<'input> {
         }
         Ok(())
     }
+
+    // The offsets of types that are unnamed struct and union members.
+    fn anon_members(&self) -> HashSet<usize> {
+        let mut anon_members = HashSet::new();
+        for ty in self.types.iter() {
+            ty.visit_members(&mut |t| {
+                if t.is_anon() {
+                    if let Some(offset) = t.ty {
+                        anon_members.insert(offset.0);
+                    }
+                }
+            });
+        }
+        anon_members
+    }
 }
 
 fn cmp_unit(a: &Unit, b: &Unit) -> cmp::Ordering {
@@ -792,6 +797,35 @@ fn diff_unit(
     state2: &PrintState
 ) -> Result<()> {
     writeln!(w, "Both: {:?} {:?}", unit1.name, unit1.name)?;
+    let anon1 = unit1.anon_members();
+    let anon2 = unit2.anon_members();
+    merge(w,
+          &mut unit1.types.iter(),
+          &mut unit2.types.iter(),
+          &|a, b| cmp_type(a, b),
+          &mut |w, a, b| {
+              if !a.is_anon() && !anon1.contains(&a.offset.0)
+                  || !b.is_anon() && !anon2.contains(&b.offset.0) {
+                diff_type(w, a, b, state1, state2)?;
+              }
+              Ok(())
+          },
+          &|w, a| {
+              if !a.is_anon() && !anon1.contains(&a.offset.0) {
+                write!(w, "First only:")?;
+                a.print_name(w, state1)?;
+                writeln!(w, "")?;
+              }
+              Ok(())
+          },
+          &|w, b| {
+              if !b.is_anon() && !anon2.contains(&b.offset.0) {
+                write!(w, "Second only:")?;
+                b.print_name(w, state2)?;
+                writeln!(w, "")?;
+              }
+              Ok(())
+          })?;
     Ok(())
 }
 
@@ -1011,6 +1045,44 @@ fn cmp_type(a: &Type, b: &Type) -> cmp::Ordering {
         }
         _ => a.kind.discriminant_value().cmp(&b.kind.discriminant_value()),
     }
+}
+
+fn diff_type(
+    w: &mut Write,
+    type1: &Type,
+    type2: &Type,
+    state1: &PrintState,
+    state2: &PrintState
+) -> Result<()> {
+    use TypeKind::*;
+    match (&type1.kind, &type2.kind) {
+        (&TypeDef(ref a), &TypeDef(ref b)) => {
+            diff_type_def(w, a, b, state1, state2);
+        }
+        (&Struct(ref a), &Struct(ref b)) => {
+            write!(w, "Both: ")?;
+            a.print_name(w)?;
+            write!(w, ", ")?;
+            b.print_name(w)?;
+            writeln!(w, "")?;
+        }
+        (&Union(ref a), &Union(ref b)) => {
+            write!(w, "Both: ")?;
+            a.print_name(w)?;
+            write!(w, ", ")?;
+            b.print_name(w)?;
+            writeln!(w, "")?;
+        }
+        (&Enumeration(ref a), &Enumeration(ref b)) => {
+            write!(w, "Both: ")?;
+            a.print_name(w)?;
+            write!(w, ", ")?;
+            b.print_name(w)?;
+            writeln!(w, "")?;
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -1265,6 +1337,34 @@ impl<'input> TypeDef<'input> {
         }
         Ok(())
     }
+}
+
+fn equal_type_def(
+    type1: &TypeDef,
+    type2: &TypeDef,
+    state1: &PrintState,
+    state2: &PrintState
+) -> bool {
+    // TODO
+    false
+}
+
+fn diff_type_def(
+    w: &mut Write,
+    type1: &TypeDef,
+    type2: &TypeDef,
+    state1: &PrintState,
+    state2: &PrintState
+) -> Result<()> {
+    if equal_type_def(type1, type2, state1, state2) {
+        type1.print(w, state1)?;
+    } else {
+        write!(w, "- ")?;
+        type1.print(w, state1)?;
+        write!(w, "+ ")?;
+        type2.print(w, state2)?;
+    }
+    Ok(())
 }
 
 #[derive(Debug, Default)]
