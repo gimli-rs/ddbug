@@ -15,12 +15,10 @@ use std::collections::HashSet;
 use std::cmp;
 use std::env;
 use std::error;
-use std::fmt;
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::fs;
 use std::ffi;
-use std::io;
-use std::io::Write;
+use std::io::{self, Write};
 use std::result;
 use std::rc::Rc;
 
@@ -266,6 +264,73 @@ struct PrintState<'a, 'input>
 impl<'a, 'input> PrintState<'a, 'input>
     where 'input: 'a
 {
+    fn new(file: &'a File<'input>, flags: &'a Flags<'a>) -> Self {
+        let mut state = PrintState {
+            file: file,
+            flags: flags,
+            all_subprograms: HashMap::new(),
+            subprograms: HashMap::new(),
+            types: HashMap::new(),
+            address_size: None,
+        };
+
+        // TODO: insert symbol table names too
+        for unit in file.units.iter() {
+            for ty in unit.types.iter() {
+                match ty.kind {
+                    TypeKind::Struct(StructType { ref subprograms, .. }) |
+                    TypeKind::Union(UnionType { ref subprograms, .. }) |
+                    TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
+                        for subprogram in subprograms.iter() {
+                            if let Some(low_pc) = subprogram.low_pc {
+                                state.all_subprograms.insert(low_pc, subprogram);
+                            }
+                        }
+                    }
+                    TypeKind::Base(_) |
+                    TypeKind::TypeDef(_) |
+                    TypeKind::Array(_) |
+                    TypeKind::Subroutine(_) |
+                    TypeKind::Modifier(_) |
+                    TypeKind::Unimplemented(_) => {}
+                }
+            }
+            for subprogram in unit.subprograms.iter() {
+                if let Some(low_pc) = subprogram.low_pc {
+                    state.all_subprograms.insert(low_pc, subprogram);
+                }
+            }
+        }
+        state
+    }
+
+    fn set_unit(&mut self, unit: &'a Unit<'input>) {
+        self.types.clear();
+        self.subprograms.clear();
+        for ty in unit.types.iter() {
+            self.types.insert(ty.offset.0, ty);
+            match ty.kind {
+                TypeKind::Struct(StructType { ref subprograms, .. }) |
+                TypeKind::Union(UnionType { ref subprograms, .. }) |
+                TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
+                    for subprogram in subprograms.iter() {
+                        self.subprograms.insert(subprogram.offset.0, subprogram);
+                    }
+                }
+                TypeKind::Base(_) |
+                TypeKind::TypeDef(_) |
+                TypeKind::Array(_) |
+                TypeKind::Subroutine(_) |
+                TypeKind::Modifier(_) |
+                TypeKind::Unimplemented(_) => {}
+            }
+        }
+        for subprogram in unit.subprograms.iter() {
+            self.subprograms.insert(subprogram.offset.0, subprogram);
+        }
+        self.address_size = unit.address_size;
+    }
+
     fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
         if let Some(filter) = self.flags.name {
             filter_name(name, filter)
@@ -295,78 +360,97 @@ fn print_file(file: &mut File, flags: &Flags) -> Result<()> {
         }
     }
 
-    let mut state = PrintState {
-        file: file,
-        flags: flags,
-        all_subprograms: HashMap::new(),
-        subprograms: HashMap::new(),
-        types: HashMap::new(),
-        address_size: None,
-    };
-
-    // TODO: insert symbol table names too
-    for unit in file.units.iter() {
-        for ty in unit.types.iter() {
-            match ty.kind {
-                TypeKind::Struct(StructType { ref subprograms, .. }) |
-                TypeKind::Union(UnionType { ref subprograms, .. }) |
-                TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
-                    for subprogram in subprograms.iter() {
-                        if let Some(low_pc) = subprogram.low_pc {
-                            state.all_subprograms.insert(low_pc, subprogram);
-                        }
-                    }
-                }
-                TypeKind::Base(_) |
-                TypeKind::TypeDef(_) |
-                TypeKind::Array(_) |
-                TypeKind::Subroutine(_) |
-                TypeKind::Modifier(_) |
-                TypeKind::Unimplemented(_) => {}
-            }
-        }
-        for subprogram in unit.subprograms.iter() {
-            if let Some(low_pc) = subprogram.low_pc {
-                state.all_subprograms.insert(low_pc, subprogram);
-            }
-        }
-    }
+    let mut state = PrintState::new(file, flags);
 
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
     for unit in file.units.iter() {
-        state.types.clear();
-        state.subprograms.clear();
-        for ty in unit.types.iter() {
-            state.types.insert(ty.offset.0, ty);
-            match ty.kind {
-                TypeKind::Struct(StructType { ref subprograms, .. }) |
-                TypeKind::Union(UnionType { ref subprograms, .. }) |
-                TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
-                    for subprogram in subprograms.iter() {
-                        state.subprograms.insert(subprogram.offset.0, subprogram);
-                    }
-                }
-                TypeKind::Base(_) |
-                TypeKind::TypeDef(_) |
-                TypeKind::Array(_) |
-                TypeKind::Subroutine(_) |
-                TypeKind::Modifier(_) |
-                TypeKind::Unimplemented(_) => {}
-            }
-        }
-        for subprogram in unit.subprograms.iter() {
-            state.subprograms.insert(subprogram.offset.0, subprogram);
-        }
-        state.address_size = unit.address_size;
+        state.set_unit(unit);
         unit.print(&mut writer, &state)?;
     }
     Ok(())
 }
 
 fn diff_file(file1: &mut File, file2: &mut File, flags: &Flags) -> Result<()> {
-    print_file(file1, flags)?;
-    print_file(file2, flags)?;
+    file1.units.sort_by(|a, b| cmp_unit(a, b));
+    file2.units.sort_by(|a, b| cmp_unit(a, b));
+    for unit in file1.units.iter_mut() {
+        unit.types.sort_by(|a, b| cmp_type(a, b));
+        unit.subprograms.sort_by(|a, b| cmp_subprogram(a, b));
+        unit.variables.sort_by(|a, b| cmp_variable(a, b));
+    }
+    for unit in file2.units.iter_mut() {
+        unit.types.sort_by(|a, b| cmp_type(a, b));
+        unit.subprograms.sort_by(|a, b| cmp_subprogram(a, b));
+        unit.variables.sort_by(|a, b| cmp_variable(a, b));
+    }
+
+    let stdout = std::io::stdout();
+    let mut writer = stdout.lock();
+    let mut state1 = PrintState::new(file1, flags);
+    let mut state2 = PrintState::new(file2, flags);
+    merge(&mut writer,
+          &mut file1.units.iter(),
+          &mut file2.units.iter(),
+          &|a, b| cmp_unit(a, b),
+          &mut |w, a, b| {
+              state1.set_unit(a);
+              state2.set_unit(b);
+              diff_unit(w, a, b, &state1, &state2)?;
+              Ok(())
+          },
+          &|w, a| {
+              writeln!(w, "First only: {:?}", a.name)?;
+              Ok(())
+          },
+          &|w, b| {
+              writeln!(w, "Second only: {:?}", b.name)?;
+              Ok(())
+          })?;
+    Ok(())
+}
+
+fn merge<T: Copy>(
+    w: &mut Write,
+    iter1: &mut Iterator<Item = T>,
+    iter2: &mut Iterator<Item = T>,
+    cmp: &Fn(T, T) -> cmp::Ordering,
+    equal: &mut FnMut(&mut Write, T, T) -> Result<()>,
+    less: &Fn(&mut Write, T) -> Result<()>,
+    greater: &Fn(&mut Write, T) -> Result<()>
+) -> Result<()> {
+    let mut item1 = iter1.next();
+    let mut item2 = iter2.next();
+    loop {
+        match (item1, item2) {
+            (Some(a), Some(b)) => {
+                match cmp(a, b) {
+                    cmp::Ordering::Equal => {
+                        equal(w, a, b)?;
+                        item1 = iter1.next();
+                        item2 = iter2.next();
+                    }
+                    cmp::Ordering::Less => {
+                        less(w, a)?;
+                        item1 = iter1.next();
+                    }
+                    cmp::Ordering::Greater => {
+                        greater(w, b)?;
+                        item2 = iter2.next();
+                    }
+                }
+            }
+            (Some(a), None) => {
+                less(w, a)?;
+                item1 = iter1.next();
+            }
+            (None, Some(b)) => {
+                greater(w, b)?;
+                item2 = iter2.next();
+            }
+            (None, None) => break,
+        };
+    }
     Ok(())
 }
 
@@ -695,6 +779,21 @@ impl<'input> Unit<'input> {
     }
 }
 
+fn cmp_unit(a: &Unit, b: &Unit) -> cmp::Ordering {
+    // TODO: ignore base paths
+    a.name.cmp(&b.name)
+}
+
+fn diff_unit(
+    w: &mut Write,
+    unit1: &Unit,
+    unit2: &Unit,
+    state1: &PrintState,
+    state2: &PrintState
+) -> Result<()> {
+    writeln!(w, "Both: {:?} {:?}", unit1.name, unit1.name)?;
+    Ok(())
+}
 
 #[derive(Debug)]
 enum TypeKind<'input> {
