@@ -1410,22 +1410,31 @@ impl<'input> TypeDef<'input> {
         state.prefix(w)?;
         write!(w, "type ")?;
         self.print_name(w)?;
+        write!(w, " = ")?;
         if let Some(ty) = self.ty(state) {
-            write!(w, " = ")?;
-            ty.print_name(w, state)?;
-        }
-        writeln!(w, "")?;
+            if ty.is_anon() {
+                writeln!(w, "")?;
 
-        state.indent(|state| {
-            if let Some(bit_size) = self.bit_size(state) {
-                state.prefix(w)?;
-                writeln!(w, "size: {}", format_bit(bit_size))?;
+                state.indent(|state| {
+                    ty.print(w, state)
+                })?;
+            } else {
+                ty.print_name(w, state)?;
+                writeln!(w, "")?;
+
+                state.indent(|state| {
+                    if let Some(bit_size) = self.bit_size(state) {
+                        state.prefix(w)?;
+                        writeln!(w, "size: {}", format_bit(bit_size))?;
+                    }
+                    writeln!(w, "")?;
+                    Ok(())
+                })?;
             }
-            writeln!(w, "")?;
-
-            // TODO: print ty if it is anon
-            Ok(())
-        })
+        } else {
+            writeln!(w, "<unknown-type>")?;
+        }
+        Ok(())
     }
 
     fn print_name(&self, w: &mut Write) -> Result<()> {
