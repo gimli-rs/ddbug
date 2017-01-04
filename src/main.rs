@@ -364,7 +364,7 @@ impl<'a, 'input> PrintState<'a, 'input>
         ret
     }
 
-    fn prefix(&self, w: &mut Write) -> Result<()> {
+    fn line_start(&self, w: &mut Write) -> Result<()> {
         write!(w, "{}", self.prefix)?;
         for _ in 0..self.indent {
             write!(w, "\t")?;
@@ -1040,7 +1040,7 @@ impl<'input> Type<'input> {
             TypeKind::Subroutine(..) |
             TypeKind::Modifier(..) => {}
             TypeKind::Unimplemented(_) => {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 self.print_name(w, state)?;
                 writeln!(w, "")?;
             }
@@ -1407,7 +1407,7 @@ impl<'input> TypeDef<'input> {
             return Ok(());
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         write!(w, "type ")?;
         self.print_name(w)?;
         write!(w, " = ")?;
@@ -1424,7 +1424,7 @@ impl<'input> TypeDef<'input> {
 
                 state.indent(|state| {
                     if let Some(bit_size) = self.bit_size(state) {
-                        state.prefix(w)?;
+                        state.line_start(w)?;
                         writeln!(w, "size: {}", format_bit(bit_size))?;
                     }
                     writeln!(w, "")?;
@@ -1567,25 +1567,25 @@ impl<'input> StructType<'input> {
             return Ok(());
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         self.print_name(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
             if let Some(size) = self.byte_size {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "size: {}", size)?;
             } else if !self.declaration {
                 debug!("struct with no size");
             }
 
             if self.declaration {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "declaration: yes")?;
             }
 
             if !self.members.is_empty() {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "members:")?;
                 state.indent(|state| {
                     self.print_members(w, state, Some(0))
@@ -1613,7 +1613,7 @@ impl<'input> StructType<'input> {
         }
         if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
             if bit_offset < size * 8 {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w,
                          "{}[{}]\t<padding>",
                          format_bit(bit_offset),
@@ -1781,25 +1781,25 @@ impl<'input> UnionType<'input> {
             return Ok(());
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         self.print_name(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
             if let Some(size) = self.byte_size {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "size: {}", size)?;
             } else if !self.declaration {
                 debug!("union with no size");
             }
 
             if self.declaration {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "declaration: yes")?;
             }
 
             if !self.members.is_empty() {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "members:")?;
                 state.indent(|state| {
                     self.print_members(w, state, Some(0))
@@ -1985,7 +1985,7 @@ impl<'input> Member<'input> {
     ) -> Result<()> {
         if let Some(end_bit_offset) = *end_bit_offset {
             if self.bit_offset > end_bit_offset {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w,
                          "{}[{}]\t<padding>",
                          format_bit(end_bit_offset),
@@ -1993,7 +1993,7 @@ impl<'input> Member<'input> {
             }
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         write!(w, "{}", format_bit(self.bit_offset))?;
         match self.bit_size(state) {
             Some(bit_size) => {
@@ -2125,18 +2125,18 @@ impl<'input> EnumerationType<'input> {
             return Ok(());
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         self.print_name(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
             if let Some(size) = self.byte_size {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "size: {}", size)?;
             }
 
             if !self.enumerators.is_empty() {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "enumerators:")?;
                 state.indent(|state| {
                     for enumerator in self.enumerators.iter() {
@@ -2218,7 +2218,7 @@ impl<'input> Enumerator<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        state.prefix(w)?;
+        state.line_start(w)?;
         self.print_name(w)?;
         if let Some(value) = self.value {
             write!(w, "({})", value)?;
@@ -2560,7 +2560,7 @@ impl<'input> Subprogram<'input> {
             return Ok(());
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         write!(w, "fn ")?;
         self.namespace.print(w)?;
         match self.name {
@@ -2571,16 +2571,16 @@ impl<'input> Subprogram<'input> {
 
         state.indent(|state| {
             if let Some(linkage_name) = self.linkage_name {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
             }
 
             if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
                 if high_pc > low_pc {
-                    state.prefix(w)?;
+                    state.line_start(w)?;
                     writeln!(w, "address: 0x{:x}-0x{:x}", low_pc, high_pc - 1)?;
                 } else {
-                    state.prefix(w)?;
+                    state.line_start(w)?;
                     writeln!(w, "address: 0x{:x}", low_pc)?;
                 }
             } else if !self.inline && !self.declaration {
@@ -2588,24 +2588,24 @@ impl<'input> Subprogram<'input> {
             }
 
             if let Some(size) = self.size {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "size: {}", size)?;
             }
 
             if self.inline {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "inline: yes")?;
             }
             if self.declaration {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "declaration: yes")?;
             }
 
             if let Some(return_type) = self.return_type {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "return type:")?;
                 state.indent(|state| {
-                    state.prefix(w)?;
+                    state.line_start(w)?;
                     match Type::from_offset(state, return_type).and_then(|t| t.bit_size(state)) {
                         Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
                         None => write!(w, "[??]")?,
@@ -2618,11 +2618,11 @@ impl<'input> Subprogram<'input> {
             }
 
             if !self.parameters.is_empty() {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "parameters:")?;
                 state.indent(|state| {
                     for parameter in self.parameters.iter() {
-                        state.prefix(w)?;
+                        state.line_start(w)?;
                         match parameter.bit_size(state) {
                             Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
                             None => write!(w, "[??]")?,
@@ -2636,7 +2636,7 @@ impl<'input> Subprogram<'input> {
             }
 
             if state.flags.inline_depth > 0 && !self.inlined_subroutines.is_empty() {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "inlined subroutines:")?;
                 state.indent(|state| {
                     for subroutine in self.inlined_subroutines.iter() {
@@ -2651,11 +2651,11 @@ impl<'input> Subprogram<'input> {
                     let calls =
                         disassemble(state.file.machine, &state.file.region, low_pc, high_pc);
                     if !calls.is_empty() {
-                        state.prefix(w)?;
+                        state.line_start(w)?;
                         writeln!(w, "calls:")?;
                         state.indent(|state| {
                             for call in &calls {
-                                state.prefix(w)?;
+                                state.line_start(w)?;
                                 write!(w, "0x{:x}", call)?;
                                 if let Some(subprogram) = state.all_subprograms.get(call) {
                                     write!(w, " ")?;
@@ -2914,7 +2914,7 @@ impl<'input> InlinedSubroutine<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, depth: usize) -> Result<()> {
-        state.prefix(w)?;
+        state.line_start(w)?;
         match self.size {
             Some(size) => write!(w, "[{}]", size)?,
             None => write!(w, "[??]")?,
@@ -3017,7 +3017,7 @@ impl<'input> Variable<'input> {
             return Ok(());
         }
 
-        state.prefix(w)?;
+        state.line_start(w)?;
         write!(w, "var ")?;
         self.print_name(w)?;
         write!(w, ": ")?;
@@ -3029,19 +3029,19 @@ impl<'input> Variable<'input> {
 
         state.indent(|state| {
             if let Some(linkage_name) = self.linkage_name {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
             }
 
             if let Some(bit_size) = self.bit_size(state) {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "size: {}", format_bit(bit_size))?;
             } else if !self.declaration {
                 debug!("variable with no size");
             }
 
             if self.declaration {
-                state.prefix(w)?;
+                state.line_start(w)?;
                 writeln!(w, "declaration: yes")?;
             }
 
