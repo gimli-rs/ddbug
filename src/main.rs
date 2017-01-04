@@ -1097,12 +1097,8 @@ fn cmp_type(type_a: &Type, type_b: &Type) -> cmp::Ordering {
     match (&type_a.kind, &type_b.kind) {
         (&TypeDef(ref a), &TypeDef(ref b)) => cmp_type_def(a, b),
         (&Struct(ref a), &Struct(ref b)) => cmp_struct(a, b),
-        (&Union(ref a), &Union(ref b)) => {
-            cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-        }
-        (&Enumeration(ref a), &Enumeration(ref b)) => {
-            cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-        }
+        (&Union(ref a), &Union(ref b)) => cmp_union(a, b),
+        (&Enumeration(ref a), &Enumeration(ref b)) => cmp_enumeration(a, b),
         _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
     }
 }
@@ -1113,14 +1109,8 @@ fn equal_type(type_a: &Type, type_b: &Type, state: &DiffState) -> bool {
         (&Base(ref a), &Base(ref b)) => equal_base_type(a, b, state),
         (&TypeDef(ref a), &TypeDef(ref b)) => equal_type_def(a, b, state),
         (&Struct(ref a), &Struct(ref b)) => equal_struct(a, b, state),
-        (&Union(ref _a), &Union(ref _b)) => {
-            // TODO
-            false
-        }
-        (&Enumeration(ref _a), &Enumeration(ref _b)) => {
-            // TODO
-            false
-        }
+        (&Union(ref a), &Union(ref b)) => equal_union(a, b, state),
+        (&Enumeration(ref a), &Enumeration(ref b)) => equal_enumeration(a, b, state),
         (&Array(ref _a), &Array(ref _b)) => {
             // TODO
             false
@@ -1147,18 +1137,10 @@ fn diff_type(w: &mut Write, type_a: &Type, type_b: &Type, state: &mut DiffState)
             diff_struct(w, a, b, state)?;
         }
         (&Union(ref a), &Union(ref b)) => {
-            write!(w, "Both: ")?;
-            a.print_name(w)?;
-            write!(w, ", ")?;
-            b.print_name(w)?;
-            writeln!(w, "")?;
+            diff_union(w, a, b, state)?;
         }
         (&Enumeration(ref a), &Enumeration(ref b)) => {
-            write!(w, "Both: ")?;
-            a.print_name(w)?;
-            write!(w, ", ")?;
-            b.print_name(w)?;
-            writeln!(w, "")?;
+            diff_enumeration(w, a, b, state)?;
         }
         _ => {}
     }
@@ -1626,21 +1608,13 @@ fn cmp_struct(a: &StructType, b: &StructType) -> cmp::Ordering {
     cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
 }
 
-fn equal_struct(
-    a: &StructType,
-    b: &StructType,
-    state: &DiffState
-) -> bool {
+fn equal_struct(a: &StructType, b: &StructType, state: &DiffState) -> bool {
     cmp_struct(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
     a.declaration == b.declaration && equal_struct_members(a, b, state) &&
     equal_struct_subprograms(a, b, state)
 }
 
-fn equal_struct_members(
-    struct_a: &StructType,
-    struct_b: &StructType,
-    state: &DiffState
-) -> bool {
+fn equal_struct_members(struct_a: &StructType, struct_b: &StructType, state: &DiffState) -> bool {
     if struct_a.members.len() != struct_b.members.len() {
         return false;
     }
@@ -1814,6 +1788,45 @@ impl<'input> UnionType<'input> {
     fn is_anon(&self) -> bool {
         self.name.is_none()
     }
+}
+
+fn cmp_union(a: &UnionType, b: &UnionType) -> cmp::Ordering {
+    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+}
+
+fn equal_union(a: &UnionType, b: &UnionType, state: &DiffState) -> bool {
+    cmp_union(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+    a.declaration == b.declaration && equal_union_members(a, b, state) &&
+    equal_union_subprograms(a, b, state)
+}
+
+fn equal_union_members(union_a: &UnionType, union_b: &UnionType, state: &DiffState) -> bool {
+    if union_a.members.len() != union_b.members.len() {
+        return false;
+    }
+    for (a, b) in union_a.members.iter().zip(union_b.members.iter()) {
+        if !equal_member(a, b, state) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn equal_union_subprograms(_union_a: &UnionType, _union_b: &UnionType, _state: &DiffState) -> bool {
+    // TODO
+    return true;
+}
+
+fn diff_union(w: &mut Write, a: &UnionType, b: &UnionType, state: &mut DiffState) -> Result<()> {
+    if equal_union(a, b, state) {
+        return Ok(());
+    }
+    // TODO
+    write!(w, "- ")?;
+    a.print(w, &mut state.a)?;
+    write!(w, "+ ")?;
+    b.print(w, &mut state.b)?;
+    Ok(())
 }
 
 #[derive(Debug, Default)]
@@ -2134,6 +2147,57 @@ impl<'input> EnumerationType<'input> {
     }
 }
 
+fn cmp_enumeration(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
+    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+}
+
+fn equal_enumeration(a: &EnumerationType, b: &EnumerationType, state: &DiffState) -> bool {
+    cmp_enumeration(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+    equal_enumerators(a, b, state) && equal_enumeration_subprograms(a, b, state)
+}
+
+fn equal_enumerators(
+    enum_a: &EnumerationType,
+    enum_b: &EnumerationType,
+    state: &DiffState
+) -> bool {
+    if enum_a.enumerators.len() != enum_b.enumerators.len() {
+        return false;
+    }
+    for (a, b) in enum_a.enumerators.iter().zip(enum_b.enumerators.iter()) {
+        if !equal_enumerator(a, b, state) {
+            return false;
+        }
+    }
+    return true;
+}
+
+fn equal_enumeration_subprograms(
+    _enum_a: &EnumerationType,
+    _enum_b: &EnumerationType,
+    _state: &DiffState
+) -> bool {
+    // TODO
+    return true;
+}
+
+fn diff_enumeration(
+    w: &mut Write,
+    a: &EnumerationType,
+    b: &EnumerationType,
+    state: &mut DiffState
+) -> Result<()> {
+    if equal_enumeration(a, b, state) {
+        return Ok(());
+    }
+    // TODO
+    write!(w, "- ")?;
+    a.print(w, &mut state.a)?;
+    write!(w, "+ ")?;
+    b.print(w, &mut state.b)?;
+    Ok(())
+}
+
 #[derive(Debug, Default)]
 struct Enumerator<'input> {
     name: Option<&'input ffi::CStr>,
@@ -2201,6 +2265,11 @@ impl<'input> Enumerator<'input> {
         }
         Ok(())
     }
+}
+
+fn equal_enumerator(_a: &Enumerator, _b: &Enumerator, _state: &DiffState) -> bool {
+    // TODO
+    return true;
 }
 
 #[derive(Debug, Default)]
