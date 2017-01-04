@@ -364,6 +364,16 @@ impl<'a, 'input> PrintState<'a, 'input>
         ret
     }
 
+    fn prefix<F>(&mut self, prefix: &'static str, mut f: F) -> Result<()>
+        where F: FnMut(&mut PrintState) -> Result<()>
+    {
+        let prev = self.prefix;
+        self.prefix = prefix;
+        let ret = f(self);
+        self.prefix = prev;
+        ret
+    }
+
     fn line_start(&self, w: &mut Write) -> Result<()> {
         write!(w, "{}", self.prefix)?;
         for _ in 0..self.indent {
@@ -871,22 +881,22 @@ fn diff_unit(
           },
           |w, a, state| {
               if !a.is_anon() && !anon1.contains(&a.offset.0) {
-                // TODO: full diff
-                write!(w, "- ")?;
-                a.print_name(w, state)?;
-                writeln!(w, "")?;
+                state.prefix("- ", |state| {
+                    a.print(w, state)
+                })?;
               }
               Ok(())
           },
           |w, b, state| {
               if !b.is_anon() && !anon2.contains(&b.offset.0) {
-                // TODO: full diff
-                write!(w, "+ ")?;
-                b.print_name(w, state)?;
-                writeln!(w, "")?;
+                state.prefix("+ ", |state| {
+                    b.print(w, state)
+                })?;
               }
               Ok(())
           })?;
+    // TODO: subprograms
+    // TODO: variables
     Ok(())
 }
 
