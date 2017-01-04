@@ -575,6 +575,24 @@ impl<'input> Namespace<'input> {
         })
     }
 
+    fn len(&self) -> usize {
+        match self.parent {
+            Some(ref parent) => parent.len() + 1,
+            None => 1,
+        }
+    }
+
+    fn up(&self, len: usize) -> &Namespace {
+        if len == 0 {
+            self
+        } else {
+            match self.parent {
+                Some(ref parent) => parent.up(len - 1),
+                None => self,
+            }
+        }
+    }
+
     fn print(&self, w: &mut Write) -> Result<()> {
         if let Some(ref parent) = self.parent {
             parent.print(w)?;
@@ -609,15 +627,38 @@ impl<'input> Namespace<'input> {
     }
 }
 
-fn cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
+// Requires a.len() == b.len()
+fn _cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
     match (a.parent.as_ref(), b.parent.as_ref()) {
         (Some(p1), Some(p2)) => {
-            match cmp_namespace(p1, p2) {
+            match _cmp_namespace(p1, p2) {
                 cmp::Ordering::Equal => a.name.cmp(&b.name),
                 o => o,
             }
         }
         _ => cmp::Ordering::Equal,
+    }
+}
+
+fn cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
+    let len_a = a.len();
+    let len_b = b.len();
+    match len_a.cmp(&len_b) {
+        cmp::Ordering::Equal => _cmp_namespace(a, b),
+        cmp::Ordering::Less => {
+            let b = b.up(len_b - len_a);
+            match _cmp_namespace(a, b) {
+                cmp::Ordering::Equal => cmp::Ordering::Less,
+                other => other,
+            }
+        }
+        cmp::Ordering::Greater => {
+            let a = a.up(len_a - len_b);
+            match _cmp_namespace(a, b) {
+                cmp::Ordering::Equal => cmp::Ordering::Greater,
+                other => other,
+            }
+        }
     }
 }
 
