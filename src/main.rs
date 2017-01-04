@@ -186,6 +186,7 @@ struct File<'input> {
 
 impl<'input> File<'input> {
     fn sort(&mut self) {
+        self.units.sort_by(cmp_unit);
         for unit in self.units.iter_mut() {
             unit.sort();
         }
@@ -484,7 +485,7 @@ fn diff_file(file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> 
     state.merge(&mut writer,
                &mut file_a.units.iter(),
                &mut file_b.units.iter(),
-               |a, b| cmp_unit(a, b),
+               cmp_unit,
                |w, a, b, state| {
                    state.a.set_unit(a);
                    state.b.set_unit(b);
@@ -832,9 +833,9 @@ impl<'input> Unit<'input> {
     }
 
     fn sort(&mut self) {
-        self.types.sort_by(|a, b| cmp_type(a, b));
-        self.subprograms.sort_by(|a, b| cmp_subprogram(a, b));
-        self.variables.sort_by(|a, b| cmp_variable(a, b));
+        self.types.sort_by(cmp_type);
+        self.subprograms.sort_by(cmp_subprogram);
+        self.variables.sort_by(cmp_variable);
 
         for ty in self.types.iter_mut() {
             match ty.kind {
@@ -866,7 +867,7 @@ fn diff_unit(w: &mut Write, unit_a: &Unit, unit_b: &Unit, state: &mut DiffState)
     state.merge(w,
                &mut unit_a.types.iter(),
                &mut unit_b.types.iter(),
-               |a, b| cmp_type(a, b),
+               cmp_type,
                |w, a, b, state| {
             if !a.is_anon() && !anon_a.contains(&a.offset.0) ||
                !b.is_anon() && !anon_b.contains(&b.offset.0) {
