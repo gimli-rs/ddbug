@@ -129,23 +129,23 @@ fn main() {
                    matches.free.len());
             print_usage(&opts);
         }
-        let path1 = &matches.free[0];
-        let path2 = &matches.free[1];
+        let path_a = &matches.free[0];
+        let path_b = &matches.free[1];
 
-        if let Err(e) = parse_file(path1,
-                                   &mut |file1| {
-            if let Err(e) = parse_file(path2,
-                                       &mut |file2| {
-                                           if let Err(e) = diff_file(file1, file2, &flags) {
+        if let Err(e) = parse_file(path_a,
+                                   &mut |file_a| {
+            if let Err(e) = parse_file(path_b,
+                                       &mut |file_b| {
+                                           if let Err(e) = diff_file(file_a, file_b, &flags) {
                                                error!("{}", e);
                                            }
                                            Ok(())
                                        }) {
-                error!("{}: {}", path2, e);
+                error!("{}: {}", path_b, e);
             }
             Ok(())
         }) {
-            error!("{}: {}", path1, e);
+            error!("{}: {}", path_a, e);
         }
     } else {
         if matches.free.len() != 1 {
@@ -425,8 +425,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     fn merge<T, FCmp, FEqual, FLess, FGreater>(
         &mut self,
         w: &mut Write,
-        iter1: &mut Iterator<Item = T>,
-        iter2: &mut Iterator<Item = T>,
+        iter_a: &mut Iterator<Item = T>,
+        iter_b: &mut Iterator<Item = T>,
         cmp: FCmp,
         mut equal: FEqual,
         less: FLess,
@@ -438,34 +438,34 @@ impl<'a, 'input> DiffState<'a, 'input>
               FLess: Fn(&mut Write, T, &mut PrintState<'a, 'input>) -> Result<()>,
               FGreater: Fn(&mut Write, T, &mut PrintState<'a, 'input>) -> Result<()>,
     {
-        let mut item1 = iter1.next();
-        let mut item2 = iter2.next();
+        let mut item_a = iter_a.next();
+        let mut item_b = iter_b.next();
         loop {
-            match (item1, item2) {
+            match (item_a, item_b) {
                 (Some(a), Some(b)) => {
                     match cmp(a, b) {
                         cmp::Ordering::Equal => {
                             equal(w, a, b, self)?;
-                            item1 = iter1.next();
-                            item2 = iter2.next();
+                            item_a = iter_a.next();
+                            item_b = iter_b.next();
                         }
                         cmp::Ordering::Less => {
                             less(w, a, &mut self.a)?;
-                            item1 = iter1.next();
+                            item_a = iter_a.next();
                         }
                         cmp::Ordering::Greater => {
                             greater(w, b, &mut self.b)?;
-                            item2 = iter2.next();
+                            item_b = iter_b.next();
                         }
                     }
                 }
                 (Some(a), None) => {
                     less(w, a, &mut self.a)?;
-                    item1 = iter1.next();
+                    item_a = iter_a.next();
                 }
                 (None, Some(b)) => {
                     greater(w, b, &mut self.b)?;
-                    item2 = iter2.next();
+                    item_b = iter_b.next();
                 }
                 (None, None) => break,
             };
@@ -474,16 +474,16 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 }
 
-fn diff_file(file1: &mut File, file2: &mut File, flags: &Flags) -> Result<()> {
-    file1.sort();
-    file2.sort();
+fn diff_file(file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> {
+    file_a.sort();
+    file_b.sort();
 
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    let mut state = DiffState::new(file1, file2, flags);
+    let mut state = DiffState::new(file_a, file_b, flags);
     state.merge(&mut writer,
-          &mut file1.units.iter(),
-          &mut file2.units.iter(),
+          &mut file_a.units.iter(),
+          &mut file_b.units.iter(),
           |a, b| cmp_unit(a, b),
           |w, a, b, state| {
               state.a.set_unit(a);
@@ -866,21 +866,21 @@ fn diff_unit(
     state: &mut DiffState
 ) -> Result<()> {
     writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
-    let anon1 = unit_a.anon_members();
-    let anon2 = unit_b.anon_members();
+    let anon_a = unit_a.anon_members();
+    let anon_b = unit_b.anon_members();
     state.merge(w,
           &mut unit_a.types.iter(),
           &mut unit_b.types.iter(),
           |a, b| cmp_type(a, b),
           |w, a, b, state| {
-              if !a.is_anon() && !anon1.contains(&a.offset.0)
-                  || !b.is_anon() && !anon2.contains(&b.offset.0) {
+              if !a.is_anon() && !anon_a.contains(&a.offset.0)
+                  || !b.is_anon() && !anon_b.contains(&b.offset.0) {
                 diff_type(w, a, b, state)?;
               }
               Ok(())
           },
           |w, a, state| {
-              if !a.is_anon() && !anon1.contains(&a.offset.0) {
+              if !a.is_anon() && !anon_a.contains(&a.offset.0) {
                 state.prefix("- ", |state| {
                     a.print(w, state)
                 })?;
@@ -888,7 +888,7 @@ fn diff_unit(
               Ok(())
           },
           |w, b, state| {
-              if !b.is_anon() && !anon2.contains(&b.offset.0) {
+              if !b.is_anon() && !anon_b.contains(&b.offset.0) {
                 state.prefix("+ ", |state| {
                     b.print(w, state)
                 })?;
