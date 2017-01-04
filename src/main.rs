@@ -1106,15 +1106,15 @@ fn cmp_type(type_a: &Type, type_b: &Type) -> cmp::Ordering {
     }
 }
 
-fn equal_type(type_a: &Type, state_a: &PrintState, type_b: &Type, state_b: &PrintState) -> bool {
+fn equal_type(type_a: &Type, type_b: &Type, state: &DiffState) -> bool {
     use TypeKind::*;
     match (&type_a.kind, &type_b.kind) {
         (&Base(ref _a), &Base(ref _b)) => {
             // TODO
             false
         }
-        (&TypeDef(ref a), &TypeDef(ref b)) => equal_type_def(a, state_a, b, state_b),
-        (&Struct(ref a), &Struct(ref b)) => equal_struct(a, state_a, b, state_b),
+        (&TypeDef(ref a), &TypeDef(ref b)) => equal_type_def(a, b, state),
+        (&Struct(ref a), &Struct(ref b)) => equal_struct(a, b, state),
         (&Union(ref _a), &Union(ref _b)) => {
             // TODO
             false
@@ -1438,19 +1438,19 @@ fn cmp_type_def(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
     cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
 }
 
-fn equal_type_def(a: &TypeDef, state_a: &PrintState, b: &TypeDef, state_b: &PrintState) -> bool {
+fn equal_type_def(a: &TypeDef, b: &TypeDef, state: &DiffState) -> bool {
     if cmp_type_def(a, b) != cmp::Ordering::Equal {
         return false;
     }
-    match (a.ty(state_a), b.ty(state_b)) {
-        (Some(a), Some(b)) => equal_type(a, state_a, b, state_b),
+    match (a.ty(&state.a), b.ty(&state.b)) {
+        (Some(a), Some(b)) => equal_type(a, b, state),
         (None, None) => true,
         _ => false,
     }
 }
 
 fn diff_type_def(w: &mut Write, a: &TypeDef, b: &TypeDef, state: &mut DiffState) -> Result<()> {
-    if equal_type_def(a, &state.a, b, &state.b) {
+    if equal_type_def(a, b, state) {
         return Ok(());
     }
     // TODO
@@ -1618,26 +1618,24 @@ fn cmp_struct(a: &StructType, b: &StructType) -> cmp::Ordering {
 
 fn equal_struct(
     a: &StructType,
-    state_a: &PrintState,
     b: &StructType,
-    state_b: &PrintState
+    state: &DiffState
 ) -> bool {
     cmp_struct(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-    a.declaration == b.declaration && equal_struct_members(a, state_a, b, state_b) &&
-    equal_struct_subprograms(a, state_a, b, state_b)
+    a.declaration == b.declaration && equal_struct_members(a, b, state) &&
+    equal_struct_subprograms(a, b, state)
 }
 
 fn equal_struct_members(
     struct_a: &StructType,
-    state_a: &PrintState,
     struct_b: &StructType,
-    state_b: &PrintState
+    state: &DiffState
 ) -> bool {
     if struct_a.members.len() != struct_b.members.len() {
         return false;
     }
     for (a, b) in struct_a.members.iter().zip(struct_b.members.iter()) {
-        if !equal_member(a, state_a, b, state_b) {
+        if !equal_member(a, b, state) {
             return false;
         }
     }
@@ -1646,16 +1644,15 @@ fn equal_struct_members(
 
 fn equal_struct_subprograms(
     _struct_a: &StructType,
-    _state_a: &PrintState,
     _struct_b: &StructType,
-    _state_b: &PrintState
+    _state: &DiffState
 ) -> bool {
     // TODO
     return true;
 }
 
 fn diff_struct(w: &mut Write, a: &StructType, b: &StructType, state: &mut DiffState) -> Result<()> {
-    if equal_struct(a, &state.a, b, &state.b) {
+    if equal_struct(a, b, state) {
         return Ok(());
     }
     // TODO
@@ -2007,7 +2004,7 @@ impl<'input> Member<'input> {
     }
 }
 
-fn equal_member(_a: &Member, _state_a: &PrintState, _b: &Member, __state_b: &PrintState) -> bool {
+fn equal_member(_a: &Member, _b: &Member, _state: &DiffState) -> bool {
     // TODO
     return true;
 }
