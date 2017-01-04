@@ -1109,10 +1109,7 @@ fn cmp_type(type_a: &Type, type_b: &Type) -> cmp::Ordering {
 fn equal_type(type_a: &Type, type_b: &Type, state: &DiffState) -> bool {
     use TypeKind::*;
     match (&type_a.kind, &type_b.kind) {
-        (&Base(ref _a), &Base(ref _b)) => {
-            // TODO
-            false
-        }
+        (&Base(ref a), &Base(ref b)) => equal_base_type(a, b, state),
         (&TypeDef(ref a), &TypeDef(ref b)) => equal_type_def(a, b, state),
         (&Struct(ref a), &Struct(ref b)) => equal_struct(a, b, state),
         (&Union(ref _a), &Union(ref _b)) => {
@@ -1328,6 +1325,18 @@ impl<'input> BaseType<'input> {
         }
         Ok(())
     }
+}
+
+// Compare names
+fn cmp_base_type(a: &BaseType, b: &BaseType) -> cmp::Ordering {
+    a.name.cmp(&b.name)
+}
+
+fn equal_base_type(a: &BaseType, b: &BaseType, _state: &DiffState) -> bool {
+    if cmp_base_type(a, b) != cmp::Ordering::Equal {
+        return false;
+    }
+    a.byte_size == b.byte_size
 }
 
 #[derive(Debug, Default)]
