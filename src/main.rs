@@ -187,7 +187,7 @@ struct File<'input> {
 impl<'input> File<'input> {
     fn sort(&mut self) {
         self.units.sort_by(cmp_unit);
-        for unit in self.units.iter_mut() {
+        for unit in &mut self.units {
             unit.sort();
         }
     }
@@ -288,13 +288,13 @@ impl<'a, 'input> PrintState<'a, 'input>
         };
 
         // TODO: insert symbol table names too
-        for unit in file.units.iter() {
-            for ty in unit.types.iter() {
+        for unit in &file.units {
+            for ty in &unit.types {
                 match ty.kind {
                     TypeKind::Struct(StructType { ref subprograms, .. }) |
                     TypeKind::Union(UnionType { ref subprograms, .. }) |
                     TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
-                        for subprogram in subprograms.iter() {
+                        for subprogram in subprograms {
                             if let Some(low_pc) = subprogram.low_pc {
                                 state.all_subprograms.insert(low_pc, subprogram);
                             }
@@ -308,7 +308,7 @@ impl<'a, 'input> PrintState<'a, 'input>
                     TypeKind::Unimplemented(_) => {}
                 }
             }
-            for subprogram in unit.subprograms.iter() {
+            for subprogram in &unit.subprograms {
                 if let Some(low_pc) = subprogram.low_pc {
                     state.all_subprograms.insert(low_pc, subprogram);
                 }
@@ -320,13 +320,13 @@ impl<'a, 'input> PrintState<'a, 'input>
     fn set_unit(&mut self, unit: &'a Unit<'input>) {
         self.types.clear();
         self.subprograms.clear();
-        for ty in unit.types.iter() {
+        for ty in &unit.types {
             self.types.insert(ty.offset.0, ty);
             match ty.kind {
                 TypeKind::Struct(StructType { ref subprograms, .. }) |
                 TypeKind::Union(UnionType { ref subprograms, .. }) |
                 TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
-                    for subprogram in subprograms.iter() {
+                    for subprogram in subprograms {
                         self.subprograms.insert(subprogram.offset.0, subprogram);
                     }
                 }
@@ -338,7 +338,7 @@ impl<'a, 'input> PrintState<'a, 'input>
                 TypeKind::Unimplemented(_) => {}
             }
         }
-        for subprogram in unit.subprograms.iter() {
+        for subprogram in &unit.subprograms {
             self.subprograms.insert(subprogram.offset.0, subprogram);
         }
         self.address_size = unit.address_size;
@@ -399,7 +399,7 @@ fn print_file(file: &mut File, flags: &Flags) -> Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
     let mut state = PrintState::new(file, flags);
-    for unit in file.units.iter() {
+    for unit in &file.units {
         state.set_unit(unit);
         unit.print(&mut writer, &mut state)?;
     }
@@ -609,13 +609,14 @@ impl<'input> Namespace<'input> {
         match self.parent {
             Some(ref parent) => {
                 let (ret, offset) = parent._filter(namespace);
-                if !ret {
-                    return (false, 0);
-                }
-                if offset < namespace.len() {
-                    return (filter_name(self.name, namespace[offset]), offset + 1);
+                if ret {
+                    if offset < namespace.len() {
+                        (filter_name(self.name, namespace[offset]), offset + 1)
+                    } else {
+                        (true, offset)
+                    }
                 } else {
-                    return (true, offset);
+                    (false, 0)
                 }
             }
             None => (true, 0),
@@ -715,7 +716,6 @@ impl<'input> Unit<'input> {
             let mut attrs = entry.attrs();
             while let Some(attr) = attrs.next()? {
                 match attr.name() {
-                    gimli::DW_AT_producer => {}
                     gimli::DW_AT_name => unit.name = attr.string_value(&dwarf.debug_str),
                     gimli::DW_AT_comp_dir => unit.dir = attr.string_value(&dwarf.debug_str),
                     gimli::DW_AT_language => {
@@ -745,6 +745,7 @@ impl<'input> Unit<'input> {
                             unit_state.ranges = Some(ranges);
                         }
                     }
+                    gimli::DW_AT_producer |
                     gimli::DW_AT_entry_pc => {}
                     _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
                 }
@@ -755,7 +756,7 @@ impl<'input> Unit<'input> {
         };
 
         let namespace = Namespace::root();
-        unit.parse_dwarf_children(&dwarf, &mut unit_state, &namespace, iter)?;
+        unit.parse_dwarf_children(dwarf, &mut unit_state, &namespace, iter)?;
         Ok(unit)
     }
 
@@ -831,14 +832,13 @@ impl<'input> Unit<'input> {
         }
 
         let namespace = Namespace::new(namespace, name);
-        let ret = self.parse_dwarf_children(dwarf, unit, &namespace, iter);
-        ret
+        self.parse_dwarf_children(dwarf, unit, &namespace, iter)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         let anon_members = self.anon_members();
 
-        for ty in self.types.iter() {
+        for ty in &self.types {
             // We print unnamed struct and union members inline, so no need
             // to print them again.
             //
@@ -849,10 +849,10 @@ impl<'input> Unit<'input> {
                 ty.print(w, state)?;
             }
         }
-        for subprogram in self.subprograms.iter() {
+        for subprogram in &self.subprograms {
             subprogram.print(w, state)?;
         }
-        for variable in self.variables.iter() {
+        for variable in &self.variables {
             variable.print(w, state)?;
         }
         Ok(())
@@ -861,7 +861,7 @@ impl<'input> Unit<'input> {
     // The offsets of types that are unnamed struct and union members.
     fn anon_members(&self) -> HashSet<usize> {
         let mut anon_members = HashSet::new();
-        for ty in self.types.iter() {
+        for ty in &self.types {
             ty.visit_members(&mut |t| {
                 if t.is_anon() {
                     if let Some(offset) = t.ty {
@@ -878,7 +878,7 @@ impl<'input> Unit<'input> {
         self.subprograms.sort_by(cmp_subprogram);
         self.variables.sort_by(cmp_variable);
 
-        for ty in self.types.iter_mut() {
+        for ty in &mut self.types {
             match ty.kind {
                 TypeKind::Struct(StructType { ref mut subprograms, .. }) |
                 TypeKind::Union(UnionType { ref mut subprograms, .. }) |
@@ -1566,7 +1566,7 @@ impl<'input> StructType<'input> {
     }
 
     fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
-        for member in self.members.iter() {
+        for member in &self.members {
             f(member);
         }
     }
@@ -1603,7 +1603,7 @@ impl<'input> StructType<'input> {
                 Ok(())
             })?;
 
-        for subprogram in self.subprograms.iter() {
+        for subprogram in &self.subprograms {
             subprogram.print(w, state)?;
         }
         Ok(())
@@ -1615,7 +1615,7 @@ impl<'input> StructType<'input> {
         state: &mut PrintState,
         mut bit_offset: Option<u64>
     ) -> Result<()> {
-        for member in self.members.iter() {
+        for member in &self.members {
             member.print(w, state, &mut bit_offset)?;
         }
         if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
@@ -1664,7 +1664,7 @@ fn equal_struct_members(struct_a: &StructType, struct_b: &StructType, state: &Di
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn equal_struct_subprograms(
@@ -1673,7 +1673,7 @@ fn equal_struct_subprograms(
     _state: &DiffState
 ) -> bool {
     // TODO
-    return true;
+    true
 }
 
 fn diff_struct(w: &mut Write, a: &StructType, b: &StructType, state: &mut DiffState) -> Result<()> {
@@ -1760,7 +1760,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
-        for member in self.members.iter() {
+        for member in &self.members {
             f(member);
         }
     }
@@ -1797,7 +1797,7 @@ impl<'input> UnionType<'input> {
                 Ok(())
             })?;
 
-        for subprogram in self.subprograms.iter() {
+        for subprogram in &self.subprograms {
             subprogram.print(w, state)?;
         }
         Ok(())
@@ -1809,7 +1809,7 @@ impl<'input> UnionType<'input> {
         state: &mut PrintState,
         bit_offset: Option<u64>
     ) -> Result<()> {
-        for member in self.members.iter() {
+        for member in &self.members {
             let mut bit_offset = bit_offset;
             member.print(w, state, &mut bit_offset)?;
         }
@@ -1850,12 +1850,12 @@ fn equal_union_members(union_a: &UnionType, union_b: &UnionType, state: &DiffSta
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn equal_union_subprograms(_union_a: &UnionType, _union_b: &UnionType, _state: &DiffState) -> bool {
     // TODO
-    return true;
+    true
 }
 
 fn diff_union(w: &mut Write, a: &UnionType, b: &UnionType, state: &mut DiffState) -> Result<()> {
@@ -2070,7 +2070,7 @@ impl<'input> Member<'input> {
 
 fn equal_member(_a: &Member, _b: &Member, _state: &DiffState) -> bool {
     // TODO
-    return true;
+    true
 }
 
 #[derive(Debug, Default)]
@@ -2106,7 +2106,7 @@ impl<'input> EnumerationType<'input> {
                     }
                     gimli::DW_AT_decl_file |
                     gimli::DW_AT_decl_line |
-                    gimli::DW_AT_sibling => {}
+                    gimli::DW_AT_sibling |
                     gimli::DW_AT_type |
                     gimli::DW_AT_enum_class => {}
                     _ => {
@@ -2160,7 +2160,7 @@ impl<'input> EnumerationType<'input> {
                     state.line_start(w)?;
                     writeln!(w, "enumerators:")?;
                     state.indent(|state| {
-                            for enumerator in self.enumerators.iter() {
+                            for enumerator in &self.enumerators {
                                 enumerator.print(w, state)?;
                             }
                             Ok(())
@@ -2171,7 +2171,7 @@ impl<'input> EnumerationType<'input> {
                 Ok(())
             })?;
 
-        for subprogram in self.subprograms.iter() {
+        for subprogram in &self.subprograms {
             subprogram.print(w, state)?;
         }
         Ok(())
@@ -2210,7 +2210,7 @@ fn equal_enumerators(
             return false;
         }
     }
-    return true;
+    true
 }
 
 fn equal_enumeration_subprograms(
@@ -2219,7 +2219,7 @@ fn equal_enumeration_subprograms(
     _state: &DiffState
 ) -> bool {
     // TODO
-    return true;
+    true
 }
 
 fn diff_enumeration(
@@ -2310,7 +2310,7 @@ impl<'input> Enumerator<'input> {
 
 fn equal_enumerator(_a: &Enumerator, _b: &Enumerator, _state: &DiffState) -> bool {
     // TODO
-    return true;
+    true
 }
 
 #[derive(Debug, Default)]
@@ -2461,7 +2461,7 @@ impl<'input> SubroutineType<'input> {
     fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         let mut first = true;
         write!(w, "(")?;
-        for parameter in self.parameters.iter() {
+        for parameter in &self.parameters {
             if first {
                 first = false;
             } else {
@@ -2699,7 +2699,7 @@ impl<'input> Subprogram<'input> {
                 state.line_start(w)?;
                 writeln!(w, "parameters:")?;
                 state.indent(|state| {
-                        for parameter in self.parameters.iter() {
+                        for parameter in &self.parameters {
                             state.line_start(w)?;
                             match parameter.bit_size(state) {
                                 Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
@@ -2717,7 +2717,7 @@ impl<'input> Subprogram<'input> {
                 state.line_start(w)?;
                 writeln!(w, "inlined subroutines:")?;
                 state.indent(|state| {
-                        for subroutine in self.inlined_subroutines.iter() {
+                        for subroutine in &self.inlined_subroutines {
                             subroutine.print(w, state, 1)?;
                         }
                         Ok(())
@@ -3006,7 +3006,7 @@ impl<'input> InlinedSubroutine<'input> {
 
         if state.flags.inline_depth > depth {
             state.indent(|state| {
-                    for subroutine in self.inlined_subroutines.iter() {
+                    for subroutine in &self.inlined_subroutines {
                         subroutine.print(w, state, depth + 1)?;
                     }
                     Ok(())
@@ -3202,7 +3202,7 @@ fn disassemble_arch<A>(
             writeln!(w, "");
             */
 
-            for instruction in mnemonic.instructions.iter() {
+            for instruction in &mnemonic.instructions {
                 match *instruction {
                     panopticon::Statement { op: panopticon::Operation::Call(ref call), .. } => {
                         match *call {
@@ -3220,7 +3220,7 @@ fn disassemble_arch<A>(
         }
 
         for (_origin, target, _guard) in m.jumps {
-            if let panopticon::Rvalue::Constant { value, size: _ } = target {
+            if let panopticon::Rvalue::Constant { value, .. } = target {
                 if value > addr && value < high_pc {
                     jumps.push(value);
                 }
