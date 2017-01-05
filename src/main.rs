@@ -836,7 +836,7 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        let anon_members = self.anon_members();
+        let inline_types = self.inline_types();
 
         for ty in &self.types {
             // We print unnamed struct and union members inline, so no need
@@ -845,7 +845,7 @@ impl<'input> Unit<'input> {
             // Also don't print anonymous types. Normally these will have also
             // been printed inline (eg in a TypeDef). We don't actually check
             // that they have been printed already, but in future we could.
-            if !ty.is_anon() && !anon_members.contains(&ty.offset.0) {
+            if !inline_types.contains(&ty.offset.0) {
                 ty.print(w, state)?;
             }
         }
@@ -858,19 +858,22 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    // The offsets of types that are unnamed struct and union members.
-    fn anon_members(&self) -> HashSet<usize> {
-        let mut anon_members = HashSet::new();
+    // The offsets of types that should be printed inline.
+    fn inline_types(&self) -> HashSet<usize> {
+        let mut inline_types = HashSet::new();
         for ty in &self.types {
+            if ty.is_anon() {
+                inline_types.insert(ty.offset.0);
+            }
             ty.visit_members(&mut |t| {
-                if t.is_anon() {
+                if t.is_inline() {
                     if let Some(offset) = t.ty {
-                        anon_members.insert(offset.0);
+                        inline_types.insert(offset.0);
                     }
                 }
             });
         }
-        anon_members
+        inline_types
     }
 
     fn sort(&mut self) {
@@ -903,27 +906,27 @@ fn cmp_unit(a: &Unit, b: &Unit) -> cmp::Ordering {
 
 fn diff_unit(w: &mut Write, unit_a: &Unit, unit_b: &Unit, state: &mut DiffState) -> Result<()> {
     writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
-    let anon_a = unit_a.anon_members();
-    let anon_b = unit_b.anon_members();
+    let inline_a = unit_a.inline_types();
+    let inline_b = unit_b.inline_types();
     state.merge(w,
                &mut unit_a.types.iter(),
                &mut unit_b.types.iter(),
                cmp_type,
                |w, a, b, state| {
-            if !a.is_anon() && !anon_a.contains(&a.offset.0) ||
-               !b.is_anon() && !anon_b.contains(&b.offset.0) {
+            if !inline_a.contains(&a.offset.0) ||
+               !inline_b.contains(&b.offset.0) {
                 diff_type(w, a, b, state)?;
             }
             Ok(())
         },
                |w, a, state| {
-                   if !a.is_anon() && !anon_a.contains(&a.offset.0) {
+                   if !inline_a.contains(&a.offset.0) {
                        state.prefix("- ", |state| a.print(w, state))?;
                    }
                    Ok(())
                },
                |w, b, state| {
-                   if !b.is_anon() && !anon_b.contains(&b.offset.0) {
+                   if !inline_b.contains(&b.offset.0) {
                        state.prefix("+ ", |state| b.print(w, state))?;
                    }
                    Ok(())
@@ -2041,7 +2044,7 @@ impl<'input> Member<'input> {
             write!(w, ": ")?;
             ty.print_name(w, state)?;
             writeln!(w, "")?;
-            if self.is_anon() || ty.is_anon() {
+            if self.is_inline() || ty.is_anon() {
                 state.indent(|state| {
                         match ty.kind {
                             TypeKind::Struct(ref t) => {
@@ -2065,6 +2068,10 @@ impl<'input> Member<'input> {
 
     fn is_anon(&self) -> bool {
         self.name.is_none()
+    }
+
+    fn is_inline(&self) -> bool {
+        self.is_anon()
     }
 }
 
