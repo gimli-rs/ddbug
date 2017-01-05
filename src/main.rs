@@ -836,15 +836,9 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        let inline_types = self.inline_types();
+        let inline_types = self.inline_types(state);
 
         for ty in &self.types {
-            // We print unnamed struct and union members inline, so no need
-            // to print them again.
-            //
-            // Also don't print anonymous types. Normally these will have also
-            // been printed inline (eg in a TypeDef). We don't actually check
-            // that they have been printed already, but in future we could.
             if !inline_types.contains(&ty.offset.0) {
                 ty.print(w, state)?;
             }
@@ -859,14 +853,19 @@ impl<'input> Unit<'input> {
     }
 
     // The offsets of types that should be printed inline.
-    fn inline_types(&self) -> HashSet<usize> {
+    fn inline_types(&self, state: &PrintState) -> HashSet<usize> {
         let mut inline_types = HashSet::new();
         for ty in &self.types {
+            // Assume all anonymous types are inline. We don't actually check
+            // that they will be inline, but in future we could (eg for TypeDefs).
+            // TODO: is this a valid assumption?
             if ty.is_anon() {
                 inline_types.insert(ty.offset.0);
             }
+
+            // Find all inline members.
             ty.visit_members(&mut |t| {
-                if t.is_inline() {
+                if t.is_inline(state) {
                     if let Some(offset) = t.ty {
                         inline_types.insert(offset.0);
                     }
@@ -906,19 +905,18 @@ fn cmp_unit(a: &Unit, b: &Unit) -> cmp::Ordering {
 
 fn diff_unit(w: &mut Write, unit_a: &Unit, unit_b: &Unit, state: &mut DiffState) -> Result<()> {
     writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
-    let inline_a = unit_a.inline_types();
-    let inline_b = unit_b.inline_types();
+    let inline_a = unit_a.inline_types(&state.a);
+    let inline_b = unit_b.inline_types(&state.b);
     state.merge(w,
                &mut unit_a.types.iter(),
                &mut unit_b.types.iter(),
                cmp_type,
                |w, a, b, state| {
-            if !inline_a.contains(&a.offset.0) ||
-               !inline_b.contains(&b.offset.0) {
-                diff_type(w, a, b, state)?;
-            }
-            Ok(())
-        },
+                   if !inline_a.contains(&a.offset.0) || !inline_b.contains(&b.offset.0) {
+                       diff_type(w, a, b, state)?;
+                   }
+                   Ok(())
+               },
                |w, a, state| {
                    if !inline_a.contains(&a.offset.0) {
                        state.prefix("- ", |state| a.print(w, state))?;
@@ -2044,7 +2042,7 @@ impl<'input> Member<'input> {
             write!(w, ": ")?;
             ty.print_name(w, state)?;
             writeln!(w, "")?;
-            if self.is_inline() || ty.is_anon() {
+            if self.is_inline(state) {
                 state.indent(|state| {
                         match ty.kind {
                             TypeKind::Struct(ref t) => {
@@ -2066,11 +2064,19 @@ impl<'input> Member<'input> {
         Ok(())
     }
 
-    fn is_inline(&self) -> bool {
-        // TODO: also return true if the self.ty is anon
+    fn is_inline(&self, state: &PrintState) -> bool {
         match self.name {
-            Some(s) => s.to_bytes().starts_with(b"RUST$ENCODED$ENUM$"),
-            None => true,
+            Some(s) => {
+                if s.to_bytes().starts_with(b"RUST$ENCODED$ENUM$") {
+                    return true;
+                }
+            }
+            None => return true,
+        };
+        if let Some(ty) = self.ty.and_then(|v| Type::from_offset(state, v)) {
+            ty.is_anon()
+        } else {
+            false
         }
     }
 }
