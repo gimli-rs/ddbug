@@ -2066,12 +2066,12 @@ impl<'input> Member<'input> {
         Ok(())
     }
 
-    fn is_anon(&self) -> bool {
-        self.name.is_none()
-    }
-
     fn is_inline(&self) -> bool {
-        self.is_anon()
+        // TODO: also return true if the self.ty is anon
+        match self.name {
+            Some(s) => s.to_bytes().starts_with(b"RUST$ENCODED$ENUM$"),
+            None => true,
+        }
     }
 }
 
