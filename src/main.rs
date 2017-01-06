@@ -912,8 +912,20 @@ impl<'input> Unit<'input> {
                    Type::diff,
                    |w, a, state| state.prefix("- ", |state| a.print(w, state)),
                    |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
-        // TODO: subprograms
-        // TODO: variables
+        state.merge(w,
+                   &mut unit_a.subprograms.iter(),
+                   &mut unit_b.subprograms.iter(),
+                   Subprogram::cmp,
+                   Subprogram::diff,
+                   |w, a, state| state.prefix("- ", |state| a.print(w, state)),
+                   |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
+        state.merge(w,
+                   &mut unit_a.variables.iter(),
+                   &mut unit_b.variables.iter(),
+                   Variable::cmp,
+                   Variable::diff,
+                   |w, a, state| state.prefix("- ", |state| a.print(w, state)),
+                   |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
         Ok(())
     }
 }
@@ -2767,6 +2779,26 @@ impl<'input> Subprogram<'input> {
     fn cmp(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
+
+    fn equal(a: &Subprogram, b: &Subprogram, _state: &DiffState) -> bool {
+        if Self::cmp(a, b) != cmp::Ordering::Equal {
+            return false;
+        }
+        // TODO
+        true
+    }
+
+    fn diff(w: &mut Write, a: &Subprogram, b: &Subprogram, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+        // TODO
+        write!(w, "- ")?;
+        a.print(w, &mut state.a)?;
+        write!(w, "+ ")?;
+        b.print(w, &mut state.b)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -3142,6 +3174,26 @@ impl<'input> Variable<'input> {
 
     fn cmp(a: &Variable, b: &Variable) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    fn equal(a: &Variable, b: &Variable, _state: &DiffState) -> bool {
+        if Self::cmp(a, b) != cmp::Ordering::Equal {
+            return false;
+        }
+        // TODO
+        true
+    }
+
+    fn diff(w: &mut Write, a: &Variable, b: &Variable, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+        // TODO
+        write!(w, "- ")?;
+        a.print(w, &mut state.a)?;
+        write!(w, "+ ")?;
+        b.print(w, &mut state.b)?;
+        Ok(())
     }
 }
 
