@@ -357,7 +357,7 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 
     fn indent<F>(&mut self, mut f: F) -> Result<()>
-        where F: FnMut(&mut PrintState) -> Result<()>
+        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
     {
         self.indent += 1;
         let ret = f(self);
@@ -366,7 +366,7 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 
     fn prefix<F>(&mut self, prefix: &'static str, mut f: F) -> Result<()>
-        where F: FnMut(&mut PrintState) -> Result<()>
+        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
     {
         let prev = self.prefix;
         self.prefix = prefix;
@@ -451,27 +451,64 @@ impl<'a, 'input> DiffState<'a, 'input>
                             item_b = iter_b.next();
                         }
                         cmp::Ordering::Less => {
-                            less(w, a, &mut self.a)?;
+                            self.a.prefix("- ", |state| less(w, a, state))?;
                             item_a = iter_a.next();
                         }
                         cmp::Ordering::Greater => {
-                            greater(w, b, &mut self.b)?;
+                            self.b.prefix("+ ", |state| greater(w, b, state))?;
                             item_b = iter_b.next();
                         }
                     }
                 }
                 (Some(a), None) => {
-                    less(w, a, &mut self.a)?;
+                    self.a.prefix("- ", |state| less(w, a, state))?;
                     item_a = iter_a.next();
                 }
                 (None, Some(b)) => {
-                    greater(w, b, &mut self.b)?;
+                    self.b.prefix("+ ", |state| greater(w, b, state))?;
                     item_b = iter_b.next();
                 }
                 (None, None) => break,
             };
         }
         Ok(())
+    }
+
+    fn indent<F>(&mut self, mut f: F) -> Result<()>
+        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    {
+        self.a.indent += 1;
+        self.b.indent += 1;
+        let ret = f(self);
+        self.a.indent -= 1;
+        self.b.indent -= 1;
+        ret
+    }
+
+    fn prefix_equal<F>(&mut self, mut f: F) -> Result<()>
+        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    {
+        let prev_a = self.a.prefix;
+        let prev_b = self.b.prefix;
+        self.a.prefix = "  ";
+        self.b.prefix = "  ";
+        let ret = f(self);
+        self.a.prefix = prev_a;
+        self.b.prefix = prev_b;
+        ret
+    }
+
+    fn prefix_diff<F>(&mut self, mut f: F) -> Result<()>
+        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    {
+        let prev_a = self.a.prefix;
+        let prev_b = self.b.prefix;
+        self.a.prefix = "- ";
+        self.b.prefix = "+ ";
+        let ret = f(self);
+        self.a.prefix = prev_a;
+        self.b.prefix = prev_b;
+        ret
     }
 }
 
@@ -916,26 +953,30 @@ impl<'input> Unit<'input> {
             }
         };
         state.merge(w,
-                   &mut unit_a.types.iter().filter(|a| should_diff(a) && !inline_a.contains(&a.offset.0)),
-                   &mut unit_b.types.iter().filter(|b| should_diff(b) && !inline_b.contains(&b.offset.0)),
+                   &mut unit_a.types
+                       .iter()
+                       .filter(|a| should_diff(a) && !inline_a.contains(&a.offset.0)),
+                   &mut unit_b.types
+                       .iter()
+                       .filter(|b| should_diff(b) && !inline_b.contains(&b.offset.0)),
                    Type::cmp,
                    Type::diff,
-                   |w, a, state| state.prefix("- ", |state| a.print(w, state)),
-                   |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
+                   |w, a, state| a.print(w, state),
+                   |w, b, state| b.print(w, state))?;
         state.merge(w,
                    &mut unit_a.subprograms.iter(),
                    &mut unit_b.subprograms.iter(),
                    Subprogram::cmp,
                    Subprogram::diff,
-                   |w, a, state| state.prefix("- ", |state| a.print(w, state)),
-                   |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
+                   |w, a, state| a.print(w, state),
+                   |w, b, state| b.print(w, state))?;
         state.merge(w,
                    &mut unit_a.variables.iter(),
                    &mut unit_b.variables.iter(),
                    Variable::cmp,
                    Variable::diff,
-                   |w, a, state| state.prefix("- ", |state| a.print(w, state)),
-                   |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
+                   |w, a, state| a.print(w, state),
+                   |w, b, state| b.print(w, state))?;
         Ok(())
     }
 }
@@ -1146,6 +1187,7 @@ impl<'input> Type<'input> {
             (&Struct(ref a), &Struct(ref b)) => StructType::cmp(a, b),
             (&Union(ref a), &Union(ref b)) => UnionType::cmp(a, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp(a, b),
+            // TODO
             _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
         }
     }
@@ -1195,7 +1237,7 @@ struct TypeModifier<'input> {
     byte_size: Option<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 enum TypeModifierKind {
     Const,
     Pointer,
@@ -1254,17 +1296,17 @@ impl<'input> TypeModifier<'input> {
         Ok(modifier)
     }
 
+    fn ty<'a>(&self, state: &PrintState<'a, 'input>) -> Option<&'a Type<'input>> {
+        self.ty.and_then(|v| Type::from_offset(state, v))
+    }
+
     fn bit_size(&self, state: &PrintState) -> Option<u64> {
         if let Some(byte_size) = self.byte_size {
             return Some(byte_size * 8);
         }
         match self.kind {
             TypeModifierKind::Const |
-            TypeModifierKind::Restrict => {
-                self.ty
-                    .and_then(|v| Type::from_offset(state, v))
-                    .and_then(|v| v.bit_size(state))
-            }
+            TypeModifierKind::Restrict => self.ty(state).and_then(|v| v.bit_size(state)),
             TypeModifierKind::Pointer => state.address_size.map(|v| v * 8),
         }
     }
@@ -1288,9 +1330,18 @@ impl<'input> TypeModifier<'input> {
         Ok(())
     }
 
-    fn equal(_a: &TypeModifier, _b: &TypeModifier, _state: &DiffState) -> bool {
-        // TODO
-        false
+    fn equal(a: &TypeModifier, b: &TypeModifier, state: &DiffState) -> bool {
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            return false;
+        }
+        if a.kind != b.kind {
+            return false;
+        }
+        match (a.ty(&state.a), b.ty(&state.b)) {
+            (Some(a), Some(b)) => Type::equal(a, b, state),
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 
@@ -1426,44 +1477,68 @@ impl<'input> TypeDef<'input> {
         self.ty(state).and_then(|v| v.bit_size(state))
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
-
-        state.line_start(w)?;
-        write!(w, "type ")?;
-        self.print_name(w)?;
-        write!(w, " = ")?;
-        if let Some(ty) = self.ty(state) {
-            if ty.is_anon() {
-                writeln!(w, "")?;
-
-                state.indent(|state| ty.print(w, state))?;
-            } else {
-                ty.print_name(w, state)?;
-                writeln!(w, "")?;
-
-                state.indent(|state| {
-                        if let Some(bit_size) = self.bit_size(state) {
-                            state.line_start(w)?;
-                            writeln!(w, "size: {}", format_bit(bit_size))?;
-                        }
-                        writeln!(w, "")?;
-                        Ok(())
-                    })?;
-            }
-        } else {
-            writeln!(w, "<unknown-type>")?;
-        }
-        Ok(())
-    }
-
     fn print_name(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
             None => write!(w, "<anon-typedef>")?,
+        }
+        Ok(())
+    }
+
+    fn print_ty_anon(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line_start(w)?;
+        write!(w, "type ")?;
+        self.print_name(w)?;
+        write!(w, " = ")?;
+        writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_ty_unknown(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line_start(w)?;
+        write!(w, "type ")?;
+        self.print_name(w)?;
+        write!(w, " = ")?;
+        writeln!(w, "<unknown-type>")?;
+        Ok(())
+    }
+
+    fn print_ty_name(&self, w: &mut Write, state: &mut PrintState, ty: &Type) -> Result<()> {
+        state.line_start(w)?;
+        write!(w, "type ")?;
+        self.print_name(w)?;
+        write!(w, " = ")?;
+        ty.print_name(w, state)?;
+        writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_bit_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if let Some(bit_size) = self.bit_size(state) {
+            state.line_start(w)?;
+            writeln!(w, "size: {}", format_bit(bit_size))?;
+        }
+        Ok(())
+    }
+
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
+            return Ok(());
+        }
+
+        if let Some(ty) = self.ty(state) {
+            if ty.is_anon() {
+                self.print_ty_anon(w, state)?;
+                state.indent(|state| ty.print(w, state))?;
+            } else {
+                self.print_ty_name(w, state, ty)?;
+                state.indent(|state| self.print_bit_size(w, state))?;
+                writeln!(w, "")?;
+            }
+        } else {
+            self.print_ty_unknown(w, state)?;
+            writeln!(w, "")?;
         }
         Ok(())
     }
@@ -1478,7 +1553,7 @@ impl<'input> TypeDef<'input> {
             return false;
         }
         match (a.ty(&state.a), b.ty(&state.b)) {
-            (Some(a), Some(b)) => Type::equal(a, b, state),
+            (Some(ty_a), Some(ty_b)) => Type::equal(ty_a, ty_b, state),
             (None, None) => true,
             _ => false,
         }
@@ -1488,11 +1563,53 @@ impl<'input> TypeDef<'input> {
         if Self::equal(a, b, state) {
             return Ok(());
         }
-        // TODO
-        write!(w, "- ")?;
-        a.print(w, &mut state.a)?;
-        write!(w, "+ ")?;
-        b.print(w, &mut state.b)?;
+
+        match (a.ty(&state.a), b.ty(&state.b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                match (ty_a.is_anon(), ty_b.is_anon()) {
+                    (true, true) => {
+                        state.a.prefix("  ", |state| a.print_ty_anon(w, state))?;
+                        state.indent(|state| Type::diff(w, ty_a, ty_b, state))?;
+                    }
+                    (true, false) | (false, true) => {
+                        state.prefix_diff(|state| {
+                                a.print(w, &mut state.a)?;
+                                b.print(w, &mut state.b)
+                            })?;
+                    }
+                    (false, false) => {
+                        if Type::cmp(ty_a, ty_b) == cmp::Ordering::Equal {
+                            state.prefix_equal(|state| a.print_ty_name(w, &mut state.a, ty_a))?;
+                        } else {
+                            state.prefix_diff(|state| {
+                                    a.print_ty_name(w, &mut state.a, ty_a)?;
+                                    b.print_ty_name(w, &mut state.b, ty_b)
+                                })?;
+                        }
+                        state.indent(|state| {
+                                if a.bit_size(&state.a) == b.bit_size(&state.b) {
+                                    state.prefix_equal(|state| a.print_bit_size(w, &mut state.a))
+                                } else {
+                                    state.prefix_diff(|state| {
+                                        a.print_bit_size(w, &mut state.a)?;
+                                        b.print_bit_size(w, &mut state.b)
+                                    })
+                                }
+                            })?;
+                        writeln!(w, "")?;
+                    }
+                }
+            }
+            (Some(_), None) | (None, Some(_)) => {
+                state.prefix_diff(|state| {
+                        a.print(w, &mut state.a)?;
+                        b.print(w, &mut state.b)
+                    })?;
+            }
+            (None, None) => {
+                state.prefix_equal(|state| a.print_ty_unknown(w, &mut state.a))?;
+            }
+        }
         Ok(())
     }
 }
