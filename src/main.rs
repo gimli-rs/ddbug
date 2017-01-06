@@ -905,9 +905,19 @@ impl<'input> Unit<'input> {
         writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
         let inline_a = unit_a.inline_types(&state.a);
         let inline_b = unit_b.inline_types(&state.b);
+        let should_diff = |t| {
+            if let &Type { kind: TypeKind::Struct(ref t), .. } = t {
+                // Hack for rust closures
+                // TODO: is there better way of identifying these, or a
+                // a way to match pairs for diffing?
+                !filter_name(t.name, "closure")
+            } else {
+                true
+            }
+        };
         state.merge(w,
-                   &mut unit_a.types.iter().filter(|a| !inline_a.contains(&a.offset.0)),
-                   &mut unit_b.types.iter().filter(|b| !inline_b.contains(&b.offset.0)),
+                   &mut unit_a.types.iter().filter(|a| should_diff(a) && !inline_a.contains(&a.offset.0)),
+                   &mut unit_b.types.iter().filter(|b| should_diff(b) && !inline_b.contains(&b.offset.0)),
                    Type::cmp,
                    Type::diff,
                    |w, a, state| state.prefix("- ", |state| a.print(w, state)),
