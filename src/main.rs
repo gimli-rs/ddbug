@@ -435,9 +435,9 @@ impl<'a, 'input> DiffState<'a, 'input>
     ) -> Result<()>
         where T: Copy,
               FCmp: Fn(T, T) -> cmp::Ordering,
-              FEqual: FnMut(&mut Write, T, T, &mut DiffState<'a, 'input>) -> Result<()>,
-              FLess: Fn(&mut Write, T, &mut PrintState<'a, 'input>) -> Result<()>,
-              FGreater: Fn(&mut Write, T, &mut PrintState<'a, 'input>) -> Result<()>
+              FEqual: FnMut(T, T, &mut Write, &mut DiffState<'a, 'input>) -> Result<()>,
+              FLess: Fn(T, &mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
+              FGreater: Fn(T, &mut Write, &mut PrintState<'a, 'input>) -> Result<()>
     {
         let mut item_a = iter_a.next();
         let mut item_b = iter_b.next();
@@ -446,26 +446,26 @@ impl<'a, 'input> DiffState<'a, 'input>
                 (Some(a), Some(b)) => {
                     match cmp(a, b) {
                         cmp::Ordering::Equal => {
-                            equal(w, a, b, self)?;
+                            equal(a, b, w, self)?;
                             item_a = iter_a.next();
                             item_b = iter_b.next();
                         }
                         cmp::Ordering::Less => {
-                            self.a.prefix("- ", |state| less(w, a, state))?;
+                            self.a.prefix("- ", |state| less(a, w, state))?;
                             item_a = iter_a.next();
                         }
                         cmp::Ordering::Greater => {
-                            self.b.prefix("+ ", |state| greater(w, b, state))?;
+                            self.b.prefix("+ ", |state| greater(b, w, state))?;
                             item_b = iter_b.next();
                         }
                     }
                 }
                 (Some(a), None) => {
-                    self.a.prefix("- ", |state| less(w, a, state))?;
+                    self.a.prefix("- ", |state| less(a, w, state))?;
                     item_a = iter_a.next();
                 }
                 (None, Some(b)) => {
-                    self.b.prefix("+ ", |state| greater(w, b, state))?;
+                    self.b.prefix("+ ", |state| greater(b, w, state))?;
                     item_b = iter_b.next();
                 }
                 (None, None) => break,
@@ -523,16 +523,16 @@ fn diff_file(file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> 
                &mut file_a.units.iter(),
                &mut file_b.units.iter(),
                Unit::cmp,
-               |w, a, b, state| {
+               |a, b, w, state| {
                    state.a.set_unit(a);
                    state.b.set_unit(b);
-                   Unit::diff(w, a, b, state)
+                   Unit::diff(a, b, w, state)
                },
-               |w, a, _state| {
+               |a, w, _state| {
                    writeln!(w, "First only: {:?}", a.name)?;
                    Ok(())
                },
-               |w, b, _state| {
+               |b, w, _state| {
                    writeln!(w, "Second only: {:?}", b.name)?;
                    Ok(())
                })?;
@@ -938,7 +938,7 @@ impl<'input> Unit<'input> {
         a.name.cmp(&b.name)
     }
 
-    fn diff(w: &mut Write, unit_a: &Unit, unit_b: &Unit, state: &mut DiffState) -> Result<()> {
+    fn diff(unit_a: &Unit, unit_b: &Unit, w: &mut Write, state: &mut DiffState) -> Result<()> {
         writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
         let inline_a = unit_a.inline_types(&state.a);
         let inline_b = unit_b.inline_types(&state.b);
@@ -961,22 +961,22 @@ impl<'input> Unit<'input> {
                        .filter(|b| should_diff(b) && !inline_b.contains(&b.offset.0)),
                    Type::cmp,
                    Type::diff,
-                   |w, a, state| a.print(w, state),
-                   |w, b, state| b.print(w, state))?;
+                   Type::print,
+                   Type::print)?;
         state.merge(w,
                    &mut unit_a.subprograms.iter(),
                    &mut unit_b.subprograms.iter(),
                    Subprogram::cmp,
                    Subprogram::diff,
-                   |w, a, state| a.print(w, state),
-                   |w, b, state| b.print(w, state))?;
+                   Subprogram::print,
+                   Subprogram::print)?;
         state.merge(w,
                    &mut unit_a.variables.iter(),
                    &mut unit_b.variables.iter(),
                    Variable::cmp,
                    Variable::diff,
-                   |w, a, state| a.print(w, state),
-                   |w, b, state| b.print(w, state))?;
+                   Variable::print,
+                   Variable::print)?;
         Ok(())
     }
 }
@@ -1207,20 +1207,20 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn diff(w: &mut Write, type_a: &Type, type_b: &Type, state: &mut DiffState) -> Result<()> {
+    fn diff(type_a: &Type, type_b: &Type, w: &mut Write, state: &mut DiffState) -> Result<()> {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
             (&Def(ref a), &Def(ref b)) => {
-                TypeDef::diff(w, a, b, state)?;
+                TypeDef::diff(a, b, w, state)?;
             }
             (&Struct(ref a), &Struct(ref b)) => {
-                StructType::diff(w, a, b, state)?;
+                StructType::diff(a, b, w, state)?;
             }
             (&Union(ref a), &Union(ref b)) => {
-                UnionType::diff(w, a, b, state)?;
+                UnionType::diff(a, b, w, state)?;
             }
             (&Enumeration(ref a), &Enumeration(ref b)) => {
-                EnumerationType::diff(w, a, b, state)?;
+                EnumerationType::diff(a, b, w, state)?;
             }
             _ => {}
         }
@@ -1559,7 +1559,7 @@ impl<'input> TypeDef<'input> {
         }
     }
 
-    fn diff(w: &mut Write, a: &TypeDef, b: &TypeDef, state: &mut DiffState) -> Result<()> {
+    fn diff(a: &TypeDef, b: &TypeDef, w: &mut Write, state: &mut DiffState) -> Result<()> {
         if Self::equal(a, b, state) {
             return Ok(());
         }
@@ -1569,7 +1569,7 @@ impl<'input> TypeDef<'input> {
                 match (ty_a.is_anon(), ty_b.is_anon()) {
                     (true, true) => {
                         state.a.prefix("  ", |state| a.print_ty_anon(w, state))?;
-                        state.indent(|state| Type::diff(w, ty_a, ty_b, state))?;
+                        state.indent(|state| Type::diff(ty_a, ty_b, w, state))?;
                     }
                     (true, false) | (false, true) => {
                         state.prefix_diff(|state| {
@@ -1795,7 +1795,7 @@ impl<'input> StructType<'input> {
         true
     }
 
-    fn diff(w: &mut Write, a: &StructType, b: &StructType, state: &mut DiffState) -> Result<()> {
+    fn diff(a: &StructType, b: &StructType, w: &mut Write, state: &mut DiffState) -> Result<()> {
         if Self::equal(a, b, state) {
             return Ok(());
         }
@@ -1977,7 +1977,7 @@ impl<'input> UnionType<'input> {
         true
     }
 
-    fn diff(w: &mut Write, a: &UnionType, b: &UnionType, state: &mut DiffState) -> Result<()> {
+    fn diff(a: &UnionType, b: &UnionType, w: &mut Write, state: &mut DiffState) -> Result<()> {
         if Self::equal(a, b, state) {
             return Ok(());
         }
@@ -2354,9 +2354,9 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn diff(
-        w: &mut Write,
         a: &EnumerationType,
         b: &EnumerationType,
+        w: &mut Write,
         state: &mut DiffState
     ) -> Result<()> {
         if Self::equal(a, b, state) {
@@ -2915,7 +2915,7 @@ impl<'input> Subprogram<'input> {
         true
     }
 
-    fn diff(w: &mut Write, a: &Subprogram, b: &Subprogram, state: &mut DiffState) -> Result<()> {
+    fn diff(a: &Subprogram, b: &Subprogram, w: &mut Write, state: &mut DiffState) -> Result<()> {
         if Self::equal(a, b, state) {
             return Ok(());
         }
@@ -3311,7 +3311,7 @@ impl<'input> Variable<'input> {
         true
     }
 
-    fn diff(w: &mut Write, a: &Variable, b: &Variable, state: &mut DiffState) -> Result<()> {
+    fn diff(a: &Variable, b: &Variable, w: &mut Write, state: &mut DiffState) -> Result<()> {
         if Self::equal(a, b, state) {
             return Ok(());
         }
