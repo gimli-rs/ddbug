@@ -489,8 +489,7 @@ fn diff_file(file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> 
                |w, a, b, state| {
                    state.a.set_unit(a);
                    state.b.set_unit(b);
-                   Unit::diff(w, a, b, state)?;
-                   Ok(())
+                   Unit::diff(w, a, b, state)
                },
                |w, a, _state| {
                    writeln!(w, "First only: {:?}", a.name)?;
@@ -907,27 +906,12 @@ impl<'input> Unit<'input> {
         let inline_a = unit_a.inline_types(&state.a);
         let inline_b = unit_b.inline_types(&state.b);
         state.merge(w,
-                   &mut unit_a.types.iter(),
-                   &mut unit_b.types.iter(),
+                   &mut unit_a.types.iter().filter(|a| !inline_a.contains(&a.offset.0)),
+                   &mut unit_b.types.iter().filter(|b| !inline_b.contains(&b.offset.0)),
                    Type::cmp,
-                   |w, a, b, state| {
-                       if !inline_a.contains(&a.offset.0) || !inline_b.contains(&b.offset.0) {
-                           Type::diff(w, a, b, state)?;
-                       }
-                       Ok(())
-                   },
-                   |w, a, state| {
-                       if !inline_a.contains(&a.offset.0) {
-                           state.prefix("- ", |state| a.print(w, state))?;
-                       }
-                       Ok(())
-                   },
-                   |w, b, state| {
-                       if !inline_b.contains(&b.offset.0) {
-                           state.prefix("+ ", |state| b.print(w, state))?;
-                       }
-                       Ok(())
-                   })?;
+                   Type::diff,
+                   |w, a, state| state.prefix("- ", |state| a.print(w, state)),
+                   |w, b, state| state.prefix("+ ", |state| b.print(w, state)))?;
         // TODO: subprograms
         // TODO: variables
         Ok(())
