@@ -186,7 +186,7 @@ struct File<'input> {
 
 impl<'input> File<'input> {
     fn sort(&mut self) {
-        self.units.sort_by(cmp_unit);
+        self.units.sort_by(Unit::cmp);
         for unit in &mut self.units {
             unit.sort();
         }
@@ -301,7 +301,7 @@ impl<'a, 'input> PrintState<'a, 'input>
                         }
                     }
                     TypeKind::Base(_) |
-                    TypeKind::TypeDef(_) |
+                    TypeKind::Def(_) |
                     TypeKind::Array(_) |
                     TypeKind::Subroutine(_) |
                     TypeKind::Modifier(_) |
@@ -331,7 +331,7 @@ impl<'a, 'input> PrintState<'a, 'input>
                     }
                 }
                 TypeKind::Base(_) |
-                TypeKind::TypeDef(_) |
+                TypeKind::Def(_) |
                 TypeKind::Array(_) |
                 TypeKind::Subroutine(_) |
                 TypeKind::Modifier(_) |
@@ -485,11 +485,11 @@ fn diff_file(file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> 
     state.merge(&mut writer,
                &mut file_a.units.iter(),
                &mut file_b.units.iter(),
-               cmp_unit,
+               Unit::cmp,
                |w, a, b, state| {
                    state.a.set_unit(a);
                    state.b.set_unit(b);
-                   diff_unit(w, a, b, state)?;
+                   Unit::diff(w, a, b, state)?;
                    Ok(())
                },
                |w, a, _state| {
@@ -626,38 +626,38 @@ impl<'input> Namespace<'input> {
     fn filter(&self, namespace: &[&str]) -> bool {
         self._filter(namespace) == (true, namespace.len())
     }
-}
 
-// Requires a.len() == b.len()
-fn _cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
-    match (a.parent.as_ref(), b.parent.as_ref()) {
-        (Some(p1), Some(p2)) => {
-            match _cmp_namespace(p1, p2) {
-                cmp::Ordering::Equal => a.name.cmp(&b.name),
-                o => o,
+    fn _cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
+        debug_assert!(a.len() == b.len());
+        match (a.parent.as_ref(), b.parent.as_ref()) {
+            (Some(p1), Some(p2)) => {
+                match Self::_cmp(p1, p2) {
+                    cmp::Ordering::Equal => a.name.cmp(&b.name),
+                    o => o,
+                }
             }
+            _ => cmp::Ordering::Equal,
         }
-        _ => cmp::Ordering::Equal,
     }
-}
 
-fn cmp_namespace(a: &Namespace, b: &Namespace) -> cmp::Ordering {
-    let len_a = a.len();
-    let len_b = b.len();
-    match len_a.cmp(&len_b) {
-        cmp::Ordering::Equal => _cmp_namespace(a, b),
-        cmp::Ordering::Less => {
-            let b = b.up(len_b - len_a);
-            match _cmp_namespace(a, b) {
-                cmp::Ordering::Equal => cmp::Ordering::Less,
-                other => other,
+    fn cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
+        let len_a = a.len();
+        let len_b = b.len();
+        match len_a.cmp(&len_b) {
+            cmp::Ordering::Equal => Self::_cmp(a, b),
+            cmp::Ordering::Less => {
+                let b = b.up(len_b - len_a);
+                match Self::_cmp(a, b) {
+                    cmp::Ordering::Equal => cmp::Ordering::Less,
+                    other => other,
+                }
             }
-        }
-        cmp::Ordering::Greater => {
-            let a = a.up(len_a - len_b);
-            match _cmp_namespace(a, b) {
-                cmp::Ordering::Equal => cmp::Ordering::Greater,
-                other => other,
+            cmp::Ordering::Greater => {
+                let a = a.up(len_a - len_b);
+                match Self::_cmp(a, b) {
+                    cmp::Ordering::Equal => cmp::Ordering::Greater,
+                    other => other,
+                }
             }
         }
     }
@@ -669,7 +669,7 @@ fn cmp_ns_and_name(
     ns2: &Namespace,
     name2: Option<&ffi::CStr>
 ) -> cmp::Ordering {
-    match cmp_namespace(ns1, ns2) {
+    match Namespace::cmp(ns1, ns2) {
         cmp::Ordering::Equal => name1.cmp(&name2),
         o => o,
     }
@@ -876,19 +876,19 @@ impl<'input> Unit<'input> {
     }
 
     fn sort(&mut self) {
-        self.types.sort_by(cmp_type);
-        self.subprograms.sort_by(cmp_subprogram);
-        self.variables.sort_by(cmp_variable);
+        self.types.sort_by(Type::cmp);
+        self.subprograms.sort_by(Subprogram::cmp);
+        self.variables.sort_by(Variable::cmp);
 
         for ty in &mut self.types {
             match ty.kind {
                 TypeKind::Struct(StructType { ref mut subprograms, .. }) |
                 TypeKind::Union(UnionType { ref mut subprograms, .. }) |
                 TypeKind::Enumeration(EnumerationType { ref mut subprograms, .. }) => {
-                    subprograms.sort_by(cmp_subprogram);
+                    subprograms.sort_by(Subprogram::cmp);
                 }
                 TypeKind::Base(_) |
-                TypeKind::TypeDef(_) |
+                TypeKind::Def(_) |
                 TypeKind::Array(_) |
                 TypeKind::Subroutine(_) |
                 TypeKind::Modifier(_) |
@@ -896,48 +896,48 @@ impl<'input> Unit<'input> {
             }
         }
     }
-}
 
-fn cmp_unit(a: &Unit, b: &Unit) -> cmp::Ordering {
-    // TODO: ignore base paths
-    a.name.cmp(&b.name)
-}
+    fn cmp(a: &Unit, b: &Unit) -> cmp::Ordering {
+        // TODO: ignore base paths
+        a.name.cmp(&b.name)
+    }
 
-fn diff_unit(w: &mut Write, unit_a: &Unit, unit_b: &Unit, state: &mut DiffState) -> Result<()> {
-    writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
-    let inline_a = unit_a.inline_types(&state.a);
-    let inline_b = unit_b.inline_types(&state.b);
-    state.merge(w,
-               &mut unit_a.types.iter(),
-               &mut unit_b.types.iter(),
-               cmp_type,
-               |w, a, b, state| {
-                   if !inline_a.contains(&a.offset.0) || !inline_b.contains(&b.offset.0) {
-                       diff_type(w, a, b, state)?;
-                   }
-                   Ok(())
-               },
-               |w, a, state| {
-                   if !inline_a.contains(&a.offset.0) {
-                       state.prefix("- ", |state| a.print(w, state))?;
-                   }
-                   Ok(())
-               },
-               |w, b, state| {
-                   if !inline_b.contains(&b.offset.0) {
-                       state.prefix("+ ", |state| b.print(w, state))?;
-                   }
-                   Ok(())
-               })?;
-    // TODO: subprograms
-    // TODO: variables
-    Ok(())
+    fn diff(w: &mut Write, unit_a: &Unit, unit_b: &Unit, state: &mut DiffState) -> Result<()> {
+        writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
+        let inline_a = unit_a.inline_types(&state.a);
+        let inline_b = unit_b.inline_types(&state.b);
+        state.merge(w,
+                   &mut unit_a.types.iter(),
+                   &mut unit_b.types.iter(),
+                   Type::cmp,
+                   |w, a, b, state| {
+                       if !inline_a.contains(&a.offset.0) || !inline_b.contains(&b.offset.0) {
+                           Type::diff(w, a, b, state)?;
+                       }
+                       Ok(())
+                   },
+                   |w, a, state| {
+                       if !inline_a.contains(&a.offset.0) {
+                           state.prefix("- ", |state| a.print(w, state))?;
+                       }
+                       Ok(())
+                   },
+                   |w, b, state| {
+                       if !inline_b.contains(&b.offset.0) {
+                           state.prefix("+ ", |state| b.print(w, state))?;
+                       }
+                       Ok(())
+                   })?;
+        // TODO: subprograms
+        // TODO: variables
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
 enum TypeKind<'input> {
     Base(BaseType<'input>),
-    TypeDef(TypeDef<'input>),
+    Def(TypeDef<'input>),
     Struct(StructType<'input>),
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
@@ -951,7 +951,7 @@ impl<'input> TypeKind<'input> {
     fn discriminant_value(&self) -> u8 {
         match *self {
             TypeKind::Base(..) => 0,
-            TypeKind::TypeDef(..) => 1,
+            TypeKind::Def(..) => 1,
             TypeKind::Struct(..) => 2,
             TypeKind::Union(..) => 3,
             TypeKind::Enumeration(..) => 4,
@@ -995,7 +995,7 @@ impl<'input> Type<'input> {
                 TypeKind::Base(BaseType::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_typedef => {
-                TypeKind::TypeDef(TypeDef::parse_dwarf(dwarf, unit, namespace, iter)?)
+                TypeKind::Def(TypeDef::parse_dwarf(dwarf, unit, namespace, iter)?)
             }
             gimli::DW_TAG_structure_type => {
                 TypeKind::Struct(StructType::parse_dwarf(dwarf, unit, namespace, iter)?)
@@ -1048,7 +1048,7 @@ impl<'input> Type<'input> {
     fn bit_size(&self, state: &PrintState) -> Option<u64> {
         match self.kind {
             TypeKind::Base(ref val) => val.bit_size(state),
-            TypeKind::TypeDef(ref val) => val.bit_size(state),
+            TypeKind::Def(ref val) => val.bit_size(state),
             TypeKind::Struct(ref val) => val.bit_size(state),
             TypeKind::Union(ref val) => val.bit_size(state),
             TypeKind::Enumeration(ref val) => val.bit_size(state),
@@ -1064,7 +1064,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.visit_members(f),
             TypeKind::Union(ref val) => val.visit_members(f),
             TypeKind::Enumeration(..) |
-            TypeKind::TypeDef(..) |
+            TypeKind::Def(..) |
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
@@ -1075,7 +1075,7 @@ impl<'input> Type<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         match self.kind {
-            TypeKind::TypeDef(ref val) => val.print(w, state)?,
+            TypeKind::Def(ref val) => val.print(w, state)?,
             TypeKind::Struct(ref val) => val.print(w, state)?,
             TypeKind::Union(ref val) => val.print(w, state)?,
             TypeKind::Enumeration(ref val) => val.print(w, state)?,
@@ -1095,7 +1095,7 @@ impl<'input> Type<'input> {
     fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         match self.kind {
             TypeKind::Base(ref val) => val.print_name(w)?,
-            TypeKind::TypeDef(ref val) => val.print_name(w)?,
+            TypeKind::Def(ref val) => val.print_name(w)?,
             TypeKind::Struct(ref val) => val.print_name(w)?,
             TypeKind::Union(ref val) => val.print_name(w)?,
             TypeKind::Enumeration(ref val) => val.print_name(w)?,
@@ -1124,7 +1124,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.is_anon(),
             TypeKind::Union(ref val) => val.is_anon(),
             TypeKind::Base(..) |
-            TypeKind::TypeDef(..) |
+            TypeKind::Def(..) |
             TypeKind::Enumeration(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
@@ -1132,61 +1132,52 @@ impl<'input> Type<'input> {
             TypeKind::Unimplemented(..) => false,
         }
     }
-}
 
-fn cmp_type(type_a: &Type, type_b: &Type) -> cmp::Ordering {
-    use TypeKind::*;
-    match (&type_a.kind, &type_b.kind) {
-        (&TypeDef(ref a), &TypeDef(ref b)) => cmp_type_def(a, b),
-        (&Struct(ref a), &Struct(ref b)) => cmp_struct(a, b),
-        (&Union(ref a), &Union(ref b)) => cmp_union(a, b),
-        (&Enumeration(ref a), &Enumeration(ref b)) => cmp_enumeration(a, b),
-        _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
+    fn cmp(type_a: &Type, type_b: &Type) -> cmp::Ordering {
+        use TypeKind::*;
+        match (&type_a.kind, &type_b.kind) {
+            (&Def(ref a), &Def(ref b)) => TypeDef::cmp(a, b),
+            (&Struct(ref a), &Struct(ref b)) => StructType::cmp(a, b),
+            (&Union(ref a), &Union(ref b)) => UnionType::cmp(a, b),
+            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp(a, b),
+            _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
+        }
     }
-}
 
-fn equal_type(type_a: &Type, type_b: &Type, state: &DiffState) -> bool {
-    use TypeKind::*;
-    match (&type_a.kind, &type_b.kind) {
-        (&Base(ref a), &Base(ref b)) => equal_base_type(a, b, state),
-        (&TypeDef(ref a), &TypeDef(ref b)) => equal_type_def(a, b, state),
-        (&Struct(ref a), &Struct(ref b)) => equal_struct(a, b, state),
-        (&Union(ref a), &Union(ref b)) => equal_union(a, b, state),
-        (&Enumeration(ref a), &Enumeration(ref b)) => equal_enumeration(a, b, state),
-        (&Array(ref _a), &Array(ref _b)) => {
-            // TODO
-            false
+    fn equal(type_a: &Type, type_b: &Type, state: &DiffState) -> bool {
+        use TypeKind::*;
+        match (&type_a.kind, &type_b.kind) {
+            (&Base(ref a), &Base(ref b)) => BaseType::equal(a, b, state),
+            (&Def(ref a), &Def(ref b)) => TypeDef::equal(a, b, state),
+            (&Struct(ref a), &Struct(ref b)) => StructType::equal(a, b, state),
+            (&Union(ref a), &Union(ref b)) => UnionType::equal(a, b, state),
+            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::equal(a, b, state),
+            (&Array(ref a), &Array(ref b)) => ArrayType::equal(a, b, state),
+            (&Subroutine(ref a), &Subroutine(ref b)) => SubroutineType::equal(a, b, state),
+            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::equal(a, b, state),
+            _ => false,
         }
-        (&Subroutine(ref _a), &Subroutine(ref _b)) => {
-            // TODO
-            false
-        }
-        (&Modifier(ref _a), &Modifier(ref _b)) => {
-            // TODO
-            false
-        }
-        _ => false,
     }
-}
 
-fn diff_type(w: &mut Write, type_a: &Type, type_b: &Type, state: &mut DiffState) -> Result<()> {
-    use TypeKind::*;
-    match (&type_a.kind, &type_b.kind) {
-        (&TypeDef(ref a), &TypeDef(ref b)) => {
-            diff_type_def(w, a, b, state)?;
+    fn diff(w: &mut Write, type_a: &Type, type_b: &Type, state: &mut DiffState) -> Result<()> {
+        use TypeKind::*;
+        match (&type_a.kind, &type_b.kind) {
+            (&Def(ref a), &Def(ref b)) => {
+                TypeDef::diff(w, a, b, state)?;
+            }
+            (&Struct(ref a), &Struct(ref b)) => {
+                StructType::diff(w, a, b, state)?;
+            }
+            (&Union(ref a), &Union(ref b)) => {
+                UnionType::diff(w, a, b, state)?;
+            }
+            (&Enumeration(ref a), &Enumeration(ref b)) => {
+                EnumerationType::diff(w, a, b, state)?;
+            }
+            _ => {}
         }
-        (&Struct(ref a), &Struct(ref b)) => {
-            diff_struct(w, a, b, state)?;
-        }
-        (&Union(ref a), &Union(ref b)) => {
-            diff_union(w, a, b, state)?;
-        }
-        (&Enumeration(ref a), &Enumeration(ref b)) => {
-            diff_enumeration(w, a, b, state)?;
-        }
-        _ => {}
+        Ok(())
     }
-    Ok(())
 }
 
 #[derive(Debug)]
@@ -1290,6 +1281,11 @@ impl<'input> TypeModifier<'input> {
         }
         Ok(())
     }
+
+    fn equal(_a: &TypeModifier, _b: &TypeModifier, _state: &DiffState) -> bool {
+        // TODO
+        false
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1350,18 +1346,18 @@ impl<'input> BaseType<'input> {
         }
         Ok(())
     }
-}
 
-// Compare names
-fn cmp_base_type(a: &BaseType, b: &BaseType) -> cmp::Ordering {
-    a.name.cmp(&b.name)
-}
-
-fn equal_base_type(a: &BaseType, b: &BaseType, _state: &DiffState) -> bool {
-    if cmp_base_type(a, b) != cmp::Ordering::Equal {
-        return false;
+    // Compare names
+    fn cmp(a: &BaseType, b: &BaseType) -> cmp::Ordering {
+        a.name.cmp(&b.name)
     }
-    a.byte_size == b.byte_size
+
+    fn equal(a: &BaseType, b: &BaseType, _state: &DiffState) -> bool {
+        if Self::cmp(a, b) != cmp::Ordering::Equal {
+            return false;
+        }
+        a.byte_size == b.byte_size
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1465,34 +1461,34 @@ impl<'input> TypeDef<'input> {
         }
         Ok(())
     }
-}
 
-// Compare names
-fn cmp_type_def(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
-    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-}
+    // Compare names
+    fn cmp(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
 
-fn equal_type_def(a: &TypeDef, b: &TypeDef, state: &DiffState) -> bool {
-    if cmp_type_def(a, b) != cmp::Ordering::Equal {
-        return false;
+    fn equal(a: &TypeDef, b: &TypeDef, state: &DiffState) -> bool {
+        if Self::cmp(a, b) != cmp::Ordering::Equal {
+            return false;
+        }
+        match (a.ty(&state.a), b.ty(&state.b)) {
+            (Some(a), Some(b)) => Type::equal(a, b, state),
+            (None, None) => true,
+            _ => false,
+        }
     }
-    match (a.ty(&state.a), b.ty(&state.b)) {
-        (Some(a), Some(b)) => equal_type(a, b, state),
-        (None, None) => true,
-        _ => false,
-    }
-}
 
-fn diff_type_def(w: &mut Write, a: &TypeDef, b: &TypeDef, state: &mut DiffState) -> Result<()> {
-    if equal_type_def(a, b, state) {
-        return Ok(());
+    fn diff(w: &mut Write, a: &TypeDef, b: &TypeDef, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+        // TODO
+        write!(w, "- ")?;
+        a.print(w, &mut state.a)?;
+        write!(w, "+ ")?;
+        b.print(w, &mut state.b)?;
+        Ok(())
     }
-    // TODO
-    write!(w, "- ")?;
-    a.print(w, &mut state.a)?;
-    write!(w, "+ ")?;
-    b.print(w, &mut state.b)?;
-    Ok(())
 }
 
 #[derive(Debug, Default)]
@@ -1644,49 +1640,49 @@ impl<'input> StructType<'input> {
     fn is_anon(&self) -> bool {
         self.name.is_none()
     }
-}
 
-fn cmp_struct(a: &StructType, b: &StructType) -> cmp::Ordering {
-    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-}
-
-fn equal_struct(a: &StructType, b: &StructType, state: &DiffState) -> bool {
-    cmp_struct(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-    a.declaration == b.declaration && equal_struct_members(a, b, state) &&
-    equal_struct_subprograms(a, b, state)
-}
-
-fn equal_struct_members(struct_a: &StructType, struct_b: &StructType, state: &DiffState) -> bool {
-    if struct_a.members.len() != struct_b.members.len() {
-        return false;
+    fn cmp(a: &StructType, b: &StructType) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
-    for (a, b) in struct_a.members.iter().zip(struct_b.members.iter()) {
-        if !equal_member(a, b, state) {
+
+    fn equal(a: &StructType, b: &StructType, state: &DiffState) -> bool {
+        Self::cmp(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+        a.declaration == b.declaration && Self::equal_members(a, b, state) &&
+        Self::equal_subprograms(a, b, state)
+    }
+
+    fn equal_members(struct_a: &StructType, struct_b: &StructType, state: &DiffState) -> bool {
+        if struct_a.members.len() != struct_b.members.len() {
             return false;
         }
+        for (a, b) in struct_a.members.iter().zip(struct_b.members.iter()) {
+            if !Member::equal(a, b, state) {
+                return false;
+            }
+        }
+        true
     }
-    true
-}
 
-fn equal_struct_subprograms(
-    _struct_a: &StructType,
-    _struct_b: &StructType,
-    _state: &DiffState
-) -> bool {
-    // TODO
-    true
-}
-
-fn diff_struct(w: &mut Write, a: &StructType, b: &StructType, state: &mut DiffState) -> Result<()> {
-    if equal_struct(a, b, state) {
-        return Ok(());
+    fn equal_subprograms(
+        _struct_a: &StructType,
+        _struct_b: &StructType,
+        _state: &DiffState
+    ) -> bool {
+        // TODO
+        true
     }
-    // TODO
-    write!(w, "- ")?;
-    a.print(w, &mut state.a)?;
-    write!(w, "+ ")?;
-    b.print(w, &mut state.b)?;
-    Ok(())
+
+    fn diff(w: &mut Write, a: &StructType, b: &StructType, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+        // TODO
+        write!(w, "- ")?;
+        a.print(w, &mut state.a)?;
+        write!(w, "+ ")?;
+        b.print(w, &mut state.b)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1830,45 +1826,45 @@ impl<'input> UnionType<'input> {
     fn is_anon(&self) -> bool {
         self.name.is_none()
     }
-}
 
-fn cmp_union(a: &UnionType, b: &UnionType) -> cmp::Ordering {
-    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-}
-
-fn equal_union(a: &UnionType, b: &UnionType, state: &DiffState) -> bool {
-    cmp_union(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-    a.declaration == b.declaration && equal_union_members(a, b, state) &&
-    equal_union_subprograms(a, b, state)
-}
-
-fn equal_union_members(union_a: &UnionType, union_b: &UnionType, state: &DiffState) -> bool {
-    if union_a.members.len() != union_b.members.len() {
-        return false;
+    fn cmp(a: &UnionType, b: &UnionType) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
-    for (a, b) in union_a.members.iter().zip(union_b.members.iter()) {
-        if !equal_member(a, b, state) {
+
+    fn equal(a: &UnionType, b: &UnionType, state: &DiffState) -> bool {
+        Self::cmp(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+        a.declaration == b.declaration && Self::equal_members(a, b, state) &&
+        Self::equal_subprograms(a, b, state)
+    }
+
+    fn equal_members(union_a: &UnionType, union_b: &UnionType, state: &DiffState) -> bool {
+        if union_a.members.len() != union_b.members.len() {
             return false;
         }
+        for (a, b) in union_a.members.iter().zip(union_b.members.iter()) {
+            if !Member::equal(a, b, state) {
+                return false;
+            }
+        }
+        true
     }
-    true
-}
 
-fn equal_union_subprograms(_union_a: &UnionType, _union_b: &UnionType, _state: &DiffState) -> bool {
-    // TODO
-    true
-}
-
-fn diff_union(w: &mut Write, a: &UnionType, b: &UnionType, state: &mut DiffState) -> Result<()> {
-    if equal_union(a, b, state) {
-        return Ok(());
+    fn equal_subprograms(_union_a: &UnionType, _union_b: &UnionType, _state: &DiffState) -> bool {
+        // TODO
+        true
     }
-    // TODO
-    write!(w, "- ")?;
-    a.print(w, &mut state.a)?;
-    write!(w, "+ ")?;
-    b.print(w, &mut state.b)?;
-    Ok(())
+
+    fn diff(w: &mut Write, a: &UnionType, b: &UnionType, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+        // TODO
+        write!(w, "- ")?;
+        a.print(w, &mut state.a)?;
+        write!(w, "+ ")?;
+        b.print(w, &mut state.b)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2079,11 +2075,11 @@ impl<'input> Member<'input> {
             false
         }
     }
-}
 
-fn equal_member(_a: &Member, _b: &Member, _state: &DiffState) -> bool {
-    // TODO
-    true
+    fn equal(_a: &Member, _b: &Member, _state: &DiffState) -> bool {
+        // TODO
+        true
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2199,57 +2195,57 @@ impl<'input> EnumerationType<'input> {
         }
         Ok(())
     }
-}
 
-fn cmp_enumeration(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
-    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-}
-
-fn equal_enumeration(a: &EnumerationType, b: &EnumerationType, state: &DiffState) -> bool {
-    cmp_enumeration(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-    equal_enumerators(a, b, state) && equal_enumeration_subprograms(a, b, state)
-}
-
-fn equal_enumerators(
-    enum_a: &EnumerationType,
-    enum_b: &EnumerationType,
-    state: &DiffState
-) -> bool {
-    if enum_a.enumerators.len() != enum_b.enumerators.len() {
-        return false;
+    fn cmp(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
-    for (a, b) in enum_a.enumerators.iter().zip(enum_b.enumerators.iter()) {
-        if !equal_enumerator(a, b, state) {
+
+    fn equal(a: &EnumerationType, b: &EnumerationType, state: &DiffState) -> bool {
+        Self::cmp(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+        Self::equal_enumerators(a, b, state) && Self::equal_subprograms(a, b, state)
+    }
+
+    fn equal_enumerators(
+        enum_a: &EnumerationType,
+        enum_b: &EnumerationType,
+        state: &DiffState
+    ) -> bool {
+        if enum_a.enumerators.len() != enum_b.enumerators.len() {
             return false;
         }
+        for (a, b) in enum_a.enumerators.iter().zip(enum_b.enumerators.iter()) {
+            if !Enumerator::equal(a, b, state) {
+                return false;
+            }
+        }
+        true
     }
-    true
-}
 
-fn equal_enumeration_subprograms(
-    _enum_a: &EnumerationType,
-    _enum_b: &EnumerationType,
-    _state: &DiffState
-) -> bool {
-    // TODO
-    true
-}
-
-fn diff_enumeration(
-    w: &mut Write,
-    a: &EnumerationType,
-    b: &EnumerationType,
-    state: &mut DiffState
-) -> Result<()> {
-    if equal_enumeration(a, b, state) {
-        return Ok(());
+    fn equal_subprograms(
+        _enum_a: &EnumerationType,
+        _enum_b: &EnumerationType,
+        _state: &DiffState
+    ) -> bool {
+        // TODO
+        true
     }
-    // TODO
-    write!(w, "- ")?;
-    a.print(w, &mut state.a)?;
-    write!(w, "+ ")?;
-    b.print(w, &mut state.b)?;
-    Ok(())
+
+    fn diff(
+        w: &mut Write,
+        a: &EnumerationType,
+        b: &EnumerationType,
+        state: &mut DiffState
+    ) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+        // TODO
+        write!(w, "- ")?;
+        a.print(w, &mut state.a)?;
+        write!(w, "+ ")?;
+        b.print(w, &mut state.b)?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2319,11 +2315,11 @@ impl<'input> Enumerator<'input> {
         }
         Ok(())
     }
-}
 
-fn equal_enumerator(_a: &Enumerator, _b: &Enumerator, _state: &DiffState) -> bool {
-    // TODO
-    true
+    fn equal(_a: &Enumerator, _b: &Enumerator, _state: &DiffState) -> bool {
+        // TODO
+        true
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2414,6 +2410,11 @@ impl<'input> ArrayType<'input> {
         write!(w, "]")?;
         Ok(())
     }
+
+    fn equal(_a: &ArrayType, _b: &ArrayType, _state: &DiffState) -> bool {
+        // TODO
+        false
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2489,6 +2490,11 @@ impl<'input> SubroutineType<'input> {
             Type::print_offset_name(w, state, return_type)?;
         }
         Ok(())
+    }
+
+    fn equal(_a: &SubroutineType, _b: &SubroutineType, _state: &DiffState) -> bool {
+        // TODO
+        false
     }
 }
 
@@ -2773,10 +2779,10 @@ impl<'input> Subprogram<'input> {
         }
         Ok(())
     }
-}
 
-fn cmp_subprogram(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
-    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    fn cmp(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -3149,10 +3155,10 @@ impl<'input> Variable<'input> {
         }
         Ok(())
     }
-}
 
-fn cmp_variable(a: &Variable, b: &Variable) -> cmp::Ordering {
-    cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    fn cmp(a: &Variable, b: &Variable) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
 }
 
 fn disassemble(
