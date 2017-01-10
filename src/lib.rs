@@ -70,6 +70,13 @@ pub struct Flags<'a> {
     pub namespace: Vec<&'a str>,
 }
 
+impl<'a> Flags<'a> {
+    pub fn name(&mut self, name: &'a str) -> &mut Self {
+        self.name = Some(name);
+        self
+    }
+}
+
 #[derive(Debug)]
 pub struct File<'input> {
     // TODO: use format independent machine type
@@ -414,18 +421,36 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
                &mut file_b.units.iter(),
                Unit::cmp_name,
                |a, b, w, state| {
-                   state.a.set_unit(a);
-                   state.b.set_unit(b);
-                   Unit::diff(a, b, w, state)
-               },
-               |a, w, _state| {
-                   writeln!(w, "First only: {:?}", a.name)?;
-                   Ok(())
-               },
-               |b, w, _state| {
-                   writeln!(w, "Second only: {:?}", b.name)?;
-                   Ok(())
-               })?;
+            state.a.set_unit(a);
+            state.b.set_unit(b);
+            state.a
+                .prefix("  ", |state| {
+                    state.line_start(w)?;
+                    write!(w, "Unit: ")?;
+                    a.print_name(w)?;
+                    writeln!(w, "")?;
+                    Ok(())
+                })?;
+            Unit::diff(a, b, w, state)
+        },
+               |a, w, state| {
+            state.prefix("- ", |state| {
+                state.line_start(w)?;
+                write!(w, "Unit: ")?;
+                a.print_name(w)?;
+                writeln!(w, "")?;
+                Ok(())
+            })
+        },
+               |b, w, state| {
+            state.prefix("+ ", |state| {
+                state.line_start(w)?;
+                write!(w, "Unit: ")?;
+                b.print_name(w)?;
+                writeln!(w, "")?;
+                Ok(())
+            })
+        })?;
     Ok(())
 }
 
@@ -761,6 +786,14 @@ impl<'input> Unit<'input> {
         self.parse_dwarf_children(dwarf, unit, &namespace, iter)
     }
 
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        match self.name {
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         let inline_types = self.inline_types(state);
 
@@ -829,7 +862,6 @@ impl<'input> Unit<'input> {
     }
 
     fn diff(unit_a: &Unit, unit_b: &Unit, w: &mut Write, state: &mut DiffState) -> Result<()> {
-        writeln!(w, "Both: {:?} {:?}", unit_a.name, unit_a.name)?;
         let inline_a = unit_a.inline_types(&state.a);
         let inline_b = unit_b.inline_types(&state.b);
         let should_diff = |t| {
@@ -1073,6 +1105,7 @@ impl<'input> Type<'input> {
     fn cmp_name(type_a: &Type, type_b: &Type) -> cmp::Ordering {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
+            (&Base(ref a), &Base(ref b)) => BaseType::cmp_name(a, b),
             (&Def(ref a), &Def(ref b)) => TypeDef::cmp_name(a, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::cmp_name(a, b),
             (&Union(ref a), &Union(ref b)) => UnionType::cmp_name(a, b),
@@ -1456,7 +1489,7 @@ impl<'input> TypeDef<'input> {
             (Some(ty_a), Some(ty_b)) => {
                 match (ty_a.is_anon(), ty_b.is_anon()) {
                     (true, true) => {
-                        state.a.prefix("  ", |state| a.print_ty_anon(w, state))?;
+                        state.prefix_equal(|state| a.print_ty_anon(w, &mut state.a))?;
                         state.indent(|state| Type::diff(ty_a, ty_b, w, state))?;
                     }
                     (true, false) | (false, true) => {
@@ -1688,10 +1721,10 @@ impl<'input> StructType<'input> {
             return Ok(());
         }
         // TODO
-        write!(w, "- ")?;
-        a.print(w, &mut state.a)?;
-        write!(w, "+ ")?;
-        b.print(w, &mut state.b)?;
+        state.prefix_diff(|state| {
+                a.print(w, &mut state.a)?;
+                b.print(w, &mut state.b)
+            })?;
         Ok(())
     }
 }
@@ -1870,10 +1903,10 @@ impl<'input> UnionType<'input> {
             return Ok(());
         }
         // TODO
-        write!(w, "- ")?;
-        a.print(w, &mut state.a)?;
-        write!(w, "+ ")?;
-        b.print(w, &mut state.b)?;
+        state.prefix_diff(|state| {
+                a.print(w, &mut state.a)?;
+                b.print(w, &mut state.b)
+            })?;
         Ok(())
     }
 }
@@ -2253,10 +2286,10 @@ impl<'input> EnumerationType<'input> {
             return Ok(());
         }
         // TODO
-        write!(w, "- ")?;
-        a.print(w, &mut state.a)?;
-        write!(w, "+ ")?;
-        b.print(w, &mut state.b)?;
+        state.prefix_diff(|state| {
+                a.print(w, &mut state.a)?;
+                b.print(w, &mut state.b)
+            })?;
         Ok(())
     }
 }
@@ -2814,10 +2847,10 @@ impl<'input> Subprogram<'input> {
             return Ok(());
         }
         // TODO
-        write!(w, "- ")?;
-        a.print(w, &mut state.a)?;
-        write!(w, "+ ")?;
-        b.print(w, &mut state.b)?;
+        state.prefix_diff(|state| {
+                a.print(w, &mut state.a)?;
+                b.print(w, &mut state.b)
+            })?;
         Ok(())
     }
 }
@@ -3214,10 +3247,10 @@ impl<'input> Variable<'input> {
             return Ok(());
         }
         // TODO
-        write!(w, "- ")?;
-        a.print(w, &mut state.a)?;
-        write!(w, "+ ")?;
-        b.print(w, &mut state.b)?;
+        state.prefix_diff(|state| {
+                a.print(w, &mut state.a)?;
+                b.print(w, &mut state.b)
+            })?;
         Ok(())
     }
 }
