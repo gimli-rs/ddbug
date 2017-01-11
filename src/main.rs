@@ -19,10 +19,14 @@ fn main() {
                 "inline-depth",
                 "depth of inlined subroutine calls (0 to disable)",
                 "DEPTH");
-    opts.optopt("", "name", "print only members with the given name", "NAME");
+    opts.optopt("",
+                "unit",
+                "print only entries within the given unit",
+                "UNIT");
+    opts.optopt("", "name", "print only entries with the given name", "NAME");
     opts.optopt("",
                 "namespace",
-                "print only members of the given namespace",
+                "print only entries within the given namespace",
                 "NAMESPACE");
 
     let matches = match opts.parse(env::args().skip(1)) {
@@ -49,6 +53,8 @@ fn main() {
     } else {
         1
     };
+    let unit = matches.opt_str("unit");
+    let unit = unit.as_ref().map(|s| &s[..]);
     let name = matches.opt_str("name");
     let name = name.as_ref().map(|s| &s[..]);
     let namespace = matches.opt_str("namespace");
@@ -61,6 +67,7 @@ fn main() {
         calls: calls,
         sort: sort,
         inline_depth: inline_depth,
+        unit: unit,
         name: name,
         namespace: namespace,
     };

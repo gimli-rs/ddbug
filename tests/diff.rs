@@ -20,8 +20,7 @@ fn input_file_c(name: &str) -> String {
     format!("{}/input_{}.c", TEST_DIR, name)
 }
 
-fn compile_rust(name: &str, input_text: &str, output_file: &str) {
-    let input_file = &input_file_rust(name);
+fn compile_rust(input_text: &str, input_file: &str, output_file: &str) {
     write_input(input_file, input_text);
     let output = Command::new("rustc")
         .arg("-g")
@@ -33,8 +32,7 @@ fn compile_rust(name: &str, input_text: &str, output_file: &str) {
     assert!(output.status.success());
 }
 
-fn compile_c(name: &str, input_text: &str, output_file: &str) {
-    let input_file = &input_file_c(name);
+fn compile_c(input_text: &str, input_file: &str, output_file: &str) {
     write_input(input_file, input_text);
     let output = Command::new("cc")
         .arg("-g")
@@ -51,6 +49,7 @@ fn flags() -> ddbug::Flags<'static> {
         calls: false,
         sort: false,
         inline_depth: 1,
+        unit: None,
         name: None,
         namespace: Vec::new(),
     }
@@ -76,19 +75,25 @@ fn diff(output_file_1: &str, output_file_2: &str, expect: &str, flags: &ddbug::F
 
 #[allow(dead_code)]
 fn diff_rust(name: &str, input_1: &str, input_2: &str, expect: &str, flags: &ddbug::Flags) {
+    let input_file = &input_file_rust(name);
+    let mut flags = (*flags).clone();
+    flags.unit(input_file);
     let output_file_1 = &format!("{}/output1_{}", TEST_DIR, name);
     let output_file_2 = &format!("{}/output2_{}", TEST_DIR, name);
-    compile_rust(name, input_1, output_file_1);
-    compile_rust(name, input_2, output_file_2);
-    diff(output_file_1, output_file_2, expect, flags);
+    compile_rust(input_1, input_file, output_file_1);
+    compile_rust(input_2, input_file, output_file_2);
+    diff(output_file_1, output_file_2, expect, &flags);
 }
 
 fn diff_c(name: &str, input_1: &str, input_2: &str, expect: &str, flags: &ddbug::Flags) {
+    let input_file = &input_file_c(name);
+    let mut flags = (*flags).clone();
+    flags.unit(input_file);
     let output_file_1 = &format!("{}/output1_{}", TEST_DIR, name);
     let output_file_2 = &format!("{}/output2_{}", TEST_DIR, name);
-    compile_c(name, input_1, output_file_1);
-    compile_c(name, input_2, output_file_2);
-    diff(output_file_1, output_file_2, expect, flags);
+    compile_c(input_1, input_file, output_file_1);
+    compile_c(input_2, input_file, output_file_2);
+    diff(output_file_1, output_file_2, expect, &flags);
 }
 
 #[test]
@@ -100,8 +105,8 @@ fn test_typedef_diff_base_equal() {
            concat!("typedef char T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_base_equal.c\n"),
-           &flags());
+           concat!(""),
+           flags().name("T"));
 }
 
 #[test]
@@ -113,13 +118,12 @@ fn test_typedef_diff_base() {
            concat!("typedef int T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_base.c\n",
-                   "- type T = char\n",
+           concat!("- type T = char\n",
                    "+ type T = int\n",
                    "- \tsize: 1\n",
                    "+ \tsize: 4\n",
                    "\n"),
-           &flags());
+           flags().name("T"));
 }
 
 #[test]
@@ -132,8 +136,8 @@ fn test_typedef_diff_anon_equal() {
            concat!("typedef struct { char c; } T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_anon_equal.c\n"),
-           &flags());
+           concat!(""),
+           flags().name("T"));
 }
 
 #[test]
@@ -147,8 +151,7 @@ fn test_typedef_diff_anon() {
            concat!("typedef struct { int i; } T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_anon.c\n",
-                   "  type T = \n",
+           concat!("  type T = \n",
                    "- \tstruct <anon>\n",
                    "- \t\tsize: 1\n",
                    "- \t\tmembers:\n",
@@ -160,7 +163,7 @@ fn test_typedef_diff_anon() {
                    "+ \t\tmembers:\n",
                    "+ \t\t\t0[4]\ti: int\n",
                    "\n"),
-           &flags());
+           flags().name("T"));
 }
 
 #[test]
@@ -172,8 +175,7 @@ fn test_typedef_diff_anon_base() {
            concat!("typedef struct { char c; } T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_anon_base.c\n",
-                   "- type T = char\n",
+           concat!("- type T = char\n",
                    "- \tsize: 1\n",
                    // TODO: no newline here
                    "\n",
@@ -183,7 +185,7 @@ fn test_typedef_diff_anon_base() {
                    "+ \t\tmembers:\n",
                    "+ \t\t\t0[1]\tc: char\n",
                    "\n"),
-           &flags());
+           flags().name("T"));
 }
 
 #[test]
@@ -195,8 +197,7 @@ fn test_typedef_diff_base_anon() {
            concat!("typedef char T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_base_anon.c\n",
-                   "- type T = \n",
+           concat!("- type T = \n",
                    "- \tstruct <anon>\n",
                    "- \t\tsize: 1\n",
                    "- \t\tmembers:\n",
@@ -206,7 +207,7 @@ fn test_typedef_diff_base_anon() {
                    "+ type T = char\n",
                    "+ \tsize: 1\n",
                    "\n"),
-           &flags());
+           flags().name("T"));
 }
 
 #[test]
@@ -220,8 +221,7 @@ fn test_typedef_diff_struct_name() {
                    "typedef struct s2 T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_struct_name.c\n",
-                   "- type T = struct s1\n",
+           concat!("- type T = struct s1\n",
                    "+ type T = struct s2\n",
                    "  \tsize: 1\n",
                    "\n"),
@@ -239,8 +239,7 @@ fn test_typedef_diff_struct_size() {
                    "typedef struct s T;\n",
                    "T t;\n",
                    "int main() {}\n"),
-           concat!("  Unit: tests/workdir/input_typedef_diff_struct_size.c\n",
-                   "  type T = struct s\n",
+           concat!("  type T = struct s\n",
                    "- \tsize: 1\n",
                    "+ \tsize: 4\n",
                    "\n"),

@@ -62,20 +62,55 @@ impl From<gimli::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
+#[derive(Debug, Clone)]
 pub struct Flags<'a> {
     pub calls: bool,
     pub sort: bool,
     pub inline_depth: usize,
+    pub unit: Option<&'a str>,
     pub name: Option<&'a str>,
     pub namespace: Vec<&'a str>,
 }
 
 impl<'a> Flags<'a> {
+    pub fn unit(&mut self, unit: &'a str) -> &mut Self {
+        self.unit = Some(unit);
+        self
+    }
+
     pub fn name(&mut self, name: &'a str) -> &mut Self {
         self.name = Some(name);
         self
     }
+
+    fn filter_unit(&self, unit: Option<&ffi::CStr>) -> bool {
+        if let Some(filter) = self.unit {
+            filter_name(unit, filter)
+        } else {
+            true
+        }
+    }
+
+    fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
+        if let Some(filter) = self.name {
+            filter_name(name, filter)
+        } else {
+            true
+        }
+    }
+
+    fn filter_namespace(&self, namespace: &Namespace) -> bool {
+        namespace.filter(&self.namespace)
+    }
 }
+
+fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
+    match name {
+        Some(name) => name.to_bytes() == filter.as_bytes(),
+        None => false,
+    }
+}
+
 
 #[derive(Debug)]
 pub struct File<'input> {
@@ -245,18 +280,6 @@ impl<'a, 'input> PrintState<'a, 'input>
         self.address_size = unit.address_size;
     }
 
-    fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
-        if let Some(filter) = self.flags.name {
-            filter_name(name, filter)
-        } else {
-            true
-        }
-    }
-
-    fn filter_namespace(&self, namespace: &Namespace) -> bool {
-        namespace.filter(&self.flags.namespace)
-    }
-
     fn indent<F>(&mut self, mut f: F) -> Result<()>
         where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
     {
@@ -285,22 +308,21 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 }
 
-fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
-    match name {
-        Some(name) => name.to_bytes() == filter.as_bytes(),
-        None => false,
-    }
-}
-
 pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
     if flags.sort {
         file.sort();
     }
 
     let mut state = PrintState::new(file, flags);
-    for unit in &file.units {
+    for unit in file.units.iter().filter(|unit| unit.filter(flags)) {
         state.set_unit(unit);
-        unit.print(w, &mut state)?;
+        if flags.unit.is_none() {
+            state.line_start(w)?;
+            write!(w, "Unit: ")?;
+            unit.print_name(w)?;
+            writeln!(w, "")?;
+        }
+        unit.print(w, &mut state, flags)?;
     }
     Ok(())
 }
@@ -417,21 +439,23 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
 
     let mut state = DiffState::new(file_a, file_b, flags);
     state.merge(w,
-               &mut file_a.units.iter(),
-               &mut file_b.units.iter(),
+               &mut file_a.units.iter().filter(|a| a.filter(flags)),
+               &mut file_b.units.iter().filter(|b| b.filter(flags)),
                Unit::cmp_name,
                |a, b, w, state| {
             state.a.set_unit(a);
             state.b.set_unit(b);
-            state.a
-                .prefix("  ", |state| {
-                    state.line_start(w)?;
-                    write!(w, "Unit: ")?;
-                    a.print_name(w)?;
-                    writeln!(w, "")?;
-                    Ok(())
-                })?;
-            Unit::diff(a, b, w, state)
+            if flags.unit.is_none() {
+                state.a
+                    .prefix("  ", |state| {
+                        state.line_start(w)?;
+                        write!(w, "Unit: ")?;
+                        a.print_name(w)?;
+                        writeln!(w, "")?;
+                        Ok(())
+                    })?;
+            }
+            Unit::diff(a, b, w, state, flags)
         },
                |a, w, state| {
             state.prefix("- ", |state| {
@@ -786,6 +810,10 @@ impl<'input> Unit<'input> {
         self.parse_dwarf_children(dwarf, unit, &namespace, iter)
     }
 
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_unit(self.name)
+    }
+
     fn print_name(&self, w: &mut Write) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
@@ -794,19 +822,23 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
         let inline_types = self.inline_types(state);
 
         for ty in &self.types {
-            if !inline_types.contains(&ty.offset.0) {
+            if ty.filter(flags) && !inline_types.contains(&ty.offset.0) {
                 ty.print(w, state)?;
             }
         }
         for subprogram in &self.subprograms {
-            subprogram.print(w, state)?;
+            if subprogram.filter(flags) {
+                subprogram.print(w, state)?;
+            }
         }
         for variable in &self.variables {
-            variable.print(w, state)?;
+            if variable.filter(flags) {
+                variable.print(w, state)?;
+            }
         }
         Ok(())
     }
@@ -861,40 +893,52 @@ impl<'input> Unit<'input> {
         a.name.cmp(&b.name)
     }
 
-    fn diff(unit_a: &Unit, unit_b: &Unit, w: &mut Write, state: &mut DiffState) -> Result<()> {
+    fn diff(
+        unit_a: &Unit,
+        unit_b: &Unit,
+        w: &mut Write,
+        state: &mut DiffState,
+        flags: &Flags
+    ) -> Result<()> {
         let inline_a = unit_a.inline_types(&state.a);
         let inline_b = unit_b.inline_types(&state.b);
-        let should_diff = |t| {
+        let filter_type = |t: &Type, inline: &HashSet<usize>| {
+            // Filter by user options.
+            if !t.filter(flags) {
+                return false;
+            }
             if let &Type { kind: TypeKind::Struct(ref t), .. } = t {
                 // Hack for rust closures
                 // TODO: is there better way of identifying these, or a
                 // a way to match pairs for diffing?
-                !filter_name(t.name, "closure")
-            } else {
-                true
+                if filter_name(t.name, "closure") {
+                    return false;
+                }
             }
+            // Filter out inline types.
+            !inline.contains(&t.offset.0)
         };
         state.merge(w,
                    &mut unit_a.types
                        .iter()
-                       .filter(|a| should_diff(a) && !inline_a.contains(&a.offset.0)),
+                       .filter(|a| filter_type(a, &inline_a)),
                    &mut unit_b.types
                        .iter()
-                       .filter(|b| should_diff(b) && !inline_b.contains(&b.offset.0)),
+                       .filter(|b| filter_type(b, &inline_b)),
                    Type::cmp_name,
                    Type::diff,
                    Type::print,
                    Type::print)?;
         state.merge(w,
-                   &mut unit_a.subprograms.iter(),
-                   &mut unit_b.subprograms.iter(),
+                   &mut unit_a.subprograms.iter().filter(|a| a.filter(flags)),
+                   &mut unit_b.subprograms.iter().filter(|b| b.filter(flags)),
                    Subprogram::cmp_name,
                    Subprogram::diff,
                    Subprogram::print,
                    Subprogram::print)?;
         state.merge(w,
-                   &mut unit_a.variables.iter(),
-                   &mut unit_b.variables.iter(),
+                   &mut unit_a.variables.iter().filter(|a| a.filter(flags)),
+                   &mut unit_b.variables.iter().filter(|b| b.filter(flags)),
                    Variable::cmp_name,
                    Variable::diff,
                    Variable::print,
@@ -1039,6 +1083,20 @@ impl<'input> Type<'input> {
             TypeKind::Subroutine(..) |
             TypeKind::Modifier(..) |
             TypeKind::Unimplemented(_) => {}
+        }
+    }
+
+    fn filter(&self, flags: &Flags) -> bool {
+        match self.kind {
+            TypeKind::Def(ref val) => val.filter(flags),
+            TypeKind::Struct(ref val) => val.filter(flags),
+            TypeKind::Union(ref val) => val.filter(flags),
+            TypeKind::Enumeration(ref val) => val.filter(flags),
+            TypeKind::Base(..) |
+            TypeKind::Array(..) |
+            TypeKind::Subroutine(..) |
+            TypeKind::Modifier(..) |
+            TypeKind::Unimplemented(_) => flags.name.is_none(),
         }
     }
 
@@ -1444,11 +1502,11 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
 
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         if let Some(ty) = self.ty(state) {
             if ty.is_anon() {
                 self.print_ty_anon(w, state)?;
@@ -1612,11 +1670,11 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
 
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         self.print_name(w)?;
         writeln!(w, "")?;
@@ -1806,11 +1864,11 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
 
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         self.print_name(w)?;
         writeln!(w, "")?;
@@ -2196,11 +2254,11 @@ impl<'input> EnumerationType<'input> {
         self.byte_size.map(|v| v * 8)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
 
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         self.print_name(w)?;
         writeln!(w, "")?;
@@ -2701,11 +2759,11 @@ impl<'input> Subprogram<'input> {
         state.subprograms.get(&offset.0).map(|v| *v)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
 
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         write!(w, "fn ")?;
         self.namespace.print(w)?;
@@ -3183,11 +3241,11 @@ impl<'input> Variable<'input> {
         self.ty(state).and_then(|t| t.bit_size(state))
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.filter_name(self.name) || !state.filter_namespace(&*self.namespace) {
-            return Ok(());
-        }
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
 
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         write!(w, "var ")?;
         self.print_name(w)?;
