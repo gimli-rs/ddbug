@@ -319,7 +319,7 @@ pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
         if flags.unit.is_none() {
             state.line_start(w)?;
             write!(w, "Unit: ")?;
-            unit.print_name(w)?;
+            unit.print_ref(w)?;
             writeln!(w, "")?;
         }
         unit.print(w, &mut state, flags)?;
@@ -450,7 +450,7 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
                     .prefix("  ", |state| {
                         state.line_start(w)?;
                         write!(w, "Unit: ")?;
-                        a.print_name(w)?;
+                        a.print_ref(w)?;
                         writeln!(w, "")?;
                         Ok(())
                     })?;
@@ -461,7 +461,7 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
             state.prefix("- ", |state| {
                 state.line_start(w)?;
                 write!(w, "Unit: ")?;
-                a.print_name(w)?;
+                a.print_ref(w)?;
                 writeln!(w, "")?;
                 Ok(())
             })
@@ -470,7 +470,7 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
             state.prefix("+ ", |state| {
                 state.line_start(w)?;
                 write!(w, "Unit: ")?;
-                b.print_name(w)?;
+                b.print_ref(w)?;
                 writeln!(w, "")?;
                 Ok(())
             })
@@ -814,7 +814,7 @@ impl<'input> Unit<'input> {
         flags.filter_unit(self.name)
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
             None => write!(w, "<anon>")?,
@@ -1112,35 +1112,35 @@ impl<'input> Type<'input> {
             TypeKind::Modifier(..) => {}
             TypeKind::Unimplemented(_) => {
                 state.line_start(w)?;
-                self.print_name(w, state)?;
+                self.print_ref(w, state)?;
                 writeln!(w, "")?;
             }
         }
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         match self.kind {
-            TypeKind::Base(ref val) => val.print_name(w)?,
-            TypeKind::Def(ref val) => val.print_name(w)?,
-            TypeKind::Struct(ref val) => val.print_name(w)?,
-            TypeKind::Union(ref val) => val.print_name(w)?,
-            TypeKind::Enumeration(ref val) => val.print_name(w)?,
-            TypeKind::Array(ref val) => val.print_name(w, state)?,
-            TypeKind::Subroutine(ref val) => val.print_name(w, state)?,
-            TypeKind::Modifier(ref val) => val.print_name(w, state)?,
+            TypeKind::Base(ref val) => val.print_ref(w)?,
+            TypeKind::Def(ref val) => val.print_ref(w)?,
+            TypeKind::Struct(ref val) => val.print_ref(w)?,
+            TypeKind::Union(ref val) => val.print_ref(w)?,
+            TypeKind::Enumeration(ref val) => val.print_ref(w)?,
+            TypeKind::Array(ref val) => val.print_ref(w, state)?,
+            TypeKind::Subroutine(ref val) => val.print_ref(w, state)?,
+            TypeKind::Modifier(ref val) => val.print_ref(w, state)?,
             TypeKind::Unimplemented(ref tag) => write!(w, "<unimplemented {}>", tag)?,
         }
         Ok(())
     }
 
-    fn print_offset_name(
+    fn print_ref_from_offset(
         w: &mut Write,
         state: &PrintState,
         offset: gimli::UnitOffset
     ) -> Result<()> {
         match Type::from_offset(state, offset) {
-            Some(ty) => ty.print_name(w, state)?,
+            Some(ty) => ty.print_ref(w, state)?,
             None => write!(w, "<invalid-type>")?,
         }
         Ok(())
@@ -1292,7 +1292,7 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if let Some(name) = self.name {
             // Not sure namespace is required here.
             self.namespace.print(w)?;
@@ -1304,7 +1304,7 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
             }
             match self.ty {
-                Some(ty) => Type::print_offset_name(w, state, ty)?,
+                Some(ty) => Type::print_ref_from_offset(w, state, ty)?,
                 None => write!(w, "<unknown-type>")?,
             }
         }
@@ -1377,7 +1377,7 @@ impl<'input> BaseType<'input> {
         self.byte_size.map(|v| v * 8)
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
             None => write!(w, "<anon-base-type>")?,
@@ -1457,7 +1457,7 @@ impl<'input> TypeDef<'input> {
         self.ty(state).and_then(|v| v.bit_size(state))
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
@@ -1469,7 +1469,7 @@ impl<'input> TypeDef<'input> {
     fn print_ty_anon(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         write!(w, "type ")?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         write!(w, " = ")?;
         writeln!(w, "")?;
         Ok(())
@@ -1478,7 +1478,7 @@ impl<'input> TypeDef<'input> {
     fn print_ty_unknown(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         write!(w, "type ")?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         write!(w, " = ")?;
         writeln!(w, "<unknown-type>")?;
         Ok(())
@@ -1487,9 +1487,9 @@ impl<'input> TypeDef<'input> {
     fn print_ty_name(&self, w: &mut Write, state: &mut PrintState, ty: &Type) -> Result<()> {
         state.line_start(w)?;
         write!(w, "type ")?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         write!(w, " = ")?;
-        ty.print_name(w, state)?;
+        ty.print_ref(w, state)?;
         writeln!(w, "")?;
         Ok(())
     }
@@ -1676,7 +1676,7 @@ impl<'input> StructType<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
@@ -1729,7 +1729,7 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         write!(w, "struct ")?;
         self.namespace.print(w)?;
         match self.name {
@@ -1870,7 +1870,7 @@ impl<'input> UnionType<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
@@ -1915,7 +1915,7 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         write!(w, "union ")?;
         self.namespace.print(w)?;
         match self.name {
@@ -2140,7 +2140,7 @@ impl<'input> Member<'input> {
         }
         if let Some(ty) = self.ty(state) {
             write!(w, ": ")?;
-            ty.print_name(w, state)?;
+            ty.print_ref(w, state)?;
             writeln!(w, "")?;
             if self.is_inline(state) {
                 state.indent(|state| {
@@ -2260,7 +2260,7 @@ impl<'input> EnumerationType<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
@@ -2290,7 +2290,7 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         write!(w, "enum ")?;
         self.namespace.print(w)?;
         match self.name {
@@ -2404,7 +2404,7 @@ impl<'input> Enumerator<'input> {
 
     fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         state.line_start(w)?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         if let Some(value) = self.value {
             write!(w, "({})", value)?;
         }
@@ -2412,7 +2412,7 @@ impl<'input> Enumerator<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
             None => write!(w, "<anon>")?,
@@ -2506,10 +2506,10 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         write!(w, "[")?;
         match self.ty {
-            Some(ty) => Type::print_offset_name(w, state, ty)?,
+            Some(ty) => Type::print_ref_from_offset(w, state, ty)?,
             None => write!(w, "<unknown-type>")?,
         }
         if let Some(count) = self.count {
@@ -2580,7 +2580,7 @@ impl<'input> SubroutineType<'input> {
         None
     }
 
-    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         let mut first = true;
         write!(w, "(")?;
         for parameter in &self.parameters {
@@ -2595,7 +2595,7 @@ impl<'input> SubroutineType<'input> {
 
         if let Some(return_type) = self.return_type {
             write!(w, " -> ")?;
-            Type::print_offset_name(w, state, return_type)?;
+            Type::print_ref_from_offset(w, state, return_type)?;
         }
         Ok(())
     }
@@ -2816,7 +2816,7 @@ impl<'input> Subprogram<'input> {
                             None => write!(w, "[??]")?,
                         }
                         write!(w, "\t")?;
-                        Type::print_offset_name(w, state, return_type)?;
+                        Type::print_ref_from_offset(w, state, return_type)?;
                         writeln!(w, "")?;
                         Ok(())
                     })?;
@@ -2864,7 +2864,7 @@ impl<'input> Subprogram<'input> {
                                     write!(w, "0x{:x}", call)?;
                                     if let Some(subprogram) = state.all_subprograms.get(call) {
                                         write!(w, " ")?;
-                                        subprogram.print_name(w)?;
+                                        subprogram.print_ref(w)?;
                                     }
                                     writeln!(w, "")?;
                                 }
@@ -2879,7 +2879,7 @@ impl<'input> Subprogram<'input> {
         })
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
@@ -2979,7 +2979,7 @@ impl<'input> Parameter<'input> {
             write!(w, "{}: ", name.to_string_lossy())?;
         }
         match self.ty {
-            Some(offset) => Type::print_offset_name(w, state, offset)?,
+            Some(offset) => Type::print_ref_from_offset(w, state, offset)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -3148,7 +3148,7 @@ impl<'input> InlinedSubroutine<'input> {
         }
         write!(w, "\t")?;
         match self.abstract_origin.and_then(|v| Subprogram::from_offset(state, v)) {
-            Some(subprogram) => subprogram.print_name(w)?,
+            Some(subprogram) => subprogram.print_ref(w)?,
             None => write!(w, "<anon>")?,
         }
         writeln!(w, "")?;
@@ -3248,10 +3248,10 @@ impl<'input> Variable<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         write!(w, "var ")?;
-        self.print_name(w)?;
+        self.print_ref(w)?;
         write!(w, ": ")?;
         match self.ty {
-            Some(offset) => Type::print_offset_name(w, state, offset)?,
+            Some(offset) => Type::print_ref_from_offset(w, state, offset)?,
             None => write!(w, "<anon>")?,
         }
         writeln!(w, "")?;
@@ -3279,7 +3279,7 @@ impl<'input> Variable<'input> {
         })
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
