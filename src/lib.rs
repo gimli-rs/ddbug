@@ -344,6 +344,58 @@ impl<'a, 'input> DiffState<'a, 'input>
         }
     }
 
+    fn merge_with_args<T, Args, FCmp, FEqual, FLess, FGreater>(
+        &mut self,
+        w: &mut Write,
+        iter_a: &mut Iterator<Item = T>,
+        iter_b: &mut Iterator<Item = T>,
+        args: &mut Args,
+        cmp: FCmp,
+        mut equal: FEqual,
+        less: FLess,
+        greater: FGreater
+    ) -> Result<()>
+        where T: Copy,
+              FCmp: Fn(T, T) -> cmp::Ordering,
+              FEqual: FnMut(T, T, &mut Write, &mut DiffState<'a, 'input>, &mut Args) -> Result<()>,
+              FLess: Fn(T, &mut Write, &mut PrintState<'a, 'input>, &mut Args) -> Result<()>,
+              FGreater: Fn(T, &mut Write, &mut PrintState<'a, 'input>, &mut Args) -> Result<()>
+    {
+        let mut item_a = iter_a.next();
+        let mut item_b = iter_b.next();
+        loop {
+            match (item_a, item_b) {
+                (Some(a), Some(b)) => {
+                    match cmp(a, b) {
+                        cmp::Ordering::Equal => {
+                            self.prefix_equal(|state| equal(a, b, w, state, args))?;
+                            item_a = iter_a.next();
+                            item_b = iter_b.next();
+                        }
+                        cmp::Ordering::Less => {
+                            self.a.prefix("- ", |state| less(a, w, state, args))?;
+                            item_a = iter_a.next();
+                        }
+                        cmp::Ordering::Greater => {
+                            self.b.prefix("+ ", |state| greater(b, w, state, args))?;
+                            item_b = iter_b.next();
+                        }
+                    }
+                }
+                (Some(a), None) => {
+                    self.a.prefix("- ", |state| less(a, w, state, args))?;
+                    item_a = iter_a.next();
+                }
+                (None, Some(b)) => {
+                    self.b.prefix("+ ", |state| greater(b, w, state, args))?;
+                    item_b = iter_b.next();
+                }
+                (None, None) => break,
+            };
+        }
+        Ok(())
+    }
+
     fn merge<T, FCmp, FEqual, FLess, FGreater>(
         &mut self,
         w: &mut Write,
@@ -360,39 +412,14 @@ impl<'a, 'input> DiffState<'a, 'input>
               FLess: Fn(T, &mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
               FGreater: Fn(T, &mut Write, &mut PrintState<'a, 'input>) -> Result<()>
     {
-        let mut item_a = iter_a.next();
-        let mut item_b = iter_b.next();
-        loop {
-            match (item_a, item_b) {
-                (Some(a), Some(b)) => {
-                    match cmp(a, b) {
-                        cmp::Ordering::Equal => {
-                            self.prefix_equal(|state| equal(a, b, w, state))?;
-                            item_a = iter_a.next();
-                            item_b = iter_b.next();
-                        }
-                        cmp::Ordering::Less => {
-                            self.a.prefix("- ", |state| less(a, w, state))?;
-                            item_a = iter_a.next();
-                        }
-                        cmp::Ordering::Greater => {
-                            self.b.prefix("+ ", |state| greater(b, w, state))?;
-                            item_b = iter_b.next();
-                        }
-                    }
-                }
-                (Some(a), None) => {
-                    self.a.prefix("- ", |state| less(a, w, state))?;
-                    item_a = iter_a.next();
-                }
-                (None, Some(b)) => {
-                    self.b.prefix("+ ", |state| greater(b, w, state))?;
-                    item_b = iter_b.next();
-                }
-                (None, None) => break,
-            };
-        }
-        Ok(())
+        self.merge_with_args(w,
+                             iter_a,
+                             iter_b,
+                             &mut (),
+                             cmp,
+                             |a, b, w, state, _args| equal(a, b, w, state),
+                             |a, w, state, _args| less(a, w, state),
+                             |b, w, state, _args| greater(b, w, state))
     }
 
     fn indent<F>(&mut self, mut f: F) -> Result<()>
@@ -1667,35 +1694,98 @@ impl<'input> StructType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        state.line_start(w)?;
-        self.print_ref(w)?;
-        writeln!(w, "")?;
+        self.print_name(w, state)?;
+        state.indent(|state| {
+                self.print_byte_size(w, state)?;
+                self.print_declaration(w, state)?;
+                self.print_members_label(w, state)?;
+                state.indent(|state| self.print_members(w, state, Some(0)))?;
+                writeln!(w, "")?;
+                Ok(())
+            })?;
+
+        // TODO: print these separately and allow filtering
+        for subprogram in &self.subprograms {
+            subprogram.print(w, state)?;
+        }
+        Ok(())
+    }
+
+    fn diff(a: &StructType, b: &StructType, w: &mut Write, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+
+        debug_assert_eq!(Self::cmp_name(a, b), cmp::Ordering::Equal);
+        state.prefix_equal(|state| a.print_name(w, &mut state.a))?;
 
         state.indent(|state| {
-                if let Some(size) = self.byte_size {
-                    state.line_start(w)?;
-                    writeln!(w, "size: {}", size)?;
-                } else if !self.declaration {
-                    debug!("struct with no size");
+                if a.byte_size == b.byte_size {
+                    state.prefix_equal(|state| a.print_byte_size(w, &mut state.a))?;
+                } else {
+                    state.prefix_diff(|state| {
+                            a.print_byte_size(w, &mut state.a)?;
+                            b.print_byte_size(w, &mut state.b)
+                        })?;
                 }
 
-                if self.declaration {
-                    state.line_start(w)?;
-                    writeln!(w, "declaration: yes")?;
+                if a.declaration == b.declaration {
+                    state.prefix_equal(|state| a.print_declaration(w, &mut state.a))?;
+                } else {
+                    state.prefix_diff(|state| {
+                            a.print_declaration(w, &mut state.a)?;
+                            b.print_declaration(w, &mut state.b)
+                        })?;
                 }
 
-                if !self.members.is_empty() {
-                    state.line_start(w)?;
-                    writeln!(w, "members:")?;
-                    state.indent(|state| self.print_members(w, state, Some(0)))?;
+                if a.members.is_empty() == b.members.is_empty() {
+                    state.prefix_equal(|state| a.print_members_label(w, &mut state.a))?;
+                } else {
+                    state.prefix_diff(|state| {
+                            a.print_members_label(w, &mut state.a)?;
+                            b.print_members_label(w, &mut state.b)
+                        })?;
                 }
+
+                state.indent(|state| Self::diff_members(a, b, w, state, Some(0), Some(0)))?;
 
                 writeln!(w, "")?;
                 Ok(())
             })?;
 
-        for subprogram in &self.subprograms {
-            subprogram.print(w, state)?;
+        // TODO: diff subprograms
+        Ok(())
+    }
+
+    fn print_name(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line_start(w)?;
+        self.print_ref(w)?;
+        writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if let Some(size) = self.byte_size {
+            state.line_start(w)?;
+            writeln!(w, "size: {}", size)?;
+        } else if !self.declaration {
+            debug!("struct with no size");
+        }
+        Ok(())
+    }
+
+    fn print_declaration(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if self.declaration {
+            state.line_start(w)?;
+            writeln!(w, "declaration: yes")?;
+        }
+        Ok(())
+    }
+
+    fn print_members_label(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if !self.members.is_empty() {
+            state.line_start(w)?;
+            writeln!(w, "members:")?;
         }
         Ok(())
     }
@@ -1718,6 +1808,38 @@ impl<'input> StructType<'input> {
                          format_bit(size * 8 - bit_offset))?;
             }
         }
+        Ok(())
+    }
+
+    fn diff_members(
+        a: &StructType,
+        b: &StructType,
+        w: &mut Write,
+        state: &mut DiffState,
+        mut bit_offset_a: Option<u64>,
+        mut bit_offset_b: Option<u64>
+    ) -> Result<()> {
+        state.merge_with_args(w,
+                             &mut a.members.iter(),
+                             &mut b.members.iter(),
+                             &mut (&mut bit_offset_a, &mut bit_offset_b),
+                             Member::cmp_name,
+                             |a, b, w, state, args| Member::diff(a, b, w, state, args.0, args.1),
+                             |a, w, state, args| Member::print(a, w, state, args.0),
+                             |a, w, state, args| Member::print(a, w, state, args.1))?;
+        // TODO: trailing padding
+        //
+        // if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
+        // if bit_offset < size * 8 {
+        // state.line_start(w)?;
+        // writeln!(w,
+        // "{}[{}]\t<padding>",
+        // format_bit(bit_offset),
+        // format_bit(size * 8 - bit_offset))?;
+        // }
+        // }
+        //
+
         Ok(())
     }
 
@@ -1764,18 +1886,6 @@ impl<'input> StructType<'input> {
     ) -> bool {
         // TODO
         true
-    }
-
-    fn diff(a: &StructType, b: &StructType, w: &mut Write, state: &mut DiffState) -> Result<()> {
-        if Self::equal(a, b, state) {
-            return Ok(());
-        }
-        // TODO
-        state.prefix_diff(|state| {
-                a.print(w, &mut state.a)?;
-                b.print(w, &mut state.b)
-            })?;
-        Ok(())
     }
 }
 
@@ -1861,35 +1971,98 @@ impl<'input> UnionType<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        state.line_start(w)?;
-        self.print_ref(w)?;
-        writeln!(w, "")?;
+        self.print_name(w, state)?;
+        state.indent(|state| {
+                self.print_byte_size(w, state)?;
+                self.print_declaration(w, state)?;
+                self.print_members_label(w, state)?;
+                state.indent(|state| self.print_members(w, state, Some(0)))?;
+                writeln!(w, "")?;
+                Ok(())
+            })?;
+
+        // TODO: print these separately and allow filtering
+        for subprogram in &self.subprograms {
+            subprogram.print(w, state)?;
+        }
+        Ok(())
+    }
+
+    fn diff(a: &UnionType, b: &UnionType, w: &mut Write, state: &mut DiffState) -> Result<()> {
+        if Self::equal(a, b, state) {
+            return Ok(());
+        }
+
+        debug_assert_eq!(Self::cmp_name(a, b), cmp::Ordering::Equal);
+        state.prefix_equal(|state| a.print_name(w, &mut state.a))?;
 
         state.indent(|state| {
-                if let Some(size) = self.byte_size {
-                    state.line_start(w)?;
-                    writeln!(w, "size: {}", size)?;
-                } else if !self.declaration {
-                    debug!("union with no size");
+                if a.byte_size == b.byte_size {
+                    state.prefix_equal(|state| a.print_byte_size(w, &mut state.a))?;
+                } else {
+                    state.prefix_diff(|state| {
+                            a.print_byte_size(w, &mut state.a)?;
+                            b.print_byte_size(w, &mut state.b)
+                        })?;
                 }
 
-                if self.declaration {
-                    state.line_start(w)?;
-                    writeln!(w, "declaration: yes")?;
+                if a.declaration == b.declaration {
+                    state.prefix_equal(|state| a.print_declaration(w, &mut state.a))?;
+                } else {
+                    state.prefix_diff(|state| {
+                            a.print_declaration(w, &mut state.a)?;
+                            b.print_declaration(w, &mut state.b)
+                        })?;
                 }
 
-                if !self.members.is_empty() {
-                    state.line_start(w)?;
-                    writeln!(w, "members:")?;
-                    state.indent(|state| self.print_members(w, state, Some(0)))?;
+                if a.members.is_empty() == b.members.is_empty() {
+                    state.prefix_equal(|state| a.print_members_label(w, &mut state.a))?;
+                } else {
+                    state.prefix_diff(|state| {
+                            a.print_members_label(w, &mut state.a)?;
+                            b.print_members_label(w, &mut state.b)
+                        })?;
                 }
+
+                state.indent(|state| Self::diff_members(a, b, w, state, Some(0), Some(0)))?;
 
                 writeln!(w, "")?;
                 Ok(())
             })?;
 
-        for subprogram in &self.subprograms {
-            subprogram.print(w, state)?;
+        // TODO: diff subprograms
+        Ok(())
+    }
+
+    fn print_name(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line_start(w)?;
+        self.print_ref(w)?;
+        writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if let Some(size) = self.byte_size {
+            state.line_start(w)?;
+            writeln!(w, "size: {}", size)?;
+        } else if !self.declaration {
+            debug!("struct with no size");
+        }
+        Ok(())
+    }
+
+    fn print_declaration(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if self.declaration {
+            state.line_start(w)?;
+            writeln!(w, "declaration: yes")?;
+        }
+        Ok(())
+    }
+
+    fn print_members_label(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if !self.members.is_empty() {
+            state.line_start(w)?;
+            writeln!(w, "members:")?;
         }
         Ok(())
     }
@@ -1904,6 +2077,33 @@ impl<'input> UnionType<'input> {
             let mut bit_offset = bit_offset;
             member.print(w, state, &mut bit_offset)?;
         }
+        // TODO: trailing padding?
+        Ok(())
+    }
+
+    fn diff_members(
+        a: &UnionType,
+        b: &UnionType,
+        w: &mut Write,
+        state: &mut DiffState,
+        bit_offset_a: Option<u64>,
+        bit_offset_b: Option<u64>
+    ) -> Result<()> {
+        state.merge(w,
+                   &mut a.members.iter(),
+                   &mut b.members.iter(),
+                   Member::cmp_name,
+                   |a, b, w, state| {
+                Member::diff(a,
+                             b,
+                             w,
+                             state,
+                             &mut bit_offset_a.clone(),
+                             &mut bit_offset_b.clone())
+            },
+                   |a, w, state| Member::print(a, w, state, &mut bit_offset_a.clone()),
+                   |a, w, state| Member::print(a, w, state, &mut bit_offset_b.clone()))?;
+        // TODO: trailing padding?
         Ok(())
     }
 
@@ -1946,18 +2146,6 @@ impl<'input> UnionType<'input> {
     fn equal_subprograms(_union_a: &UnionType, _union_b: &UnionType, _state: &DiffState) -> bool {
         // TODO
         true
-    }
-
-    fn diff(a: &UnionType, b: &UnionType, w: &mut Write, state: &mut DiffState) -> Result<()> {
-        if Self::equal(a, b, state) {
-            return Ok(());
-        }
-        // TODO
-        state.prefix_diff(|state| {
-                a.print(w, &mut state.a)?;
-                b.print(w, &mut state.b)
-            })?;
-        Ok(())
     }
 }
 
@@ -2156,6 +2344,22 @@ impl<'input> Member<'input> {
         Ok(())
     }
 
+    fn diff(
+        a: &Member,
+        b: &Member,
+        w: &mut Write,
+        state: &mut DiffState,
+        end_bit_offset_a: &mut Option<u64>,
+        end_bit_offset_b: &mut Option<u64>
+    ) -> Result<()> {
+        // TODO
+        state.prefix_diff(|state| {
+                a.print(w, &mut state.a, end_bit_offset_a)?;
+                b.print(w, &mut state.b, end_bit_offset_b)
+            })?;
+        Ok(())
+    }
+
     fn is_inline(&self, state: &PrintState) -> bool {
         match self.name {
             Some(s) => {
@@ -2172,9 +2376,23 @@ impl<'input> Member<'input> {
         }
     }
 
-    fn equal(_a: &Member, _b: &Member, _state: &DiffState) -> bool {
-        // TODO
-        true
+    fn cmp_name(a: &Member, b: &Member) -> cmp::Ordering {
+        a.name.cmp(&b.name)
+    }
+
+    fn equal(a: &Member, b: &Member, state: &DiffState) -> bool {
+        if Self::cmp_name(a, b) != cmp::Ordering::Equal {
+            return false;
+        }
+        // TODO: compare bit_offset?
+        if a.bit_size != b.bit_size {
+            return false;
+        }
+        match (a.ty(&state.a), b.ty(&state.b)) {
+            (Some(ty_a), Some(ty_b)) => Type::equal(ty_a, ty_b, state),
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 
