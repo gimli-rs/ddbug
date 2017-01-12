@@ -1,4 +1,5 @@
 extern crate ddbug;
+extern crate rand;
 
 use std::fs::{self, File};
 use std::io::Write;
@@ -73,8 +74,17 @@ fn diff(output_file_1: &str, output_file_2: &str, expect: &str, flags: &ddbug::F
     }
 }
 
+fn random_name() -> String {
+    let mut s = String::with_capacity(16);
+    for _ in 0..4 {
+        s.push_str(&format!("{:04x}", rand::random::<u32>()));
+    }
+    s
+}
+
 #[allow(dead_code)]
-fn diff_rust(name: &str, input_1: &str, input_2: &str, expect: &str, flags: &ddbug::Flags) {
+fn diff_rust(input_1: &str, input_2: &str, expect: &str, flags: &ddbug::Flags) {
+    let name = &random_name();
     let input_file = &input_file_rust(name);
     let mut flags = (*flags).clone();
     flags.unit(input_file);
@@ -83,9 +93,13 @@ fn diff_rust(name: &str, input_1: &str, input_2: &str, expect: &str, flags: &ddb
     compile_rust(input_1, input_file, output_file_1);
     compile_rust(input_2, input_file, output_file_2);
     diff(output_file_1, output_file_2, expect, &flags);
+    fs::remove_file(input_file).unwrap();
+    fs::remove_file(output_file_1).unwrap();
+    fs::remove_file(output_file_2).unwrap();
 }
 
-fn diff_c(name: &str, input_1: &str, input_2: &str, expect: &str, flags: &ddbug::Flags) {
+fn diff_c(input_1: &str, input_2: &str, expect: &str, flags: &ddbug::Flags) {
+    let name = &random_name();
     let input_file = &input_file_c(name);
     let mut flags = (*flags).clone();
     flags.unit(input_file);
@@ -94,12 +108,14 @@ fn diff_c(name: &str, input_1: &str, input_2: &str, expect: &str, flags: &ddbug:
     compile_c(input_1, input_file, output_file_1);
     compile_c(input_2, input_file, output_file_2);
     diff(output_file_1, output_file_2, expect, &flags);
+    fs::remove_file(input_file).unwrap();
+    fs::remove_file(output_file_1).unwrap();
+    fs::remove_file(output_file_2).unwrap();
 }
 
 #[test]
 fn test_typedef_diff_base_equal() {
-    diff_c("typedef_diff_base_equal",
-           concat!("typedef char T;\n",
+    diff_c(concat!("typedef char T;\n",
                    "T t;\n",
                    "int main() {}\n"),
            concat!("typedef char T;\n",
@@ -111,8 +127,7 @@ fn test_typedef_diff_base_equal() {
 
 #[test]
 fn test_typedef_diff_base() {
-    diff_c("typedef_diff_base",
-           concat!("typedef char T;\n",
+    diff_c(concat!("typedef char T;\n",
                    "T t;\n",
                    "int main() {}\n"),
            concat!("typedef int T;\n",
@@ -129,8 +144,7 @@ fn test_typedef_diff_base() {
 #[test]
 fn test_typedef_diff_anon_equal() {
     // Same anon struct.
-    diff_c("typedef_diff_anon_equal",
-           concat!("typedef struct { char c; } T;\n",
+    diff_c(concat!("typedef struct { char c; } T;\n",
                    "T t;\n",
                    "int main() {}\n"),
            concat!("typedef struct { char c; } T;\n",
@@ -143,8 +157,7 @@ fn test_typedef_diff_anon_equal() {
 #[test]
 fn test_typedef_diff_anon() {
     // Different anon struct.
-    diff_c("typedef_diff_anon",
-           concat!("typedef struct { char c; } T;\n",
+    diff_c(concat!("typedef struct { char c; } T;\n",
                    "T t;\n",
                    "int main() {}\n"),
            concat!("typedef struct { int i; } T;\n",
@@ -163,8 +176,7 @@ fn test_typedef_diff_anon() {
 
 #[test]
 fn test_typedef_diff_anon_base() {
-    diff_c("typedef_diff_anon_base",
-           concat!("typedef char T;\n",
+    diff_c(concat!("typedef char T;\n",
                    "T t;\n",
                    "int main() {}\n"),
            concat!("typedef struct { char c; } T;\n",
@@ -185,8 +197,7 @@ fn test_typedef_diff_anon_base() {
 
 #[test]
 fn test_typedef_diff_base_anon() {
-    diff_c("typedef_diff_base_anon",
-           concat!("typedef struct { char c; } T;\n",
+    diff_c(concat!("typedef struct { char c; } T;\n",
                    "T t;\n",
                    "int main() {}\n"),
            concat!("typedef char T;\n",
@@ -207,8 +218,7 @@ fn test_typedef_diff_base_anon() {
 
 #[test]
 fn test_typedef_diff_struct_name() {
-    diff_c("typedef_diff_struct_name",
-           concat!("struct s1 { char c; };\n",
+    diff_c(concat!("struct s1 { char c; };\n",
                    "typedef struct s1 T;\n",
                    "T t;\n",
                    "int main() {}\n"),
@@ -225,8 +235,7 @@ fn test_typedef_diff_struct_name() {
 
 #[test]
 fn test_typedef_diff_struct_size() {
-    diff_c("typedef_diff_struct_size",
-           concat!("struct s { char c; };\n",
+    diff_c(concat!("struct s { char c; };\n",
                    "typedef struct s T;\n",
                    "T t;\n",
                    "int main() {}\n"),
@@ -243,8 +252,7 @@ fn test_typedef_diff_struct_size() {
 
 #[test]
 fn test_struct_diff_defn_equal() {
-    diff_c("struct_diff_defn_equal",
-           concat!("struct T { char c; } s;\n",
+    diff_c(concat!("struct T { char c; } s;\n",
                    "int main() {}\n"),
            concat!("struct T { char c; } s;\n",
                    "int main() {}\n"),
@@ -254,8 +262,7 @@ fn test_struct_diff_defn_equal() {
 
 #[test]
 fn test_struct_diff_decl_equal() {
-    diff_c("struct_diff_decl_equal",
-           concat!("struct T;\n",
+    diff_c(concat!("struct T;\n",
                    "struct T *p;\n",
                    "int main() {}\n"),
            concat!("struct T;\n",
@@ -267,8 +274,7 @@ fn test_struct_diff_decl_equal() {
 
 #[test]
 fn test_struct_diff_defn_decl() {
-    diff_c("struct_diff_defn_decl",
-           concat!("struct T { char c; } s;\n",
+    diff_c(concat!("struct T { char c; } s;\n",
                    "int main() {}\n"),
            concat!("struct T;\n",
                    "struct T *p;\n",
@@ -284,8 +290,7 @@ fn test_struct_diff_defn_decl() {
 
 #[test]
 fn test_struct_diff_decl_defn() {
-    diff_c("struct_diff_decl_defn",
-           concat!("struct T;\n",
+    diff_c(concat!("struct T;\n",
                    "struct T *p;\n",
                    "int main() {}\n"),
            concat!("struct T { char c; } s;\n",
@@ -301,8 +306,7 @@ fn test_struct_diff_decl_defn() {
 
 #[test]
 fn test_struct_diff_size_equal() {
-    diff_c("struct_diff_size_equal",
-           concat!("struct T { char c[2]; } s;\n",
+    diff_c(concat!("struct T { char c[2]; } s;\n",
                    "int main() {}\n"),
            concat!("struct T { char c1; char c2; } s;\n",
                    "int main() {}\n"),
@@ -318,8 +322,7 @@ fn test_struct_diff_size_equal() {
 
 #[test]
 fn test_struct_diff_member() {
-    diff_c("struct_diff_member",
-           concat!("struct T { char a; } s;\n",
+    diff_c(concat!("struct T { char a; } s;\n",
                    "int main() {}\n"),
            concat!("struct T { int a; } s;\n",
                    "int main() {}\n"),
@@ -337,8 +340,7 @@ fn test_struct_diff_member() {
 
 #[test]
 fn test_union_diff_defn_equal() {
-    diff_c("union_diff_defn_equal",
-           concat!("union T { char c; } s;\n",
+    diff_c(concat!("union T { char c; } s;\n",
                    "int main() {}\n"),
            concat!("union T { char c; } s;\n",
                    "int main() {}\n"),
@@ -348,8 +350,7 @@ fn test_union_diff_defn_equal() {
 
 #[test]
 fn test_union_diff_decl_equal() {
-    diff_c("union_diff_decl_equal",
-           concat!("union T;\n",
+    diff_c(concat!("union T;\n",
                    "union T *p;\n",
                    "int main() {}\n"),
            concat!("union T;\n",
@@ -361,8 +362,7 @@ fn test_union_diff_decl_equal() {
 
 #[test]
 fn test_union_diff_defn_decl() {
-    diff_c("union_diff_defn_decl",
-           concat!("union T { char c; } s;\n",
+    diff_c(concat!("union T { char c; } s;\n",
                    "int main() {}\n"),
            concat!("union T;\n",
                    "union T *p;\n",
@@ -378,8 +378,7 @@ fn test_union_diff_defn_decl() {
 
 #[test]
 fn test_union_diff_decl_defn() {
-    diff_c("union_diff_decl_defn",
-           concat!("union T;\n",
+    diff_c(concat!("union T;\n",
                    "union T *p;\n",
                    "int main() {}\n"),
            concat!("union T { char c; } s;\n",
@@ -395,8 +394,7 @@ fn test_union_diff_decl_defn() {
 
 #[test]
 fn test_union_diff_size_equal() {
-    diff_c("union_diff_size_equal",
-           concat!("union T { struct { char c[2]; } } s;\n",
+    diff_c(concat!("union T { struct { char c[2]; } } s;\n",
                    "int main() {}\n"),
            concat!("union T { struct { char c1; char c2; } } s;\n",
                    "int main() {}\n"),
@@ -415,8 +413,7 @@ fn test_union_diff_size_equal() {
 
 #[test]
 fn test_union_diff_member() {
-    diff_c("union_diff_member",
-           concat!("union T { char a; } s;\n",
+    diff_c(concat!("union T { char a; } s;\n",
                    "int main() {}\n"),
            concat!("union T { int a; } s;\n",
                    "int main() {}\n"),
