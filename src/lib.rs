@@ -2466,7 +2466,7 @@ impl<'input> ArrayType<'input> {
                             }
                             gimli::DW_AT_upper_bound => {
                                 // TODO: use AT_lower_bound too
-                                array.count = attr.udata_value();
+                                array.count = attr.udata_value().map(|v| v + 1);
                             }
                             gimli::DW_AT_type |
                             gimli::DW_AT_lower_bound => {}
