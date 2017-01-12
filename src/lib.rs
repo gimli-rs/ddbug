@@ -367,7 +367,7 @@ impl<'a, 'input> DiffState<'a, 'input>
                 (Some(a), Some(b)) => {
                     match cmp(a, b) {
                         cmp::Ordering::Equal => {
-                            equal(a, b, w, self)?;
+                            self.prefix_equal(|state| equal(a, b, w, state))?;
                             item_a = iter_a.next();
                             item_b = iter_b.next();
                         }
@@ -446,34 +446,26 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
             state.a.set_unit(a);
             state.b.set_unit(b);
             if flags.unit.is_none() {
-                state.a
-                    .prefix("  ", |state| {
-                        state.line_start(w)?;
-                        write!(w, "Unit: ")?;
-                        a.print_ref(w)?;
-                        writeln!(w, "")?;
-                        Ok(())
-                    })?;
+                state.a.line_start(w)?;
+                write!(w, "Unit: ")?;
+                a.print_ref(w)?;
+                writeln!(w, "")?;
             }
             Unit::diff(a, b, w, state, flags)
         },
                |a, w, state| {
-            state.prefix("- ", |state| {
-                state.line_start(w)?;
-                write!(w, "Unit: ")?;
-                a.print_ref(w)?;
-                writeln!(w, "")?;
-                Ok(())
-            })
+            state.line_start(w)?;
+            write!(w, "Unit: ")?;
+            a.print_ref(w)?;
+            writeln!(w, "")?;
+            Ok(())
         },
                |b, w, state| {
-            state.prefix("+ ", |state| {
-                state.line_start(w)?;
-                write!(w, "Unit: ")?;
-                b.print_ref(w)?;
-                writeln!(w, "")?;
-                Ok(())
-            })
+            state.line_start(w)?;
+            write!(w, "Unit: ")?;
+            b.print_ref(w)?;
+            writeln!(w, "")?;
+            Ok(())
         })?;
     Ok(())
 }
