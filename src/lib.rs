@@ -1237,7 +1237,7 @@ struct TypeModifier<'input> {
     byte_size: Option<u64>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum TypeModifierKind {
     Const,
     Pointer,
@@ -1337,8 +1337,15 @@ impl<'input> TypeModifier<'input> {
         if a.kind != b.kind {
             return false;
         }
+        let kind = a.kind;
         match (a.ty(&state.a), b.ty(&state.b)) {
-            (Some(a), Some(b)) => Type::equal(a, b, state),
+            (Some(a), Some(b)) => {
+                match kind {
+                    TypeModifierKind::Pointer => Type::cmp_name(a, b) == cmp::Ordering::Equal,
+                    TypeModifierKind::Const |
+                    TypeModifierKind::Restrict => Type::equal(a, b, state),
+                }
+            }
             (None, None) => true,
             _ => false,
         }

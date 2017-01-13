@@ -336,6 +336,16 @@ fn test_struct_diff_member() {
            flags().name("T"));
 }
 
+#[test]
+fn test_struct_diff_recursive_equal() {
+    diff_c(concat!("struct T { struct T* a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { struct T* a; } s;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("T"));
+}
+
 // TODO test struct padding
 
 #[test]
