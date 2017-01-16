@@ -438,3 +438,47 @@ fn test_union_diff_member() {
 }
 
 // TODO test union padding?
+
+#[test]
+fn test_array_diff_equal() {
+    diff_c(concat!("typedef char T[2];\n",
+                   "T t;\n",
+                   "int main() {}\n"),
+           concat!("typedef char T[2];\n",
+                   "T t;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("T"));
+}
+
+#[test]
+fn test_array_diff_type() {
+    diff_c(concat!("typedef char T;\n",
+                   "T t;\n",
+                   "int main() {}\n"),
+           concat!("typedef char C;\n",
+                   "typedef C T;\n",
+                   "T t;\n",
+                   "int main() {}\n"),
+           concat!("- type T = char\n",
+                   "+ type T = C\n",
+                   "  \tsize: 1\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_array_diff_size() {
+    diff_c(concat!("typedef char T[1];\n",
+                   "T t;\n",
+                   "int main() {}\n"),
+           concat!("typedef char T[2];\n",
+                   "T t;\n",
+                   "int main() {}\n"),
+           concat!("- type T = [char; 1]\n",
+                   "+ type T = [char; 2]\n",
+                   "- \tsize: 1\n",
+                   "+ \tsize: 2\n",
+                   "\n"),
+           flags().name("T"));
+}

@@ -667,7 +667,7 @@ impl<'input> Unit<'input> {
         };
         let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
         if diff || flags.sort {
-            types.sort_by(|a, b| Type::cmp_name(a, b));
+            types.sort_by(|a, b| Type::cmp_name(self, a, self, b));
         }
         types
     }
@@ -716,7 +716,7 @@ impl<'input> Unit<'input> {
         state.merge(w,
                    &mut unit_a.types(flags, true).iter(),
                    &mut unit_b.types(flags, true).iter(),
-                   |a, b| Type::cmp_name(a, b),
+                   |a, b| Type::cmp_name(unit_a, a, unit_b, b),
                    |w, state, a, b| Type::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
@@ -893,7 +893,7 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn cmp_name(type_a: &Type, type_b: &Type) -> cmp::Ordering {
+    fn cmp_name(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> cmp::Ordering {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
             (&Base(ref a), &Base(ref b)) => BaseType::cmp_name(a, b),
@@ -901,6 +901,7 @@ impl<'input> Type<'input> {
             (&Struct(ref a), &Struct(ref b)) => StructType::cmp_name(a, b),
             (&Union(ref a), &Union(ref b)) => UnionType::cmp_name(a, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_name(a, b),
+            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_name(unit_a, a, unit_b, b),
             // TODO
             _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
         }
@@ -1013,7 +1014,9 @@ impl<'input> TypeModifier<'input> {
         match (a.ty(unit_a), b.ty(unit_b)) {
             (Some(a), Some(b)) => {
                 match kind {
-                    TypeModifierKind::Pointer => Type::cmp_name(a, b) == cmp::Ordering::Equal,
+                    TypeModifierKind::Pointer => {
+                        Type::cmp_name(unit_a, a, unit_b, b) == cmp::Ordering::Equal
+                    }
                     TypeModifierKind::Const |
                     TypeModifierKind::Restrict => Type::equal(unit_a, a, unit_b, b),
                 }
@@ -1184,7 +1187,7 @@ impl<'input> TypeDef<'input> {
                             })?;
                     }
                     (false, false) => {
-                        if Type::cmp_name(ty_a, ty_b) == cmp::Ordering::Equal {
+                        if Type::cmp_name(unit_a, ty_a, unit_b, ty_b) == cmp::Ordering::Equal {
                             state.prefix_equal(|state| a.print_ty_name(w, &mut state.a, unit_a, ty_a))?;
                         } else {
                             state.prefix_diff(|state| {
@@ -1989,9 +1992,30 @@ impl<'input> ArrayType<'input> {
         Ok(())
     }
 
-    fn equal(_unit_a: &Unit, _a: &ArrayType, _unit_b: &Unit, _b: &ArrayType) -> bool {
-        // TODO
-        false
+    fn cmp_name(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> cmp::Ordering {
+        match (a.ty(unit_a), b.ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                match Type::cmp_name(unit_a, ty_a, unit_b, ty_b) {
+                    cmp::Ordering::Equal => {}
+                    other => return other,
+                }
+            }
+            (Some(_), None) => return cmp::Ordering::Less,
+            (None, Some(_)) => return cmp::Ordering::Greater,
+            (None, None) => {}
+        }
+        a.count.cmp(&b.count)
+    }
+
+    fn equal(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> bool {
+        if a.count != b.count {
+            return false;
+        }
+        match (a.ty(unit_a), b.ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => Type::equal(unit_a, ty_a, unit_b, ty_b),
+            (None, None) => true,
+            _ => false,
+        }
     }
 }
 
