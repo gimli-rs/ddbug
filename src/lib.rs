@@ -158,25 +158,6 @@ impl<'input> File<'input> {
         let mut all_subprograms = HashMap::new();
         // TODO: insert symbol table names too
         for unit in &self.units {
-            for ty in unit.types.values() {
-                match ty.kind {
-                    TypeKind::Struct(StructType { ref subprograms, .. }) |
-                    TypeKind::Union(UnionType { ref subprograms, .. }) |
-                    TypeKind::Enumeration(EnumerationType { ref subprograms, .. }) => {
-                        for subprogram in subprograms {
-                            if let Some(low_pc) = subprogram.low_pc {
-                                all_subprograms.insert(low_pc, subprogram);
-                            }
-                        }
-                    }
-                    TypeKind::Base(_) |
-                    TypeKind::Def(_) |
-                    TypeKind::Array(_) |
-                    TypeKind::Subroutine(_) |
-                    TypeKind::Modifier(_) |
-                    TypeKind::Unimplemented(_) => {}
-                }
-            }
             for subprogram in unit.subprograms.values() {
                 if let Some(low_pc) = subprogram.low_pc {
                     all_subprograms.insert(low_pc, subprogram);
@@ -856,7 +837,7 @@ impl<'input> Type<'input> {
             TypeKind::Def(ref val) => val.print(w, state, unit)?,
             TypeKind::Struct(ref val) => val.print(w, state, unit)?,
             TypeKind::Union(ref val) => val.print(w, state, unit)?,
-            TypeKind::Enumeration(ref val) => val.print(w, state, unit)?,
+            TypeKind::Enumeration(ref val) => val.print(w, state)?,
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
@@ -1248,7 +1229,6 @@ struct StructType<'input> {
     byte_size: Option<u64>,
     declaration: bool,
     members: Vec<Member<'input>>,
-    subprograms: Vec<Subprogram<'input>>,
 }
 
 impl<'input> StructType<'input> {
@@ -1269,19 +1249,13 @@ impl<'input> StructType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         self.print_name(w, state)?;
         state.indent(|state| {
-                self.print_byte_size(w, state)?;
-                self.print_declaration(w, state)?;
-                self.print_members_label(w, state)?;
-                state.indent(|state| self.print_members(w, state, unit, Some(0)))?;
-                writeln!(w, "")?;
-                Ok(())
-            })?;
-
-        // TODO: print these separately
-        for subprogram in &state.flags.subprograms(false, self.subprograms.iter()) {
-            subprogram.print(w, state, unit)?;
-        }
-        Ok(())
+            self.print_byte_size(w, state)?;
+            self.print_declaration(w, state)?;
+            self.print_members_label(w, state)?;
+            state.indent(|state| self.print_members(w, state, unit, Some(0)))?;
+            writeln!(w, "")?;
+            Ok(())
+        })
     }
 
     fn diff(
@@ -1489,7 +1463,6 @@ struct UnionType<'input> {
     byte_size: Option<u64>,
     declaration: bool,
     members: Vec<Member<'input>>,
-    subprograms: Vec<Subprogram<'input>>,
 }
 
 impl<'input> UnionType<'input> {
@@ -1510,19 +1483,13 @@ impl<'input> UnionType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         self.print_name(w, state)?;
         state.indent(|state| {
-                self.print_byte_size(w, state)?;
-                self.print_declaration(w, state)?;
-                self.print_members_label(w, state)?;
-                state.indent(|state| self.print_members(w, state, unit, Some(0)))?;
-                writeln!(w, "")?;
-                Ok(())
-            })?;
-
-        // TODO: print these separately
-        for subprogram in &state.flags.subprograms(false, self.subprograms.iter()) {
-            subprogram.print(w, state, unit)?;
-        }
-        Ok(())
+            self.print_byte_size(w, state)?;
+            self.print_declaration(w, state)?;
+            self.print_members_label(w, state)?;
+            state.indent(|state| self.print_members(w, state, unit, Some(0)))?;
+            writeln!(w, "")?;
+            Ok(())
+        })
     }
 
     fn diff(
@@ -1853,7 +1820,6 @@ struct EnumerationType<'input> {
     name: Option<&'input ffi::CStr>,
     byte_size: Option<u64>,
     enumerators: Vec<Enumerator<'input>>,
-    subprograms: Vec<Subprogram<'input>>,
 }
 
 impl<'input> EnumerationType<'input> {
@@ -1865,37 +1831,31 @@ impl<'input> EnumerationType<'input> {
         flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line_start(w)?;
         self.print_ref(w)?;
         writeln!(w, "")?;
 
         state.indent(|state| {
-                if let Some(size) = self.byte_size {
-                    state.line_start(w)?;
-                    writeln!(w, "size: {}", size)?;
-                }
+            if let Some(size) = self.byte_size {
+                state.line_start(w)?;
+                writeln!(w, "size: {}", size)?;
+            }
 
-                if !self.enumerators.is_empty() {
-                    state.line_start(w)?;
-                    writeln!(w, "enumerators:")?;
-                    state.indent(|state| {
-                            for enumerator in &self.enumerators {
-                                enumerator.print(w, state)?;
-                            }
-                            Ok(())
-                        })?;
-                }
+            if !self.enumerators.is_empty() {
+                state.line_start(w)?;
+                writeln!(w, "enumerators:")?;
+                state.indent(|state| {
+                        for enumerator in &self.enumerators {
+                            enumerator.print(w, state)?;
+                        }
+                        Ok(())
+                    })?;
+            }
 
-                writeln!(w, "")?;
-                Ok(())
-            })?;
-
-        // TODO: print these separately
-        for subprogram in &state.flags.subprograms(false, self.subprograms.iter()) {
-            subprogram.print(w, state, unit)?;
-        }
-        Ok(())
+            writeln!(w, "")?;
+            Ok(())
+        })
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -1958,8 +1918,8 @@ impl<'input> EnumerationType<'input> {
         }
         // TODO
         state.prefix_diff(|state| {
-                a.print(w, &mut state.a, unit_a)?;
-                b.print(w, &mut state.b, unit_b)
+                a.print(w, &mut state.a)?;
+                b.print(w, &mut state.b)
             })?;
         Ok(())
     }
