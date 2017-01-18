@@ -304,6 +304,81 @@ pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
     Ok(())
 }
 
+enum MergeResult<T> {
+    Left(T),
+    Right(T),
+    Both(T, T),
+}
+
+struct MergeIterator<T, I, C>
+    where T: Copy,
+          I: Iterator<Item = T>,
+          C: Fn(T, T) -> cmp::Ordering
+{
+    iter_left: I,
+    iter_right: I,
+    item_left: Option<T>,
+    item_right: Option<T>,
+    item_cmp: C,
+}
+
+impl<T, I, C> MergeIterator<T, I, C>
+    where T: Copy,
+          I: Iterator<Item = T>,
+          C: Fn(T, T) -> cmp::Ordering
+{
+    fn new(mut left: I, mut right: I, cmp: C) -> Self {
+        let item_left = left.next();
+        let item_right = right.next();
+        MergeIterator {
+            iter_left: left,
+            iter_right: right,
+            item_left: item_left,
+            item_right: item_right,
+            item_cmp: cmp,
+        }
+    }
+}
+
+impl<T, I, C> Iterator for MergeIterator<T, I, C>
+    where T: Copy,
+          I: Iterator<Item = T>,
+          C: Fn(T, T) -> cmp::Ordering
+{
+    type Item = MergeResult<T>;
+
+    fn next(&mut self) -> Option<MergeResult<T>> {
+        match (self.item_left, self.item_right) {
+            (Some(left), Some(right)) => {
+                match (self.item_cmp)(left, right) {
+                    cmp::Ordering::Equal => {
+                        self.item_left = self.iter_left.next();
+                        self.item_right = self.iter_right.next();
+                        Some(MergeResult::Both(left, right))
+                    }
+                    cmp::Ordering::Less => {
+                        self.item_left = self.iter_left.next();
+                        Some(MergeResult::Left(left))
+                    }
+                    cmp::Ordering::Greater => {
+                        self.item_right = self.iter_right.next();
+                        Some(MergeResult::Right(right))
+                    }
+                }
+            }
+            (Some(left), None) => {
+                self.item_left = self.iter_left.next();
+                Some(MergeResult::Left(left))
+            }
+            (None, Some(right)) => {
+                self.item_right = self.iter_right.next();
+                Some(MergeResult::Right(right))
+            }
+            (None, None) => None,
+        }
+    }
+}
+
 struct DiffState<'a, 'input>
     where 'input: 'a
 {
@@ -327,82 +402,31 @@ impl<'a, 'input> DiffState<'a, 'input>
         }
     }
 
-    fn merge_with_args<T, Args, FCmp, FEqual, FLess, FGreater>(
+    fn merge<T, I, FCmp, FEqual, FLess, FGreater>(
         &mut self,
         w: &mut Write,
-        iter_a: &mut Iterator<Item = T>,
-        iter_b: &mut Iterator<Item = T>,
-        args: &mut Args,
+        iter_a: I,
+        iter_b: I,
         cmp: FCmp,
         mut equal: FEqual,
         less: FLess,
         greater: FGreater
     ) -> Result<()>
         where T: Copy,
-              FCmp: Fn(T, T) -> cmp::Ordering,
-              FEqual: FnMut(&mut Write, &mut DiffState<'a, 'input>, T, T, &mut Args) -> Result<()>,
-              FLess: Fn(&mut Write, &mut PrintState<'a, 'input>, T, &mut Args) -> Result<()>,
-              FGreater: Fn(&mut Write, &mut PrintState<'a, 'input>, T, &mut Args) -> Result<()>
-    {
-        let mut item_a = iter_a.next();
-        let mut item_b = iter_b.next();
-        loop {
-            match (item_a, item_b) {
-                (Some(a), Some(b)) => {
-                    match cmp(a, b) {
-                        cmp::Ordering::Equal => {
-                            self.prefix_equal(|state| equal(w, state, a, b, args))?;
-                            item_a = iter_a.next();
-                            item_b = iter_b.next();
-                        }
-                        cmp::Ordering::Less => {
-                            self.a.prefix("- ", |state| less(w, state, a, args))?;
-                            item_a = iter_a.next();
-                        }
-                        cmp::Ordering::Greater => {
-                            self.b.prefix("+ ", |state| greater(w, state, b, args))?;
-                            item_b = iter_b.next();
-                        }
-                    }
-                }
-                (Some(a), None) => {
-                    self.a.prefix("- ", |state| less(w, state, a, args))?;
-                    item_a = iter_a.next();
-                }
-                (None, Some(b)) => {
-                    self.b.prefix("+ ", |state| greater(w, state, b, args))?;
-                    item_b = iter_b.next();
-                }
-                (None, None) => break,
-            };
-        }
-        Ok(())
-    }
-
-    fn merge<T, FCmp, FEqual, FLess, FGreater>(
-        &mut self,
-        w: &mut Write,
-        iter_a: &mut Iterator<Item = T>,
-        iter_b: &mut Iterator<Item = T>,
-        cmp: FCmp,
-        mut equal: FEqual,
-        less: FLess,
-        greater: FGreater
-    ) -> Result<()>
-        where T: Copy,
+              I: Iterator<Item = T>,
               FCmp: Fn(T, T) -> cmp::Ordering,
               FEqual: FnMut(&mut Write, &mut DiffState<'a, 'input>, T, T) -> Result<()>,
               FLess: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
               FGreater: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>
     {
-        self.merge_with_args(w,
-                             iter_a,
-                             iter_b,
-                             &mut (),
-                             cmp,
-                             |w, state, a, b, _args| equal(w, state, a, b),
-                             |w, state, a, _args| less(w, state, a),
-                             |w, state, b, _args| greater(w, state, b))
+        for m in MergeIterator::new(iter_a, iter_b, cmp) {
+            match m {
+                MergeResult::Both(l, r) => self.prefix_equal(|state| equal(w, state, l, r))?,
+                MergeResult::Left(l) => self.prefix_less(|state| less(w, state, l))?,
+                MergeResult::Right(r) => self.prefix_greater(|state| greater(w, state, r))?,
+            }
+        }
+        Ok(())
     }
 
     fn indent<F>(&mut self, mut f: F) -> Result<()>
@@ -427,6 +451,18 @@ impl<'a, 'input> DiffState<'a, 'input>
         self.a.prefix = prev_a;
         self.b.prefix = prev_b;
         ret
+    }
+
+    fn prefix_less<F>(&mut self, f: F) -> Result<()>
+        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
+    {
+        self.a.prefix("- ", f)
+    }
+
+    fn prefix_greater<F>(&mut self, f: F) -> Result<()>
+        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
+    {
+        self.b.prefix("+ ", f)
     }
 
     fn prefix_diff<F>(&mut self, mut f: F) -> Result<()>
@@ -1381,16 +1417,29 @@ impl<'input> StructType<'input> {
         b: &StructType,
         mut bit_offset_b: Option<u64>
     ) -> Result<()> {
-        state.merge_with_args(w,
-                             &mut a.members.iter(),
-                             &mut b.members.iter(),
-                             &mut (&mut bit_offset_a, &mut bit_offset_b),
-                             Member::cmp_name,
-                             |w, state, a, b, args| {
-                                 Member::diff(w, state, unit_a, a, args.0, unit_b, b, args.1)
-                             },
-                             |w, state, a, args| a.print(w, state, unit_a, args.0),
-                             |w, state, b, args| b.print(w, state, unit_b, args.1))?;
+        // TODO: this doesn't work because members aren't ordered
+        for m in MergeIterator::new(a.members.iter(), b.members.iter(), Member::cmp_name) {
+            match m {
+                MergeResult::Both(a, b) => {
+                    state.prefix_diff(|state| {
+                            Member::diff(w,
+                                         state,
+                                         unit_a,
+                                         a,
+                                         &mut bit_offset_a,
+                                         unit_b,
+                                         b,
+                                         &mut bit_offset_b)
+                        })?
+                }
+                MergeResult::Left(a) => {
+                    state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?
+                }
+                MergeResult::Right(b) => {
+                    state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?
+                }
+            }
+        }
         // TODO: trailing padding
         //
         // if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
@@ -1608,6 +1657,7 @@ impl<'input> UnionType<'input> {
         bit_offset_a: Option<u64>,
         bit_offset_b: Option<u64>
     ) -> Result<()> {
+        // TODO: sort union members?
         state.merge(w,
                    &mut a.members.iter(),
                    &mut b.members.iter(),
