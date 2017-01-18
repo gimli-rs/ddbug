@@ -1417,29 +1417,89 @@ impl<'input> StructType<'input> {
         b: &StructType,
         mut bit_offset_b: Option<u64>
     ) -> Result<()> {
-        // TODO: this doesn't work because members aren't ordered
-        for m in MergeIterator::new(a.members.iter(), b.members.iter(), Member::cmp_name) {
-            match m {
-                MergeResult::Both(a, b) => {
-                    state.prefix_diff(|state| {
-                            Member::diff(w,
-                                         state,
-                                         unit_a,
-                                         a,
-                                         &mut bit_offset_a,
-                                         unit_b,
-                                         b,
-                                         &mut bit_offset_b)
-                        })?
-                }
-                MergeResult::Left(a) => {
-                    state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?
-                }
-                MergeResult::Right(b) => {
-                    state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?
-                }
+        // Enumerate members and sort by name.
+        let mut members_a = a.members.iter().enumerate().collect::<Vec<_>>();
+        members_a.sort_by(|x, y| Member::cmp_name(x.1, y.1));
+        let mut members_b = b.members.iter().enumerate().collect::<Vec<_>>();
+        members_b.sort_by(|x, y| Member::cmp_name(x.1, y.1));
+
+        // Find pairs of members with the same name.
+        let mut pairs = Vec::new();
+        for m in MergeIterator::new(members_a.iter(),
+                                    members_b.iter(),
+                                    |a, b| Member::cmp_name(a.1, b.1)) {
+            if let MergeResult::Both(a, b) = m {
+                pairs.push((a, b));
             }
         }
+        // TODO: For remaining members, find pairs of members with the same type.
+
+        // Sort pairs by the indices and equality.
+        pairs.sort_by(|&(xa, xb), &(ya, yb)| {
+            match (xa.0.cmp(&ya.0), xb.0.cmp(&yb.0)) {
+                (cmp::Ordering::Less, cmp::Ordering::Less) => cmp::Ordering::Less,
+                (cmp::Ordering::Greater, cmp::Ordering::Greater) => cmp::Ordering::Greater,
+                (cmp_a, _cmp_b) => {
+                    match (Member::equal(unit_a, xa.1, unit_b, xb.1),
+                           Member::equal(unit_a, ya.1, unit_b, yb.1)) {
+                        (true, false) => cmp::Ordering::Less,
+                        (false, true) => cmp::Ordering::Greater,
+                        _ => cmp_a,
+                    }
+                }
+            }
+        });
+
+        // Loop through the pairs.
+        let mut index_a = 0;
+        let mut index_b = 0;
+        let mut iter_a = a.members.iter();
+        let mut iter_b = b.members.iter();
+        for &(a, b) in &pairs {
+            // Skip pairs that are already partially printed.
+            if a.0 < index_a || b.0 < index_b {
+                continue;
+            }
+
+            // Print members leading up to the pair.
+            while index_a < a.0 {
+                if let Some(a) = iter_a.next() {
+                    state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
+                }
+                index_a = index_a + 1;
+            }
+            while index_b < b.0 {
+                if let Some(b) = iter_b.next() {
+                    state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
+                }
+                index_b = index_b + 1;
+            }
+
+            // Diff the pair.
+            if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                state.prefix_diff(|state| {
+                        Member::diff(w,
+                                     state,
+                                     unit_a,
+                                     a,
+                                     &mut bit_offset_a,
+                                     unit_b,
+                                     b,
+                                     &mut bit_offset_b)
+                    })?;
+            }
+            index_a = index_a + 1;
+            index_b = index_b + 1;
+        }
+
+        // Print trailing members.
+        for a in iter_a {
+            state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
+        }
+        for b in iter_b {
+            state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
+        }
+
         // TODO: trailing padding
         //
         // if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
@@ -1733,6 +1793,7 @@ impl<'input> UnionType<'input> {
 #[derive(Debug, Default)]
 struct Member<'input> {
     name: Option<&'input ffi::CStr>,
+    // TODO: treat padding as typeless member?
     ty: Option<gimli::UnitOffset>,
     // Defaults to 0, so always present.
     bit_offset: u64,
@@ -1855,7 +1916,9 @@ impl<'input> Member<'input> {
         if Self::cmp_name(a, b) != cmp::Ordering::Equal {
             return false;
         }
-        // TODO: compare bit_offset?
+        if a.bit_offset != b.bit_offset {
+            return false;
+        }
         if a.bit_size != b.bit_size {
             return false;
         }

@@ -337,6 +337,46 @@ fn test_struct_diff_member() {
 }
 
 #[test]
+fn test_struct_diff_member_reorder() {
+    // TODO: Member::diff is unimplemented.
+    diff_c(concat!("struct T {",
+                   "  char a;",
+                   "  char b;",
+                   "  char c;",
+                   "  char d[2];",
+                   "  char x;",
+                   "  char y;",
+                   "} s;\n",
+                   "int main() {}\n"),
+           concat!("struct T {",
+                   "  char d[2];",
+                   "  char c;",
+                   "  char a;",
+                   "  char b;",
+                   "  char x;",
+                   "  char z;",
+                   "} s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 7\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: char\n",
+                   "- \t\t1[1]\tb: char\n",
+                   "+ \t\t0[2]\td: [char; 2]\n",
+                   "- \t\t2[1]\tc: char\n",
+                   "+ \t\t2[1]\tc: char\n",
+                   "- \t\t3[2]\td: [char; 2]\n",
+                   "+ \t\t3[1]\ta: char\n",
+                   "+ \t\t4[1]\tb: char\n",
+                   "- \t\t5[1]\tx: char\n",
+                   "+ \t\t5[1]\tx: char\n",
+                   "- \t\t6[1]\ty: char\n",
+                   "+ \t\t6[1]\tz: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
 fn test_struct_diff_recursive_equal() {
     diff_c(concat!("struct T { struct T* a; } s;\n",
                    "int main() {}\n"),
