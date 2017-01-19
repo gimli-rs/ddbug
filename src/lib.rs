@@ -1745,11 +1745,18 @@ impl<'input> UnionType<'input> {
         b: &UnionType,
         bit_offset_b: Option<u64>
     ) -> Result<()> {
-        // TODO: sort union members?
+        // Sort by name so that merging will compare members with the same name
+        // even if they were reordered.
+        // TODO: is this smart enough? maybe take type into account too.
+        let mut members_a = a.members.iter().collect::<Vec<_>>();
+        members_a.sort_by(|x, y| Member::cmp_name(x, y));
+        let mut members_b = b.members.iter().collect::<Vec<_>>();
+        members_b.sort_by(|x, y| Member::cmp_name(x, y));
+
         state.merge(w,
-                   &mut a.members.iter(),
-                   &mut b.members.iter(),
-                   Member::cmp_name,
+                   &mut members_a.iter(),
+                   &mut members_b.iter(),
+                   |a, b| Member::cmp_name(a, b),
                    |w, state, a, b| {
                 Member::diff(w,
                              state,

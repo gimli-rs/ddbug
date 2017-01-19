@@ -472,6 +472,32 @@ fn test_union_diff_member() {
            flags().name("T"));
 }
 
+#[test]
+fn test_union_diff_member_reorder() {
+    diff_c(concat!("union T {",
+                   "  char a;",
+                   "  char b;",
+                   "  char c;",
+                   "} s;\n",
+                   "int main() {}\n"),
+           concat!("union T {",
+                   "  char b[2];",
+                   "  char a;",
+                   "  char c;",
+                   "} s;\n",
+                   "int main() {}\n"),
+           concat!("  union T\n",
+                   "- \tsize: 1\n",
+                   "+ \tsize: 2\n",
+                   "  \tmembers:\n",
+                   "  \t\t0[1]\ta: char\n",
+                   "- \t\t0[1]\tb: char\n",
+                   "+ \t\t0[2]\tb: [char; 2]\n",
+                   "  \t\t0[1]\tc: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
 // TODO test union padding?
 
 #[test]
