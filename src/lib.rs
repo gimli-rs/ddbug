@@ -1377,7 +1377,6 @@ impl<'input> StructType<'input> {
                 Ok(())
             })?;
 
-        // TODO: diff subprograms
         Ok(())
     }
 
@@ -1446,10 +1445,10 @@ impl<'input> StructType<'input> {
         b: &StructType,
         mut bit_offset_b: Option<u64>
     ) -> Result<()> {
-        // Enumerate members and sort by name.
-        let mut members_a = a.members.iter().enumerate().collect::<Vec<_>>();
+        // Enumerate members and sort by name. Exclude anonymous members.
+        let mut members_a = a.members.iter().enumerate().filter(|a| a.1.name.is_some()).collect::<Vec<_>>();
         members_a.sort_by(|x, y| Member::cmp_name(x.1, y.1));
-        let mut members_b = b.members.iter().enumerate().collect::<Vec<_>>();
+        let mut members_b = b.members.iter().enumerate().filter(|b| b.1.name.is_some()).collect::<Vec<_>>();
         members_b.sort_by(|x, y| Member::cmp_name(x.1, y.1));
 
         // Find pairs of members with the same name.
@@ -1462,6 +1461,7 @@ impl<'input> StructType<'input> {
             }
         }
         // TODO: For remaining members, find pairs of members with the same type.
+        // This should also handle matching up anonymous members.
 
         // Sort pairs by the indices and equality.
         pairs.sort_by(|&(xa, xb), &(ya, yb)| {
@@ -1684,7 +1684,6 @@ impl<'input> UnionType<'input> {
                 Ok(())
             })?;
 
-        // TODO: diff subprograms
         Ok(())
     }
 
