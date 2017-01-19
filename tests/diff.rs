@@ -545,6 +545,25 @@ fn test_member_diff_padding_none() {
            flags().name("T"));
 }
 
+// Also tests trailing padding.
+#[test]
+fn test_member_diff_bitfield_equal() {
+    diff_c(concat!("struct T { char a; char c:1; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char b; char c:1; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 2\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: char\n",
+                   "+ \t\t0[1]\tb: char\n",
+                   "  \t\t1[0.1]\tc: char\n",
+                   "  \t\t1.1[0.7]\t<padding>\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+// Also tests trailing padding.
 #[test]
 fn test_member_diff_bitfield() {
     diff_c(concat!("struct T { char a:1; } s;\n",
@@ -556,6 +575,8 @@ fn test_member_diff_bitfield() {
                    "  \tmembers:\n",
                    "- \t\t0[0.1]\ta: char\n",
                    "+ \t\t0[0.2]\ta: char\n",
+                   "- \t\t0.1[0.7]\t<padding>\n",
+                   "+ \t\t0.2[0.6]\t<padding>\n",
                    "\n"),
            flags().name("T"));
 }

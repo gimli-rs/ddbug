@@ -1423,15 +1423,7 @@ impl<'input> StructType<'input> {
         for member in &self.members {
             member.print(w, state, unit, &mut bit_offset)?;
         }
-        if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
-            if bit_offset < size * 8 {
-                state.line_start(w)?;
-                writeln!(w,
-                         "{}[{}]\t<padding>",
-                         format_bit(bit_offset),
-                         format_bit(size * 8 - bit_offset))?;
-            }
-        }
+        Member::print_padding(w, state, self.padding(bit_offset))?;
         Ok(())
     }
 
@@ -1446,9 +1438,11 @@ impl<'input> StructType<'input> {
         mut bit_offset_b: Option<u64>
     ) -> Result<()> {
         // Enumerate members and sort by name. Exclude anonymous members.
-        let mut members_a = a.members.iter().enumerate().filter(|a| a.1.name.is_some()).collect::<Vec<_>>();
+        let mut members_a =
+            a.members.iter().enumerate().filter(|a| a.1.name.is_some()).collect::<Vec<_>>();
         members_a.sort_by(|x, y| Member::cmp_name(x.1, y.1));
-        let mut members_b = b.members.iter().enumerate().filter(|b| b.1.name.is_some()).collect::<Vec<_>>();
+        let mut members_b =
+            b.members.iter().enumerate().filter(|b| b.1.name.is_some()).collect::<Vec<_>>();
         members_b.sort_by(|x, y| Member::cmp_name(x.1, y.1));
 
         // Find pairs of members with the same name.
@@ -1529,20 +1523,28 @@ impl<'input> StructType<'input> {
             state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
         }
 
-        // TODO: trailing padding
-        //
-        // if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
-        // if bit_offset < size * 8 {
-        // state.line_start(w)?;
-        // writeln!(w,
-        // "{}[{}]\t<padding>",
-        // format_bit(bit_offset),
-        // format_bit(size * 8 - bit_offset))?;
-        // }
-        // }
-        //
+        let padding_a = a.padding(bit_offset_a);
+        let padding_b = b.padding(bit_offset_b);
+        if padding_a == padding_b {
+            state.prefix_equal(|state| Member::print_padding(w, &mut state.a, padding_a))?;
+        } else {
+            state.prefix_diff(|state| {
+                    Member::print_padding(w, &mut state.a, padding_a)?;
+                    Member::print_padding(w, &mut state.b, padding_b)
+                })?;
+        }
 
         Ok(())
+    }
+
+    // Returns (offset, size) of padding.
+    fn padding(&self, bit_offset: Option<u64>) -> Option<(u64, u64)> {
+        if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
+            if bit_offset < size * 8 {
+                return Some((bit_offset, size * 8 - bit_offset));
+            }
+        }
+        None
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -1855,7 +1857,7 @@ impl<'input> Member<'input> {
         unit: &Unit,
         end_bit_offset: &mut Option<u64>
     ) -> Result<()> {
-        self.print_padding(w, state, end_bit_offset)?;
+        Self::print_padding(w, state, self.padding(*end_bit_offset))?;
         self.print_name(w, state, unit, end_bit_offset)?;
         if self.is_inline(unit) {
             self.print_inline(w, state, unit)?;
@@ -1873,12 +1875,14 @@ impl<'input> Member<'input> {
         b: &Member,
         end_bit_offset_b: &mut Option<u64>
     ) -> Result<()> {
-        if a.padding(end_bit_offset_a) == b.padding(end_bit_offset_b) {
-            state.prefix_equal(|state| a.print_padding(w, &mut state.a, end_bit_offset_a))?;
+        let padding_a = a.padding(*end_bit_offset_a);
+        let padding_b = b.padding(*end_bit_offset_b);
+        if padding_a == padding_b {
+            state.prefix_equal(|state| Self::print_padding(w, &mut state.a, padding_a))?;
         } else {
             state.prefix_diff(|state| {
-                    a.print_padding(w, &mut state.a, end_bit_offset_a)?;
-                    b.print_padding(w, &mut state.b, end_bit_offset_b)
+                    Self::print_padding(w, &mut state.a, padding_a)?;
+                    Self::print_padding(w, &mut state.b, padding_b)
                 })?;
         }
 
@@ -1903,8 +1907,8 @@ impl<'input> Member<'input> {
     }
 
     // Returns (offset, size) of padding.
-    fn padding(&self, end_bit_offset: &Option<u64>) -> Option<(u64, u64)> {
-        if let &Some(end_bit_offset) = end_bit_offset {
+    fn padding(&self, end_bit_offset: Option<u64>) -> Option<(u64, u64)> {
+        if let Some(end_bit_offset) = end_bit_offset {
             if self.bit_offset > end_bit_offset {
                 return Some((end_bit_offset, self.bit_offset - end_bit_offset));
             }
@@ -1913,12 +1917,11 @@ impl<'input> Member<'input> {
     }
 
     fn print_padding(
-        &self,
         w: &mut Write,
         state: &mut PrintState,
-        end_bit_offset: &Option<u64>
+        padding: Option<(u64, u64)>
     ) -> Result<()> {
-        if let Some((padding_bit_offset, padding_bit_size)) = self.padding(end_bit_offset) {
+        if let Some((padding_bit_offset, padding_bit_size)) = padding {
             state.line_start(w)?;
             writeln!(w,
                      "{}[{}]\t<padding>",
