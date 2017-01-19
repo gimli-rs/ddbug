@@ -338,7 +338,6 @@ fn test_struct_diff_member() {
 
 #[test]
 fn test_struct_diff_member_reorder() {
-    // TODO: Member::diff is unimplemented.
     diff_c(concat!("struct T {",
                    "  char a;",
                    "  char b;",
@@ -363,13 +362,11 @@ fn test_struct_diff_member_reorder() {
                    "- \t\t0[1]\ta: char\n",
                    "- \t\t1[1]\tb: char\n",
                    "+ \t\t0[2]\td: [char; 2]\n",
-                   "- \t\t2[1]\tc: char\n",
-                   "+ \t\t2[1]\tc: char\n",
+                   "  \t\t2[1]\tc: char\n",
                    "- \t\t3[2]\td: [char; 2]\n",
                    "+ \t\t3[1]\ta: char\n",
                    "+ \t\t4[1]\tb: char\n",
-                   "- \t\t5[1]\tx: char\n",
-                   "+ \t\t5[1]\tx: char\n",
+                   "  \t\t5[1]\tx: char\n",
                    "- \t\t6[1]\ty: char\n",
                    "+ \t\t6[1]\tz: char\n",
                    "\n"),
@@ -451,10 +448,8 @@ fn test_union_diff_size_equal() {
            concat!("  union T\n",
                    "  \tsize: 2\n",
                    "  \tmembers:\n",
-                   // TODO: merge anon members
-                   "- \t\t0[2]\t<anon>: struct <anon>\n",
+                   "  \t\t0[2]\t<anon>: struct <anon>\n",
                    "- \t\t\t0[2]\tc: [char; 2]\n",
-                   "+ \t\t0[2]\t<anon>: struct <anon>\n",
                    "+ \t\t\t0[1]\tc1: char\n",
                    "+ \t\t\t1[1]\tc2: char\n",
                    "\n"),
@@ -478,6 +473,184 @@ fn test_union_diff_member() {
 }
 
 // TODO test union padding?
+
+#[test]
+fn test_member_diff_padding_equal() {
+    diff_c(concat!("struct T { char a[2]; int b; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char a[2]; int b; } s;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_padding() {
+    diff_c(concat!("struct T { char a[1]; int b; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char a[2]; int b; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 8\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: [char; 1]\n",
+                   "+ \t\t0[2]\ta: [char; 2]\n",
+                   "- \t\t1[3]\t<padding>\n",
+                   "+ \t\t2[2]\t<padding>\n",
+                   "  \t\t4[4]\tb: int\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_padding_none() {
+    diff_c(concat!("struct T { char a[1]; int b; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char a[4]; int b; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 8\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: [char; 1]\n",
+                   "+ \t\t0[4]\ta: [char; 4]\n",
+                   "- \t\t1[3]\t<padding>\n",
+                   "  \t\t4[4]\tb: int\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_bitfield() {
+    diff_c(concat!("struct T { char a:1; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char a:2; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[0.1]\ta: char\n",
+                   "+ \t\t0[0.2]\ta: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_unsized() {
+    diff_c(concat!("struct T { char a; char b[1]; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char a; char b[]; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "- \tsize: 2\n",
+                   "+ \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "  \t\t0[1]\ta: char\n",
+                   "- \t\t1[1]\tb: [char; 1]\n",
+                   "+ \t\t1[??]\tb: [char]\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_struct_struct_equal() {
+    diff_c(concat!("struct T { struct { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { struct { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_struct_struct() {
+    diff_c(concat!("struct T { struct { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { struct { char c; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "  \t\t0[1]\ta: struct <anon>\n",
+                   "- \t\t\t0[1]\tb: char\n",
+                   "+ \t\t\t0[1]\tc: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_union_union_equal() {
+    diff_c(concat!("struct T { union { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { union { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_union_union() {
+    diff_c(concat!("struct T { union { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { union { char c; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "  \t\t0[1]\ta: union <anon>\n",
+                   "- \t\t\t0[1]\tb: char\n",
+                   "+ \t\t\t0[1]\tc: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_union_struct() {
+    diff_c(concat!("struct T { struct { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { union { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: struct <anon>\n",
+                   "+ \t\t0[1]\ta: union <anon>\n",
+                   "- \t\t\t0[1]\tb: char\n",
+                   "+ \t\t\t0[1]\tb: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_struct_none() {
+    diff_c(concat!("struct T { struct { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { char a; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: struct <anon>\n",
+                   "+ \t\t0[1]\ta: char\n",
+                   "- \t\t\t0[1]\tb: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_member_diff_inline_none_struct() {
+    diff_c(concat!("struct T { char a; } s;\n",
+                   "int main() {}\n"),
+           concat!("struct T { struct { char b; } a; } s;\n",
+                   "int main() {}\n"),
+           concat!("  struct T\n",
+                   "  \tsize: 1\n",
+                   "  \tmembers:\n",
+                   "- \t\t0[1]\ta: char\n",
+                   "+ \t\t0[1]\ta: struct <anon>\n",
+                   "+ \t\t\t0[1]\tb: char\n",
+                   "\n"),
+           flags().name("T"));
+}
 
 #[test]
 fn test_array_diff_equal() {

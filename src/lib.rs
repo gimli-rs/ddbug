@@ -477,6 +477,35 @@ impl<'a, 'input> DiffState<'a, 'input>
         self.b.prefix = prev_b;
         ret
     }
+
+    fn diff<A, B>(&mut self, w: &mut Write, mut f_a: A, mut f_b: B) -> Result<()>
+        where A: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
+              B: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
+    {
+        let mut a = Vec::new();
+        let mut state = PrintState::new(self.a.file, self.a.all_subprograms, self.a.flags);
+        f_a(&mut a, &mut state)?;
+
+        let mut b = Vec::new();
+        let mut state = PrintState::new(self.b.file, self.b.all_subprograms, self.b.flags);
+        f_b(&mut b, &mut state)?;
+
+        if a == b {
+            self.prefix_equal(|state| {
+                state.a.line_start(w)?;
+                w.write_all(&*a)?;
+                Ok(())
+            })
+        } else {
+            self.prefix_diff(|state| {
+                state.a.line_start(w)?;
+                w.write_all(&*a)?;
+                state.b.line_start(w)?;
+                w.write_all(&*b)?;
+                Ok(())
+            })
+        }
+    }
 }
 
 pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> {
@@ -1648,7 +1677,7 @@ impl<'input> UnionType<'input> {
                 }
 
                 state.indent(|state| {
-                        Self::diff_members(unit_a, a, unit_b, b, w, state, Some(0), Some(0))
+                        Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
                     })?;
 
                 writeln!(w, "")?;
@@ -1708,13 +1737,13 @@ impl<'input> UnionType<'input> {
     }
 
     fn diff_members(
-        unit_a: &Unit,
-        a: &UnionType,
-        unit_b: &Unit,
-        b: &UnionType,
         w: &mut Write,
         state: &mut DiffState,
+        unit_a: &Unit,
+        a: &UnionType,
         bit_offset_a: Option<u64>,
+        unit_b: &Unit,
+        b: &UnionType,
         bit_offset_b: Option<u64>
     ) -> Result<()> {
         // TODO: sort union members?
@@ -1820,16 +1849,86 @@ impl<'input> Member<'input> {
         unit: &Unit,
         end_bit_offset: &mut Option<u64>
     ) -> Result<()> {
-        if let Some(end_bit_offset) = *end_bit_offset {
-            if self.bit_offset > end_bit_offset {
-                state.line_start(w)?;
-                writeln!(w,
-                         "{}[{}]\t<padding>",
-                         format_bit(end_bit_offset),
-                         format_bit(self.bit_offset - end_bit_offset))?;
-            }
+        self.print_padding(w, state, end_bit_offset)?;
+        self.print_name(w, state, unit, end_bit_offset)?;
+        if self.is_inline(unit) {
+            self.print_inline(w, state, unit)?;
+        }
+        Ok(())
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &Member,
+        end_bit_offset_a: &mut Option<u64>,
+        unit_b: &Unit,
+        b: &Member,
+        end_bit_offset_b: &mut Option<u64>
+    ) -> Result<()> {
+        if a.padding(end_bit_offset_a) == b.padding(end_bit_offset_b) {
+            state.prefix_equal(|state| a.print_padding(w, &mut state.a, end_bit_offset_a))?;
+        } else {
+            state.prefix_diff(|state| {
+                    a.print_padding(w, &mut state.a, end_bit_offset_a)?;
+                    b.print_padding(w, &mut state.b, end_bit_offset_b)
+                })?;
         }
 
+        state.diff(w,
+                  |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
+                  |w, state| b.print_name(w, state, unit_b, end_bit_offset_b))?;
+
+        match (a.is_inline(unit_a), b.is_inline(unit_b)) {
+            (true, true) => {
+                Self::diff_inline(w, state, unit_a, a, unit_b, b)?;
+            }
+            (true, false) => {
+                state.prefix_less(|state| a.print_inline(w, state, unit_a))?;
+            }
+            (false, true) => {
+                state.prefix_greater(|state| b.print_inline(w, state, unit_b))?;
+            }
+            (false, false) => {}
+        }
+
+        Ok(())
+    }
+
+    // Returns (offset, size) of padding.
+    fn padding(&self, end_bit_offset: &Option<u64>) -> Option<(u64, u64)> {
+        if let &Some(end_bit_offset) = end_bit_offset {
+            if self.bit_offset > end_bit_offset {
+                return Some((end_bit_offset, self.bit_offset - end_bit_offset));
+            }
+        }
+        None
+    }
+
+    fn print_padding(
+        &self,
+        w: &mut Write,
+        state: &mut PrintState,
+        end_bit_offset: &Option<u64>
+    ) -> Result<()> {
+        if let Some((padding_bit_offset, padding_bit_size)) = self.padding(end_bit_offset) {
+            state.line_start(w)?;
+            writeln!(w,
+                     "{}[{}]\t<padding>",
+                     format_bit(padding_bit_offset),
+                     format_bit(padding_bit_size))?;
+        }
+        Ok(())
+    }
+
+    fn print_name(
+        &self,
+        w: &mut Write,
+        state: &mut PrintState,
+        unit: &Unit,
+        end_bit_offset: &mut Option<u64>
+    ) -> Result<()> {
         state.line_start(w)?;
         write!(w, "{}", format_bit(self.bit_offset))?;
         match self.bit_size(unit) {
@@ -1852,43 +1951,9 @@ impl<'input> Member<'input> {
             write!(w, ": ")?;
             ty.print_ref(w, state, unit)?;
             writeln!(w, "")?;
-            if self.is_inline(unit) {
-                state.indent(|state| {
-                        match ty.kind {
-                            TypeKind::Struct(ref t) => {
-                                t.print_members(w, state, unit, Some(self.bit_offset))?;
-                            }
-                            TypeKind::Union(ref t) => {
-                                t.print_members(w, state, unit, Some(self.bit_offset))?;
-                            }
-                            _ => {
-                                debug!("unknown anon member: {:?}", ty);
-                            }
-                        }
-                        Ok(())
-                    })?;
-            }
         } else {
             writeln!(w, ": <invalid-type>")?;
         }
-        Ok(())
-    }
-
-    fn diff(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Member,
-        end_bit_offset_a: &mut Option<u64>,
-        unit_b: &Unit,
-        b: &Member,
-        end_bit_offset_b: &mut Option<u64>
-    ) -> Result<()> {
-        // TODO
-        state.prefix_diff(|state| {
-                a.print(w, &mut state.a, unit_a, end_bit_offset_a)?;
-                b.print(w, &mut state.b, unit_b, end_bit_offset_b)
-            })?;
         Ok(())
     }
 
@@ -1906,6 +1971,71 @@ impl<'input> Member<'input> {
         } else {
             false
         }
+    }
+
+    fn print_inline(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        if let Some(ty) = self.ty(unit) {
+            match ty.kind {
+                TypeKind::Struct(ref t) => {
+                    return state.indent(|state| {
+                        t.print_members(w, state, unit, Some(self.bit_offset))
+                    });
+                }
+                TypeKind::Union(ref t) => {
+                    return state.indent(|state| {
+                        t.print_members(w, state, unit, Some(self.bit_offset))
+                    });
+                }
+                _ => {
+                    debug!("unknown anon member: {:?}", ty);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn diff_inline(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &Member,
+        unit_b: &Unit,
+        b: &Member
+    ) -> Result<()> {
+        if let (Some(ty_a), Some(ty_b)) = (a.ty(unit_a), b.ty(unit_b)) {
+            match (&ty_a.kind, &ty_b.kind) {
+                (&TypeKind::Struct(ref t_a), &TypeKind::Struct(ref t_b)) => {
+                    return state.indent(|state| {
+                        StructType::diff_members(w,
+                                                 state,
+                                                 unit_a,
+                                                 t_a,
+                                                 Some(a.bit_offset),
+                                                 unit_b,
+                                                 t_b,
+                                                 Some(b.bit_offset))
+                    });
+                }
+                (&TypeKind::Union(ref t_a), &TypeKind::Union(ref t_b)) => {
+                    return state.indent(|state| {
+                        UnionType::diff_members(w,
+                                                state,
+                                                unit_a,
+                                                t_a,
+                                                Some(a.bit_offset),
+                                                unit_b,
+                                                t_b,
+                                                Some(b.bit_offset))
+                    });
+                }
+                _ => {}
+            }
+        }
+        state.prefix_diff(|state| {
+            a.print_inline(w, &mut state.a, unit_a)?;
+            b.print_inline(w, &mut state.b, unit_b)?;
+            Ok(())
+        })
     }
 
     fn cmp_name(a: &Member, b: &Member) -> cmp::Ordering {
