@@ -1567,8 +1567,7 @@ impl<'input> StructType<'input> {
 
     fn equal(unit_a: &Unit, a: &StructType, unit_b: &Unit, b: &StructType) -> bool {
         Self::cmp_name(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-        a.declaration == b.declaration && Self::equal_members(unit_a, a, unit_b, b) &&
-        Self::equal_subprograms(unit_a, a, unit_b, b)
+        a.declaration == b.declaration && Self::equal_members(unit_a, a, unit_b, b)
     }
 
     fn equal_members(
@@ -1585,16 +1584,6 @@ impl<'input> StructType<'input> {
                 return false;
             }
         }
-        true
-    }
-
-    fn equal_subprograms(
-        _unit_a: &Unit,
-        _struct_a: &StructType,
-        _unit_b: &Unit,
-        _struct_b: &StructType
-    ) -> bool {
-        // TODO
         true
     }
 }
@@ -1795,8 +1784,7 @@ impl<'input> UnionType<'input> {
 
     fn equal(unit_a: &Unit, a: &UnionType, unit_b: &Unit, b: &UnionType) -> bool {
         Self::cmp_name(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-        a.declaration == b.declaration && Self::equal_members(unit_a, a, unit_b, b) &&
-        Self::equal_subprograms(unit_a, a, unit_b, b)
+        a.declaration == b.declaration && Self::equal_members(unit_a, a, unit_b, b)
     }
 
     fn equal_members(
@@ -1813,16 +1801,6 @@ impl<'input> UnionType<'input> {
                 return false;
             }
         }
-        true
-    }
-
-    fn equal_subprograms(
-        _unit_a: &Unit,
-        _union_a: &UnionType,
-        _unit_b: &Unit,
-        _union_b: &UnionType
-    ) -> bool {
-        // TODO
         true
     }
 }
@@ -2129,8 +2107,7 @@ impl<'input> EnumerationType<'input> {
 
     fn equal(unit_a: &Unit, a: &EnumerationType, unit_b: &Unit, b: &EnumerationType) -> bool {
         Self::cmp_name(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
-        Self::equal_enumerators(unit_a, a, unit_b, b) &&
-        Self::equal_subprograms(unit_a, a, unit_b, b)
+        Self::equal_enumerators(unit_a, a, unit_b, b)
     }
 
     fn equal_enumerators(
@@ -2147,16 +2124,6 @@ impl<'input> EnumerationType<'input> {
                 return false;
             }
         }
-        true
-    }
-
-    fn equal_subprograms(
-        _unit_a: &Unit,
-        _enum_a: &EnumerationType,
-        _unit_b: &Unit,
-        _enum_b: &EnumerationType
-    ) -> bool {
-        // TODO
         true
     }
 
