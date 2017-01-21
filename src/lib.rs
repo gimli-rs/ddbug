@@ -140,7 +140,7 @@ impl<'input> File<'input> {
     fn filter_units(&self, flags: &Flags, diff: bool) -> Vec<&Unit> {
         let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
-            units.sort_by(|a, b| Unit::cmp_name(a, b));
+            units.sort_by(|a, b| Unit::cmp_id(a, b));
         }
         units
     }
@@ -493,7 +493,7 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
     state.merge(w,
                &mut file_a.filter_units(flags, true).iter(),
                &mut file_b.filter_units(flags, true).iter(),
-               |a, b| Unit::cmp_name(a, b),
+               |a, b| Unit::cmp_id(a, b),
                |w, state, a, b| {
             if flags.unit.is_none() {
                 state.a.line_start(w)?;
@@ -661,11 +661,12 @@ pub struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
+    /// Return true if this unit matches the filter options in the flags.
     fn filter(&self, flags: &Flags) -> bool {
         flags.filter_unit(self.name)
     }
 
-    // The offsets of types that should be printed inline.
+    /// The offsets of types that should be printed inline.
     fn inline_types(&self) -> HashSet<usize> {
         let mut inline_types = HashSet::new();
         for ty in self.types.values() {
@@ -688,6 +689,8 @@ impl<'input> Unit<'input> {
         inline_types
     }
 
+    /// Filter and sort the list of types using the options in the flags.
+    /// Perform additional filtering and always sort when diffing.
     fn filter_types(&self, flags: &Flags, diff: bool) -> Vec<&Type> {
         let inline_types = self.inline_types();
         let filter_type = |t: &Type| {
@@ -710,24 +713,28 @@ impl<'input> Unit<'input> {
         };
         let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
         if diff || flags.sort {
-            types.sort_by(|a, b| Type::cmp_name(self, a, self, b));
+            types.sort_by(|a, b| Type::cmp_id(self, a, self, b));
         }
         types
     }
 
+    /// Filter and sort the list of subprograms using the options in the flags.
+    /// Always sort when diffing.
     fn filter_subprograms(&self, flags: &Flags, diff: bool) -> Vec<&Subprogram> {
         let mut subprograms: Vec<_> =
             self.subprograms.values().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
-            subprograms.sort_by(|a, b| Subprogram::cmp_name(a, b));
+            subprograms.sort_by(|a, b| Subprogram::cmp_id(a, b));
         }
         subprograms
     }
 
+    /// Filter and sort the list of variables using the options in the flags.
+    /// Always sort when diffing.
     fn filter_variables(&self, flags: &Flags, diff: bool) -> Vec<&Variable> {
         let mut variables: Vec<_> = self.variables.iter().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
-            variables.sort_by(|a, b| Variable::cmp_name(a, b));
+            variables.sort_by(|a, b| Variable::cmp_id(a, b));
         }
         variables
     }
@@ -753,7 +760,9 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn cmp_name(a: &Unit, b: &Unit) -> cmp::Ordering {
+    /// Compare the identifying information of two units.
+    /// This can be used to sort, and to determine if two units refer to the same source.
+    fn cmp_id(a: &Unit, b: &Unit) -> cmp::Ordering {
         // TODO: ignore base paths
         a.name.cmp(&b.name)
     }
@@ -768,21 +777,21 @@ impl<'input> Unit<'input> {
         state.merge(w,
                    &mut unit_a.filter_types(flags, true).iter(),
                    &mut unit_b.filter_types(flags, true).iter(),
-                   |a, b| Type::cmp_name(unit_a, a, unit_b, b),
+                   |a, b| Type::cmp_id(unit_a, a, unit_b, b),
                    |w, state, a, b| Type::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         state.merge(w,
                    &mut unit_a.filter_subprograms(flags, true).iter(),
                    &mut unit_b.filter_subprograms(flags, true).iter(),
-                   |a, b| Subprogram::cmp_name(a, b),
+                   |a, b| Subprogram::cmp_id(a, b),
                    |w, state, a, b| Subprogram::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         state.merge(w,
                    &mut unit_a.filter_variables(flags, true).iter(),
                    &mut unit_b.filter_variables(flags, true).iter(),
-                   |a, b| Variable::cmp_name(a, b),
+                   |a, b| Variable::cmp_id(a, b),
                    |w, state, a, b| Variable::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
@@ -945,16 +954,21 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn cmp_name(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> cmp::Ordering {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
-            (&Base(ref a), &Base(ref b)) => BaseType::cmp_name(a, b),
-            (&Def(ref a), &Def(ref b)) => TypeDef::cmp_name(a, b),
-            (&Struct(ref a), &Struct(ref b)) => StructType::cmp_name(a, b),
-            (&Union(ref a), &Union(ref b)) => UnionType::cmp_name(a, b),
-            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_name(a, b),
-            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_name(unit_a, a, unit_b, b),
+            (&Base(ref a), &Base(ref b)) => BaseType::cmp_id(a, b),
+            (&Def(ref a), &Def(ref b)) => TypeDef::cmp_id(a, b),
+            (&Struct(ref a), &Struct(ref b)) => StructType::cmp_id(a, b),
+            (&Union(ref a), &Union(ref b)) => UnionType::cmp_id(a, b),
+            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_id(a, b),
+            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(unit_a, a, unit_b, b),
             // TODO
+            // FIXME: we need to compare on something more than just the discriminant_value,
+            // so that sorting works correctly.
             _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
         }
     }
@@ -1067,7 +1081,7 @@ impl<'input> TypeModifier<'input> {
             (Some(a), Some(b)) => {
                 match kind {
                     TypeModifierKind::Pointer => {
-                        Type::cmp_name(unit_a, a, unit_b, b) == cmp::Ordering::Equal
+                        Type::cmp_id(unit_a, a, unit_b, b) == cmp::Ordering::Equal
                     }
                     TypeModifierKind::Const |
                     TypeModifierKind::Restrict => Type::equal(unit_a, a, unit_b, b),
@@ -1098,12 +1112,15 @@ impl<'input> BaseType<'input> {
         Ok(())
     }
 
-    fn cmp_name(a: &BaseType, b: &BaseType) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &BaseType, b: &BaseType) -> cmp::Ordering {
         a.name.cmp(&b.name)
     }
 
     fn equal(a: &BaseType, b: &BaseType) -> bool {
-        if Self::cmp_name(a, b) != cmp::Ordering::Equal {
+        if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
         a.byte_size == b.byte_size
@@ -1198,12 +1215,15 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn cmp_name(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn equal(unit_a: &Unit, a: &TypeDef, unit_b: &Unit, b: &TypeDef) -> bool {
-        if Self::cmp_name(a, b) != cmp::Ordering::Equal {
+        if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
         match (a.ty(unit_a), b.ty(unit_b)) {
@@ -1239,14 +1259,9 @@ impl<'input> TypeDef<'input> {
                             })?;
                     }
                     (false, false) => {
-                        if Type::cmp_name(unit_a, ty_a, unit_b, ty_b) == cmp::Ordering::Equal {
-                            state.prefix_equal(|state| a.print_ty_name(w, &mut state.a, unit_a, ty_a))?;
-                        } else {
-                            state.prefix_diff(|state| {
-                                    a.print_ty_name(w, &mut state.a, unit_a, ty_a)?;
-                                    b.print_ty_name(w, &mut state.b, unit_b, ty_b)
-                                })?;
-                        }
+                        state.diff(w,
+                                  |w, state| a.print_ty_name(w, state, unit_a, ty_a),
+                                  |w, state| b.print_ty_name(w, state, unit_b, ty_b))?;
                         state.indent(|state| {
                                 if a.bit_size(unit_a) == b.bit_size(unit_b) {
                                     state.prefix_equal(|state| {
@@ -1325,8 +1340,10 @@ impl<'input> StructType<'input> {
             return Ok(());
         }
 
-        debug_assert_eq!(Self::cmp_name(a, b), cmp::Ordering::Equal);
-        state.prefix_equal(|state| a.print_name(w, &mut state.a))?;
+        // The names should be the same, but we can't be sure.
+        state.diff(w,
+                  |w, state| a.print_name(w, state),
+                  |w, state| b.print_name(w, state))?;
 
         state.indent(|state| {
                 if a.byte_size == b.byte_size {
@@ -1427,16 +1444,16 @@ impl<'input> StructType<'input> {
         // Enumerate members and sort by name. Exclude anonymous members.
         let mut members_a =
             a.members.iter().enumerate().filter(|a| a.1.name.is_some()).collect::<Vec<_>>();
-        members_a.sort_by(|x, y| Member::cmp_name(x.1, y.1));
+        members_a.sort_by(|x, y| Member::cmp_id(x.1, y.1));
         let mut members_b =
             b.members.iter().enumerate().filter(|b| b.1.name.is_some()).collect::<Vec<_>>();
-        members_b.sort_by(|x, y| Member::cmp_name(x.1, y.1));
+        members_b.sort_by(|x, y| Member::cmp_id(x.1, y.1));
 
         // Find pairs of members with the same name.
         let mut pairs = Vec::new();
         for m in MergeIterator::new(members_a.iter(),
                                     members_b.iter(),
-                                    |a, b| Member::cmp_name(a.1, b.1)) {
+                                    |a, b| Member::cmp_id(a.1, b.1)) {
             if let MergeResult::Both(a, b) = m {
                 pairs.push((a, b));
             }
@@ -1548,12 +1565,15 @@ impl<'input> StructType<'input> {
         self.name.is_none()
     }
 
-    fn cmp_name(a: &StructType, b: &StructType) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &StructType, b: &StructType) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn equal(unit_a: &Unit, a: &StructType, unit_b: &Unit, b: &StructType) -> bool {
-        Self::cmp_name(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+        Self::cmp_id(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
         a.declaration == b.declaration && Self::equal_members(unit_a, a, unit_b, b)
     }
 
@@ -1623,8 +1643,10 @@ impl<'input> UnionType<'input> {
             return Ok(());
         }
 
-        debug_assert_eq!(Self::cmp_name(a, b), cmp::Ordering::Equal);
-        state.prefix_equal(|state| a.print_name(w, &mut state.a))?;
+        // The names should be the same, but we can't be sure.
+        state.diff(w,
+                  |w, state| a.print_name(w, state),
+                  |w, state| b.print_name(w, state))?;
 
         state.indent(|state| {
                 if a.byte_size == b.byte_size {
@@ -1727,14 +1749,14 @@ impl<'input> UnionType<'input> {
         // even if they were reordered.
         // TODO: is this smart enough? maybe take type into account too.
         let mut members_a = a.members.iter().collect::<Vec<_>>();
-        members_a.sort_by(|x, y| Member::cmp_name(x, y));
+        members_a.sort_by(|x, y| Member::cmp_id(x, y));
         let mut members_b = b.members.iter().collect::<Vec<_>>();
-        members_b.sort_by(|x, y| Member::cmp_name(x, y));
+        members_b.sort_by(|x, y| Member::cmp_id(x, y));
 
         state.merge(w,
                    &mut members_a.iter(),
                    &mut members_b.iter(),
-                   |a, b| Member::cmp_name(a, b),
+                   |a, b| Member::cmp_id(a, b),
                    |w, state, a, b| {
                 Member::diff(w,
                              state,
@@ -1765,12 +1787,15 @@ impl<'input> UnionType<'input> {
         self.name.is_none()
     }
 
-    fn cmp_name(a: &UnionType, b: &UnionType) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &UnionType, b: &UnionType) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn equal(unit_a: &Unit, a: &UnionType, unit_b: &Unit, b: &UnionType) -> bool {
-        Self::cmp_name(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+        Self::cmp_id(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
         a.declaration == b.declaration && Self::equal_members(unit_a, a, unit_b, b)
     }
 
@@ -2012,12 +2037,12 @@ impl<'input> Member<'input> {
         })
     }
 
-    fn cmp_name(a: &Member, b: &Member) -> cmp::Ordering {
+    fn cmp_id(a: &Member, b: &Member) -> cmp::Ordering {
         a.name.cmp(&b.name)
     }
 
     fn equal(unit_a: &Unit, a: &Member, unit_b: &Unit, b: &Member) -> bool {
-        if Self::cmp_name(a, b) != cmp::Ordering::Equal {
+        if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
         if a.bit_offset != b.bit_offset {
@@ -2088,12 +2113,15 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn cmp_name(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn equal(unit_a: &Unit, a: &EnumerationType, unit_b: &Unit, b: &EnumerationType) -> bool {
-        Self::cmp_name(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
+        Self::cmp_id(a, b) == cmp::Ordering::Equal && a.byte_size == b.byte_size &&
         Self::equal_enumerators(unit_a, a, unit_b, b)
     }
 
@@ -2198,10 +2226,13 @@ impl<'input> ArrayType<'input> {
         Ok(())
     }
 
-    fn cmp_name(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> cmp::Ordering {
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> cmp::Ordering {
         match (a.ty(unit_a), b.ty(unit_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                match Type::cmp_name(unit_a, ty_a, unit_b, ty_b) {
+                match Type::cmp_id(unit_a, ty_a, unit_b, ty_b) {
                     cmp::Ordering::Equal => {}
                     other => return other,
                 }
@@ -2415,12 +2446,15 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    fn cmp_name(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+    /// Compare the identifying information of two subprograms.
+    /// This can be used to sort, and to determine if two subprograms refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn equal(a: &Subprogram, b: &Subprogram, _state: &DiffState) -> bool {
-        if Self::cmp_name(a, b) != cmp::Ordering::Equal {
+        if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
         // TODO
@@ -2579,12 +2613,15 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn cmp_name(a: &Variable, b: &Variable) -> cmp::Ordering {
+    /// Compare the identifying information of two variables.
+    /// This can be used to sort, and to determine if two variables refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn equal(a: &Variable, b: &Variable, _state: &DiffState) -> bool {
-        if Self::cmp_name(a, b) != cmp::Ordering::Equal {
+        if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
         // TODO
