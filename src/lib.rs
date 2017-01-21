@@ -104,36 +104,6 @@ impl<'a> Flags<'a> {
     fn filter_namespace(&self, namespace: &Namespace) -> bool {
         namespace.filter(&self.namespace)
     }
-
-    fn units<'b, 'input, I>(&self, diff: bool, units: I) -> Vec<&'b Unit<'input>>
-        where I: Iterator<Item = &'b Unit<'input>>
-    {
-        let mut units: Vec<_> = units.filter(|a| a.filter(self)).collect();
-        if diff || self.sort {
-            units.sort_by(|a, b| Unit::cmp_name(a, b));
-        }
-        units
-    }
-
-    fn subprograms<'b, 'input, I>(&self, diff: bool, subprograms: I) -> Vec<&'b Subprogram<'input>>
-        where I: Iterator<Item = &'b Subprogram<'input>>
-    {
-        let mut subprograms: Vec<_> = subprograms.filter(|a| a.filter(self)).collect();
-        if diff || self.sort {
-            subprograms.sort_by(|a, b| Subprogram::cmp_name(a, b));
-        }
-        subprograms
-    }
-
-    fn variables<'b, 'input, I>(&self, diff: bool, variables: I) -> Vec<&'b Variable<'input>>
-        where I: Iterator<Item = &'b Variable<'input>>
-    {
-        let mut variables: Vec<_> = variables.filter(|a| a.filter(self)).collect();
-        if diff || self.sort {
-            variables.sort_by(|a, b| Variable::cmp_name(a, b));
-        }
-        variables
-    }
 }
 
 fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
@@ -165,6 +135,14 @@ impl<'input> File<'input> {
             }
         }
         all_subprograms
+    }
+
+    fn filter_units(&self, flags: &Flags, diff: bool) -> Vec<&Unit> {
+        let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(flags)).collect();
+        if diff || flags.sort {
+            units.sort_by(|a, b| Unit::cmp_name(a, b));
+        }
+        units
     }
 }
 
@@ -291,7 +269,7 @@ impl<'a, 'input> PrintState<'a, 'input>
 
 pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
     let subprograms = file.subprograms();
-    for unit in &flags.units(false, file.units.iter()) {
+    for unit in file.filter_units(flags, false).iter() {
         let mut state = PrintState::new(file, &subprograms, flags);
         if flags.unit.is_none() {
             state.line_start(w)?;
@@ -513,8 +491,8 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
     let subprograms_b = file_b.subprograms();
     let mut state = DiffState::new(file_a, &subprograms_a, file_b, &subprograms_b, flags);
     state.merge(w,
-               &mut flags.units(true, file_a.units.iter()).iter(),
-               &mut flags.units(true, file_b.units.iter()).iter(),
+               &mut file_a.filter_units(flags, true).iter(),
+               &mut file_b.filter_units(flags, true).iter(),
                |a, b| Unit::cmp_name(a, b),
                |w, state, a, b| {
             if flags.unit.is_none() {
@@ -710,7 +688,7 @@ impl<'input> Unit<'input> {
         inline_types
     }
 
-    fn types(&self, flags: &Flags, diff: bool) -> Vec<&Type> {
+    fn filter_types(&self, flags: &Flags, diff: bool) -> Vec<&Type> {
         let inline_types = self.inline_types();
         let filter_type = |t: &Type| {
             // Filter by user options.
@@ -737,12 +715,21 @@ impl<'input> Unit<'input> {
         types
     }
 
-    fn subprograms(&self, flags: &Flags, diff: bool) -> Vec<&Subprogram> {
-        flags.subprograms(diff, self.subprograms.values())
+    fn filter_subprograms(&self, flags: &Flags, diff: bool) -> Vec<&Subprogram> {
+        let mut subprograms: Vec<_> =
+            self.subprograms.values().filter(|a| a.filter(flags)).collect();
+        if diff || flags.sort {
+            subprograms.sort_by(|a, b| Subprogram::cmp_name(a, b));
+        }
+        subprograms
     }
 
-    fn variables(&self, flags: &Flags, diff: bool) -> Vec<&Variable> {
-        flags.variables(diff, self.variables.iter())
+    fn filter_variables(&self, flags: &Flags, diff: bool) -> Vec<&Variable> {
+        let mut variables: Vec<_> = self.variables.iter().filter(|a| a.filter(flags)).collect();
+        if diff || flags.sort {
+            variables.sort_by(|a, b| Variable::cmp_name(a, b));
+        }
+        variables
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -754,13 +741,13 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
-        for ty in &self.types(flags, false) {
+        for ty in &self.filter_types(flags, false) {
             ty.print(w, state, self)?;
         }
-        for subprogram in &self.subprograms(flags, false) {
+        for subprogram in &self.filter_subprograms(flags, false) {
             subprogram.print(w, state, self)?;
         }
-        for variable in &self.variables(flags, false) {
+        for variable in &self.filter_variables(flags, false) {
             variable.print(w, state, self)?;
         }
         Ok(())
@@ -779,22 +766,22 @@ impl<'input> Unit<'input> {
         flags: &Flags
     ) -> Result<()> {
         state.merge(w,
-                   &mut unit_a.types(flags, true).iter(),
-                   &mut unit_b.types(flags, true).iter(),
+                   &mut unit_a.filter_types(flags, true).iter(),
+                   &mut unit_b.filter_types(flags, true).iter(),
                    |a, b| Type::cmp_name(unit_a, a, unit_b, b),
                    |w, state, a, b| Type::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         state.merge(w,
-                   &mut unit_a.subprograms(flags, true).iter(),
-                   &mut unit_b.subprograms(flags, true).iter(),
+                   &mut unit_a.filter_subprograms(flags, true).iter(),
+                   &mut unit_b.filter_subprograms(flags, true).iter(),
                    |a, b| Subprogram::cmp_name(a, b),
                    |w, state, a, b| Subprogram::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         state.merge(w,
-                   &mut unit_a.variables(flags, true).iter(),
-                   &mut unit_b.variables(flags, true).iter(),
+                   &mut unit_a.filter_variables(flags, true).iter(),
+                   &mut unit_b.filter_variables(flags, true).iter(),
                    |a, b| Variable::cmp_name(a, b),
                    |w, state, a, b| Variable::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
