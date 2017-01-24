@@ -5,7 +5,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::process::Command;
 
-const TEST_DIR: &'static str = "tests/workdir";
+// Leading "./" because rustc includes it in the unit DW_AT_name.
+const TEST_DIR: &'static str = "./tests/workdir";
 
 fn write_input(input_file: &str, input_text: &str) {
     fs::create_dir_all(TEST_DIR).unwrap();

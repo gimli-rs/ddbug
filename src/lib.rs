@@ -698,22 +698,30 @@ impl<'input> Unit<'input> {
             if !t.filter(flags) {
                 return false;
             }
-            if diff {
-                if let &Type { kind: TypeKind::Struct(ref t), .. } = t {
+            match t.kind {
+                TypeKind::Struct(ref t) => {
                     // Hack for rust closures
                     // TODO: is there better way of identifying these, or a
                     // a way to match pairs for diffing?
-                    if filter_name(t.name, "closure") {
+                    if diff && filter_name(t.name, "closure") {
                         return false;
                     }
                 }
+                TypeKind::Def(..) |
+                TypeKind::Union(..) |
+                TypeKind::Enumeration(..) => {}
+                TypeKind::Base(..) |
+                TypeKind::Array(..) |
+                TypeKind::Subroutine(..) |
+                TypeKind::Modifier(..) |
+                TypeKind::Unimplemented(..) => return false,
             }
             // Filter out inline types.
             !inline_types.contains(&t.offset.0)
         };
         let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
         if diff || flags.sort {
-            types.sort_by(|a, b| Type::cmp_id(self, a, self, b));
+            types.sort_by(|a, b| Type::cmp_id(a, b));
         }
         types
     }
@@ -777,7 +785,7 @@ impl<'input> Unit<'input> {
         state.merge(w,
                    &mut unit_a.filter_types(flags, true).iter(),
                    &mut unit_b.filter_types(flags, true).iter(),
-                   |a, b| Type::cmp_id(unit_a, a, unit_b, b),
+                   |a, b| Type::cmp_id(a, b),
                    |w, state, a, b| Type::diff(w, state, unit_a, a, unit_b, b),
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
@@ -895,36 +903,30 @@ impl<'input> Type<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         match self.kind {
-            TypeKind::Def(ref val) => val.print(w, state, unit)?,
-            TypeKind::Struct(ref val) => val.print(w, state, unit)?,
-            TypeKind::Union(ref val) => val.print(w, state, unit)?,
-            TypeKind::Enumeration(ref val) => val.print(w, state)?,
+            TypeKind::Def(ref val) => val.print(w, state, unit),
+            TypeKind::Struct(ref val) => val.print(w, state, unit),
+            TypeKind::Union(ref val) => val.print(w, state, unit),
+            TypeKind::Enumeration(ref val) => val.print(w, state),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
-            TypeKind::Modifier(..) => {}
-            TypeKind::Unimplemented(_) => {
-                state.line_start(w)?;
-                self.print_ref(w, state, unit)?;
-                writeln!(w, "")?;
-            }
+            TypeKind::Modifier(..) |
+            TypeKind::Unimplemented(..) => Err(format!("can't print {:?}", self).into()),
         }
-        Ok(())
     }
 
     fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
         match self.kind {
-            TypeKind::Base(ref val) => val.print_ref(w)?,
-            TypeKind::Def(ref val) => val.print_ref(w)?,
-            TypeKind::Struct(ref val) => val.print_ref(w)?,
-            TypeKind::Union(ref val) => val.print_ref(w)?,
-            TypeKind::Enumeration(ref val) => val.print_ref(w)?,
-            TypeKind::Array(ref val) => val.print_ref(w, state, unit)?,
-            TypeKind::Subroutine(ref val) => val.print_ref(w, state, unit)?,
-            TypeKind::Modifier(ref val) => val.print_ref(w, state, unit)?,
-            TypeKind::Unimplemented(ref tag) => write!(w, "<unimplemented {}>", tag)?,
+            TypeKind::Base(ref val) => val.print_ref(w),
+            TypeKind::Def(ref val) => val.print_ref(w),
+            TypeKind::Struct(ref val) => val.print_ref(w),
+            TypeKind::Union(ref val) => val.print_ref(w),
+            TypeKind::Enumeration(ref val) => val.print_ref(w),
+            TypeKind::Array(ref val) => val.print_ref(w, state, unit),
+            TypeKind::Subroutine(ref val) => val.print_ref(w, state, unit),
+            TypeKind::Modifier(ref val) => val.print_ref(w, state, unit),
+            TypeKind::Unimplemented(..) => Err(format!("can't print_ref {:?}", self).into()),
         }
-        Ok(())
     }
 
     fn print_ref_from_offset(
@@ -957,35 +959,68 @@ impl<'input> Type<'input> {
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> cmp::Ordering {
+    /// This must only be called for types that have identifiers.
+    fn cmp_id(type_a: &Type, type_b: &Type) -> cmp::Ordering {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
-            (&Base(ref a), &Base(ref b)) => BaseType::cmp_id(a, b),
             (&Def(ref a), &Def(ref b)) => TypeDef::cmp_id(a, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::cmp_id(a, b),
             (&Union(ref a), &Union(ref b)) => UnionType::cmp_id(a, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_id(a, b),
-            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(unit_a, a, unit_b, b),
-            // TODO
-            // FIXME: we need to compare on something more than just the discriminant_value,
-            // so that sorting works correctly.
-            _ => type_a.kind.discriminant_value().cmp(&type_b.kind.discriminant_value()),
+            _ => {
+                let discr_a = type_a.kind.discriminant_value();
+                let discr_b = type_b.kind.discriminant_value();
+                debug_assert!(discr_a != discr_b);
+                discr_a.cmp(&discr_b)
+            }
+        }
+    }
+
+    fn equal_ref(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> bool {
+        use TypeKind::*;
+        match (&type_a.kind, &type_b.kind) {
+            (&Base(ref a), &Base(ref b)) => BaseType::equal_ref(a, b),
+            (&Def(ref a), &Def(ref b)) => TypeDef::equal_ref(a, b),
+            (&Struct(ref a), &Struct(ref b)) => StructType::equal_ref(a, b),
+            (&Union(ref a), &Union(ref b)) => UnionType::equal_ref(a, b),
+            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::equal_ref(a, b),
+            (&Array(ref a), &Array(ref b)) => ArrayType::equal_ref(unit_a, a, unit_b, b),
+            (&Subroutine(ref a), &Subroutine(ref b)) => {
+                SubroutineType::equal_ref(unit_a, a, unit_b, b)
+            }
+            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::equal_ref(unit_a, a, unit_b, b),
+            _ => false,
+        }
+    }
+
+    fn equal_ref_option(
+        unit_a: &Unit,
+        type_a: Option<&Type>,
+        unit_b: &Unit,
+        type_b: Option<&Type>
+    ) -> bool {
+        match (type_a, type_b) {
+            (Some(a), Some(b)) => Type::equal_ref(unit_a, a, unit_b, b),
+            (None, None) => true,
+            _ => false,
         }
     }
 
     fn equal(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> bool {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
-            (&Base(ref a), &Base(ref b)) => BaseType::equal(a, b),
+            (&Base(ref a), &Base(ref b)) => BaseType::equal_ref(a, b),
             (&Def(ref a), &Def(ref b)) => TypeDef::equal(unit_a, a, unit_b, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::equal(unit_a, a, unit_b, b),
             (&Union(ref a), &Union(ref b)) => UnionType::equal(unit_a, a, unit_b, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => {
                 EnumerationType::equal(unit_a, a, unit_b, b)
             }
-            (&Array(ref a), &Array(ref b)) => ArrayType::equal(unit_a, a, unit_b, b),
-            (&Subroutine(ref a), &Subroutine(ref b)) => SubroutineType::equal(unit_a, a, unit_b, b),
-            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::equal(unit_a, a, unit_b, b),
+            (&Array(ref a), &Array(ref b)) => ArrayType::equal_ref(unit_a, a, unit_b, b),
+            (&Subroutine(ref a), &Subroutine(ref b)) => {
+                SubroutineType::equal_ref(unit_a, a, unit_b, b)
+            }
+            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::equal_ref(unit_a, a, unit_b, b),
             _ => false,
         }
     }
@@ -1000,21 +1035,14 @@ impl<'input> Type<'input> {
     ) -> Result<()> {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
-            (&Def(ref a), &Def(ref b)) => {
-                TypeDef::diff(w, state, unit_a, a, unit_b, b)?;
-            }
-            (&Struct(ref a), &Struct(ref b)) => {
-                StructType::diff(w, state, unit_a, a, unit_b, b)?;
-            }
-            (&Union(ref a), &Union(ref b)) => {
-                UnionType::diff(w, state, unit_a, a, unit_b, b)?;
-            }
+            (&Def(ref a), &Def(ref b)) => TypeDef::diff(w, state, unit_a, a, unit_b, b),
+            (&Struct(ref a), &Struct(ref b)) => StructType::diff(w, state, unit_a, a, unit_b, b),
+            (&Union(ref a), &Union(ref b)) => UnionType::diff(w, state, unit_a, a, unit_b, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => {
-                EnumerationType::diff(w, state, unit_a, a, unit_b, b)?;
+                EnumerationType::diff(w, state, unit_a, a, unit_b, b)
             }
-            _ => {}
+            _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
         }
-        Ok(())
     }
 }
 
@@ -1069,27 +1097,14 @@ impl<'input> TypeModifier<'input> {
         Ok(())
     }
 
-    fn equal(unit_a: &Unit, a: &TypeModifier, unit_b: &Unit, b: &TypeModifier) -> bool {
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+    fn equal_ref(unit_a: &Unit, a: &TypeModifier, unit_b: &Unit, b: &TypeModifier) -> bool {
+        if cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name) != cmp::Ordering::Equal {
             return false;
         }
         if a.kind != b.kind {
             return false;
         }
-        let kind = a.kind;
-        match (a.ty(unit_a), b.ty(unit_b)) {
-            (Some(a), Some(b)) => {
-                match kind {
-                    TypeModifierKind::Pointer => {
-                        Type::cmp_id(unit_a, a, unit_b, b) == cmp::Ordering::Equal
-                    }
-                    TypeModifierKind::Const |
-                    TypeModifierKind::Restrict => Type::equal(unit_a, a, unit_b, b),
-                }
-            }
-            (None, None) => true,
-            _ => false,
-        }
+        Type::equal_ref_option(unit_a, a.ty(unit_a), unit_b, b.ty(unit_b))
     }
 }
 
@@ -1112,18 +1127,8 @@ impl<'input> BaseType<'input> {
         Ok(())
     }
 
-    /// Compare the identifying information of two types.
-    /// This can be used to sort, and to determine if two types refer to the same definition
-    /// (even if there are differences in the definitions).
-    fn cmp_id(a: &BaseType, b: &BaseType) -> cmp::Ordering {
-        a.name.cmp(&b.name)
-    }
-
-    fn equal(a: &BaseType, b: &BaseType) -> bool {
-        if Self::cmp_id(a, b) != cmp::Ordering::Equal {
-            return false;
-        }
-        a.byte_size == b.byte_size
+    fn equal_ref(a: &BaseType, b: &BaseType) -> bool {
+        a.name.cmp(&b.name) == cmp::Ordering::Equal
     }
 }
 
@@ -1222,7 +1227,12 @@ impl<'input> TypeDef<'input> {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
+    fn equal_ref(a: &TypeDef, b: &TypeDef) -> bool {
+        Self::cmp_id(a, b) == cmp::Ordering::Equal
+    }
+
     fn equal(unit_a: &Unit, a: &TypeDef, unit_b: &Unit, b: &TypeDef) -> bool {
+        // TODO: this may compare more than we print
         if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
@@ -1561,6 +1571,10 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
+    fn equal_ref(a: &StructType, b: &StructType) -> bool {
+        Self::cmp_id(a, b) == cmp::Ordering::Equal
+    }
+
     fn is_anon(&self) -> bool {
         self.name.is_none()
     }
@@ -1781,6 +1795,10 @@ impl<'input> UnionType<'input> {
             None => write!(w, "<anon>")?,
         }
         Ok(())
+    }
+
+    fn equal_ref(a: &UnionType, b: &UnionType) -> bool {
+        Self::cmp_id(a, b) == cmp::Ordering::Equal
     }
 
     fn is_anon(&self) -> bool {
@@ -2042,6 +2060,7 @@ impl<'input> Member<'input> {
     }
 
     fn equal(unit_a: &Unit, a: &Member, unit_b: &Unit, b: &Member) -> bool {
+        // FIXME: lots wrong here
         if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
@@ -2051,6 +2070,7 @@ impl<'input> Member<'input> {
         if a.bit_size != b.bit_size {
             return false;
         }
+        // FIXME: should use equal_ref for non-inline members
         match (a.ty(unit_a), b.ty(unit_b)) {
             (Some(ty_a), Some(ty_b)) => Type::equal(unit_a, ty_a, unit_b, ty_b),
             (None, None) => true,
@@ -2118,6 +2138,10 @@ impl<'input> EnumerationType<'input> {
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    fn equal_ref(a: &EnumerationType, b: &EnumerationType) -> bool {
+        Self::cmp_id(a, b) == cmp::Ordering::Equal
     }
 
     fn equal(unit_a: &Unit, a: &EnumerationType, unit_b: &Unit, b: &EnumerationType) -> bool {
@@ -2226,33 +2250,11 @@ impl<'input> ArrayType<'input> {
         Ok(())
     }
 
-    /// Compare the identifying information of two types.
-    /// This can be used to sort, and to determine if two types refer to the same definition
-    /// (even if there are differences in the definitions).
-    fn cmp_id(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> cmp::Ordering {
-        match (a.ty(unit_a), b.ty(unit_b)) {
-            (Some(ty_a), Some(ty_b)) => {
-                match Type::cmp_id(unit_a, ty_a, unit_b, ty_b) {
-                    cmp::Ordering::Equal => {}
-                    other => return other,
-                }
-            }
-            (Some(_), None) => return cmp::Ordering::Less,
-            (None, Some(_)) => return cmp::Ordering::Greater,
-            (None, None) => {}
-        }
-        a.count.cmp(&b.count)
-    }
-
-    fn equal(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> bool {
+    fn equal_ref(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> bool {
         if a.count != b.count {
             return false;
         }
-        match (a.ty(unit_a), b.ty(unit_b)) {
-            (Some(ty_a), Some(ty_b)) => Type::equal(unit_a, ty_a, unit_b, ty_b),
-            (None, None) => true,
-            _ => false,
-        }
+        Type::equal_ref_option(unit_a, a.ty(unit_a), unit_b, b.ty(unit_b))
     }
 }
 
@@ -2265,6 +2267,10 @@ struct SubroutineType<'input> {
 impl<'input> SubroutineType<'input> {
     fn bit_size(&self, _unit: &Unit) -> Option<u64> {
         None
+    }
+
+    fn return_type<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
+        self.return_type.and_then(|v| unit.types.get(&v.0))
     }
 
     fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
@@ -2280,16 +2286,31 @@ impl<'input> SubroutineType<'input> {
         }
         write!(w, ")")?;
 
-        if let Some(return_type) = self.return_type {
+        if let Some(return_type) = self.return_type(unit) {
             write!(w, " -> ")?;
-            Type::print_ref_from_offset(w, state, unit, return_type)?;
+            return_type.print_ref(w, state, unit)?;
         }
         Ok(())
     }
 
-    fn equal(_unit_a: &Unit, _a: &SubroutineType, _unit_b: &Unit, _b: &SubroutineType) -> bool {
-        // TODO
-        false
+    fn equal_ref(
+        unit_a: &Unit,
+        sub_a: &SubroutineType,
+        unit_b: &Unit,
+        sub_b: &SubroutineType
+    ) -> bool {
+        if sub_a.parameters.len().cmp(&sub_b.parameters.len()) != cmp::Ordering::Equal {
+            return false;
+        }
+        for (a, b) in sub_a.parameters.iter().zip(sub_b.parameters.iter()) {
+            if !Parameter::equal(unit_a, a, unit_b, b) {
+                return false;
+            }
+        }
+        Type::equal_ref_option(unit_a,
+                               sub_a.return_type(unit_a),
+                               unit_b,
+                               sub_b.return_type(unit_b))
     }
 }
 
@@ -2500,11 +2521,18 @@ impl<'input> Parameter<'input> {
         if let Some(name) = self.name {
             write!(w, "{}: ", name.to_string_lossy())?;
         }
-        match self.ty {
-            Some(offset) => Type::print_ref_from_offset(w, state, unit, offset)?,
+        match self.ty(unit) {
+            Some(ty) => ty.print_ref(w, state, unit)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
+    }
+
+    fn equal(unit_a: &Unit, a: &Parameter, unit_b: &Unit, b: &Parameter) -> bool {
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            return false;
+        }
+        Type::equal_ref_option(unit_a, a.ty(unit_a), unit_b, b.ty(unit_b))
     }
 }
 
