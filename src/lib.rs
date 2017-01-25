@@ -456,7 +456,7 @@ impl<'a, 'input> DiffState<'a, 'input>
         ret
     }
 
-    fn diff<A, B>(&mut self, w: &mut Write, mut f_a: A, mut f_b: B) -> Result<()>
+    fn line<A, B>(&mut self, w: &mut Write, mut f_a: A, mut f_b: B) -> Result<()>
         where A: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
               B: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
     {
@@ -1269,7 +1269,7 @@ impl<'input> TypeDef<'input> {
                             })?;
                     }
                     (false, false) => {
-                        state.diff(w,
+                        state.line(w,
                                   |w, state| a.print_ty_name(w, state, unit_a, ty_a),
                                   |w, state| b.print_ty_name(w, state, unit_b, ty_b))?;
                         state.indent(|state| {
@@ -1351,7 +1351,7 @@ impl<'input> StructType<'input> {
         }
 
         // The names should be the same, but we can't be sure.
-        state.diff(w,
+        state.line(w,
                   |w, state| a.print_name(w, state),
                   |w, state| b.print_name(w, state))?;
 
@@ -1658,7 +1658,7 @@ impl<'input> UnionType<'input> {
         }
 
         // The names should be the same, but we can't be sure.
-        state.diff(w,
+        state.line(w,
                   |w, state| a.print_name(w, state),
                   |w, state| b.print_name(w, state))?;
 
@@ -1894,7 +1894,7 @@ impl<'input> Member<'input> {
                 })?;
         }
 
-        state.diff(w,
+        state.line(w,
                   |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
                   |w, state| b.print_name(w, state, unit_b, end_bit_offset_b))?;
 
