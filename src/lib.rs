@@ -756,12 +756,15 @@ impl<'input> Unit<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
         for ty in &self.filter_types(flags, false) {
             ty.print(w, state, self)?;
+            writeln!(w, "")?;
         }
         for subprogram in &self.filter_subprograms(flags, false) {
             subprogram.print(w, state, self)?;
+            writeln!(w, "")?;
         }
         for variable in &self.filter_variables(flags, false) {
             variable.print(w, state, self)?;
+            writeln!(w, "")?;
         }
         Ok(())
     }
@@ -784,21 +787,39 @@ impl<'input> Unit<'input> {
                    &mut unit_a.filter_types(flags, true).iter(),
                    &mut unit_b.filter_types(flags, true).iter(),
                    |a, b| Type::cmp_id(a, b),
-                   |w, state, a, b| Type::diff(w, state, unit_a, a, unit_b, b),
+                   |w, state, a, b| {
+                if !Type::equal(unit_a, a, unit_b, b) {
+                    Type::diff(w, state, unit_a, a, unit_b, b)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            },
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         state.merge(w,
                    &mut unit_a.filter_subprograms(flags, true).iter(),
                    &mut unit_b.filter_subprograms(flags, true).iter(),
                    |a, b| Subprogram::cmp_id(a, b),
-                   |w, state, a, b| Subprogram::diff(w, state, unit_a, a, unit_b, b),
+                   |w, state, a, b| {
+                if !Subprogram::equal(unit_a, a, unit_b, b) {
+                    Subprogram::diff(w, state, unit_a, a, unit_b, b)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            },
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         state.merge(w,
                    &mut unit_a.filter_variables(flags, true).iter(),
                    &mut unit_b.filter_variables(flags, true).iter(),
                    |a, b| Variable::cmp_id(a, b),
-                   |w, state, a, b| Variable::diff(w, state, unit_a, a, unit_b, b),
+                   |w, state, a, b| {
+                if !Variable::equal(unit_a, a, unit_b, b) {
+                    Variable::diff(w, state, unit_a, a, unit_b, b)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            },
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
         Ok(())
@@ -910,7 +931,8 @@ impl<'input> Type<'input> {
             TypeKind::Subroutine(..) |
             TypeKind::Modifier(..) |
             TypeKind::Unimplemented(..) => Err(format!("can't print {:?}", self).into()),
-        }
+        }?;
+        Ok(())
     }
 
     fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
@@ -1040,7 +1062,8 @@ impl<'input> Type<'input> {
                 EnumerationType::diff(w, state, unit_a, a, unit_b, b)
             }
             _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
-        }
+        }?;
+        Ok(())
     }
 }
 
@@ -1208,11 +1231,9 @@ impl<'input> TypeDef<'input> {
             } else {
                 state.line(w, |w, state| self.print_ty_name(w, state, unit, ty))?;
                 state.indent(|state| self.print_bit_size(w, state, unit))?;
-                writeln!(w, "")?;
             }
         } else {
             self.print_ty_unknown(w, state)?;
-            writeln!(w, "")?;
         }
         Ok(())
     }
@@ -1248,10 +1269,6 @@ impl<'input> TypeDef<'input> {
         unit_b: &Unit,
         b: &TypeDef
     ) -> Result<()> {
-        if Self::equal(unit_a, a, unit_b, b) {
-            return Ok(());
-        }
-
         match (a.ty(unit_a), b.ty(unit_b)) {
             (Some(ty_a), Some(ty_b)) => {
                 match (ty_a.is_anon(), ty_b.is_anon()) {
@@ -1281,7 +1298,6 @@ impl<'input> TypeDef<'input> {
                                     })
                                 }
                             })?;
-                        writeln!(w, "")?;
                     }
                 }
             }
@@ -1329,9 +1345,7 @@ impl<'input> StructType<'input> {
             self.print_byte_size(w, state)?;
             self.print_declaration(w, state)?;
             self.print_members_label(w, state)?;
-            state.indent(|state| self.print_members(w, state, unit, Some(0)))?;
-            writeln!(w, "")?;
-            Ok(())
+            state.indent(|state| self.print_members(w, state, unit, Some(0)))
         })
     }
 
@@ -1343,10 +1357,6 @@ impl<'input> StructType<'input> {
         unit_b: &Unit,
         b: &StructType
     ) -> Result<()> {
-        if Self::equal(unit_a, a, unit_b, b) {
-            return Ok(());
-        }
-
         // The names should be the same, but we can't be sure.
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
 
@@ -1379,11 +1389,8 @@ impl<'input> StructType<'input> {
                 }
 
                 state.indent(|state| {
-                        Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
-                    })?;
-
-                writeln!(w, "")?;
-                Ok(())
+                    Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
+                })
             })?;
 
         Ok(())
@@ -1633,9 +1640,7 @@ impl<'input> UnionType<'input> {
             self.print_byte_size(w, state)?;
             self.print_declaration(w, state)?;
             self.print_members_label(w, state)?;
-            state.indent(|state| self.print_members(w, state, unit, Some(0)))?;
-            writeln!(w, "")?;
-            Ok(())
+            state.indent(|state| self.print_members(w, state, unit, Some(0)))
         })
     }
 
@@ -1647,10 +1652,6 @@ impl<'input> UnionType<'input> {
         unit_b: &Unit,
         b: &UnionType
     ) -> Result<()> {
-        if Self::equal(unit_a, a, unit_b, b) {
-            return Ok(());
-        }
-
         // The names should be the same, but we can't be sure.
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
 
@@ -1683,11 +1684,8 @@ impl<'input> UnionType<'input> {
                 }
 
                 state.indent(|state| {
-                        Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
-                    })?;
-
-                writeln!(w, "")?;
-                Ok(())
+                    Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
+                })
             })?;
 
         Ok(())
@@ -2112,7 +2110,6 @@ impl<'input> EnumerationType<'input> {
                     })?;
             }
 
-            writeln!(w, "")?;
             Ok(())
         })
     }
@@ -2468,7 +2465,6 @@ impl<'input> Subprogram<'input> {
                 }
             }
 
-            writeln!(w, "")?;
             Ok(())
         })
     }
@@ -2489,7 +2485,7 @@ impl<'input> Subprogram<'input> {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
-    fn equal(a: &Subprogram, b: &Subprogram, _state: &DiffState) -> bool {
+    fn equal(_unit_a: &Unit, a: &Subprogram, _unit_b: &Unit, b: &Subprogram) -> bool {
         if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
@@ -2505,9 +2501,6 @@ impl<'input> Subprogram<'input> {
         unit_b: &Unit,
         b: &Subprogram
     ) -> Result<()> {
-        if Self::equal(a, b, state) {
-            return Ok(());
-        }
         // TODO
         state.prefix_diff(|state| {
                 a.print(w, &mut state.a, unit_a)?;
@@ -2650,7 +2643,6 @@ impl<'input> Variable<'input> {
                     })?;
             }
 
-            writeln!(w, "")?;
             Ok(())
         })
     }
@@ -2671,7 +2663,7 @@ impl<'input> Variable<'input> {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
-    fn equal(a: &Variable, b: &Variable, _state: &DiffState) -> bool {
+    fn equal(_unit_a: &Unit, a: &Variable, _unit_b: &Unit, b: &Variable) -> bool {
         if Self::cmp_id(a, b) != cmp::Ordering::Equal {
             return false;
         }
@@ -2687,9 +2679,6 @@ impl<'input> Variable<'input> {
         unit_b: &Unit,
         b: &Variable
     ) -> Result<()> {
-        if Self::equal(a, b, state) {
-            return Ok(());
-        }
         // TODO
         state.prefix_diff(|state| {
                 a.print(w, &mut state.a, unit_a)?;

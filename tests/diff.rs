@@ -185,8 +185,6 @@ fn test_typedef_diff_anon_base() {
                    "int main() {}\n"),
            concat!("- type T = char\n",
                    "- \tsize: 1\n",
-                   // TODO: no newline here
-                   "\n",
                    "+ type T =\n",
                    "+ \tstruct <anon>\n",
                    "+ \t\tsize: 1\n",
@@ -209,8 +207,6 @@ fn test_typedef_diff_base_anon() {
                    "- \t\tsize: 1\n",
                    "- \t\tmembers:\n",
                    "- \t\t\t0[1]\tc: char\n",
-                   // TODO: no newline here
-                   "\n",
                    "+ type T = char\n",
                    "+ \tsize: 1\n",
                    "\n"),
