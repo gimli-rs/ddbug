@@ -269,6 +269,18 @@ impl<'a, 'input> PrintState<'a, 'input>
         write!(w, "\n")?;
         Ok(())
     }
+
+    fn line_option<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
+        where F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
+    {
+        let mut buf = Vec::new();
+        let mut state = PrintState::new(self.file, self.all_subprograms, self.flags);
+        f(&mut buf, &mut state)?;
+        if !buf.is_empty() {
+            self.line(w, |w, _state| w.write_all(&*buf).map_err(From::from))?;
+        }
+        Ok(())
+    }
 }
 
 pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
@@ -474,14 +486,30 @@ impl<'a, 'input> DiffState<'a, 'input>
 
         if a == b {
             self.prefix_equal(|state| {
-                state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))
+                if !a.is_empty() {
+                    state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
+                }
+                Ok(())
             })
         } else {
             self.prefix_diff(|state| {
-                state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
-                state.b.line(w, |w, _state| w.write_all(&*b).map_err(From::from))
+                if !a.is_empty() {
+                    state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
+                }
+                if !b.is_empty() {
+                    state.b.line(w, |w, _state| w.write_all(&*b).map_err(From::from))?;
+                }
+                Ok(())
             })
         }
+    }
+
+    /// This is the same as `Self::line`. It exists for symmetry with `PrintState::line_option`.
+    fn line_option<A, B>(&mut self, w: &mut Write, f_a: A, f_b: B) -> Result<()>
+        where A: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
+              B: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
+    {
+        self.line(w, f_a, f_b)
     }
 }
 
@@ -1342,9 +1370,9 @@ impl<'input> StructType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            self.print_byte_size(w, state)?;
-            self.print_declaration(w, state)?;
-            self.print_members_label(w, state)?;
+            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
+            state.line_option(w, |w, state| self.print_declaration(w, state))?;
+            state.line_option(w, |w, state| self.print_members_label(w, state))?;
             state.indent(|state| self.print_members(w, state, unit, Some(0)))
         })
     }
@@ -1361,32 +1389,17 @@ impl<'input> StructType<'input> {
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
 
         state.indent(|state| {
-                if a.byte_size == b.byte_size {
-                    state.prefix_equal(|state| a.print_byte_size(w, &mut state.a))?;
-                } else {
-                    state.prefix_diff(|state| {
-                            a.print_byte_size(w, &mut state.a)?;
-                            b.print_byte_size(w, &mut state.b)
-                        })?;
-                }
+                state.line_option(w,
+                                 |w, state| a.print_byte_size(w, state),
+                                 |w, state| b.print_byte_size(w, state))?;
 
-                if a.declaration == b.declaration {
-                    state.prefix_equal(|state| a.print_declaration(w, &mut state.a))?;
-                } else {
-                    state.prefix_diff(|state| {
-                            a.print_declaration(w, &mut state.a)?;
-                            b.print_declaration(w, &mut state.b)
-                        })?;
-                }
+                state.line_option(w,
+                                 |w, state| a.print_declaration(w, state),
+                                 |w, state| b.print_declaration(w, state))?;
 
-                if a.members.is_empty() == b.members.is_empty() {
-                    state.prefix_equal(|state| a.print_members_label(w, &mut state.a))?;
-                } else {
-                    state.prefix_diff(|state| {
-                            a.print_members_label(w, &mut state.a)?;
-                            b.print_members_label(w, &mut state.b)
-                        })?;
-                }
+                state.line_option(w,
+                                 |w, state| a.print_members_label(w, state),
+                                 |w, state| b.print_members_label(w, state))?;
 
                 state.indent(|state| {
                     Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
@@ -1396,34 +1409,25 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
         if let Some(size) = self.byte_size {
-            state.line(w, |w, _state| {
-                    write!(w, "size: {}", size)?;
-                    Ok(())
-                })?;
+            write!(w, "size: {}", size)?;
         } else if !self.declaration {
             debug!("struct with no size");
         }
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_declaration(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
         if self.declaration {
-            state.line(w, |w, _state| {
-                    write!(w, "declaration: yes")?;
-                    Ok(())
-                })?;
+            write!(w, "declaration: yes")?;
         }
         Ok(())
     }
 
-    fn print_members_label(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_members_label(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
         if !self.members.is_empty() {
-            state.line(w, |w, _state| {
-                    write!(w, "members:")?;
-                    Ok(())
-                })?;
+            write!(w, "members:")?;
         }
         Ok(())
     }
@@ -1438,7 +1442,8 @@ impl<'input> StructType<'input> {
         for member in &self.members {
             member.print(w, state, unit, &mut bit_offset)?;
         }
-        Member::print_padding(w, state, self.padding(bit_offset))?;
+        state.line_option(w,
+                         |w, _state| Member::print_padding(w, self.padding(bit_offset)))?;
         Ok(())
     }
 
@@ -1538,16 +1543,9 @@ impl<'input> StructType<'input> {
             state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
         }
 
-        let padding_a = a.padding(bit_offset_a);
-        let padding_b = b.padding(bit_offset_b);
-        if padding_a == padding_b {
-            state.prefix_equal(|state| Member::print_padding(w, &mut state.a, padding_a))?;
-        } else {
-            state.prefix_diff(|state| {
-                    Member::print_padding(w, &mut state.a, padding_a)?;
-                    Member::print_padding(w, &mut state.b, padding_b)
-                })?;
-        }
+        state.line_option(w,
+                         |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
+                         |w, _state| Member::print_padding(w, b.padding(bit_offset_b)))?;
 
         Ok(())
     }
@@ -1637,9 +1635,9 @@ impl<'input> UnionType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            self.print_byte_size(w, state)?;
-            self.print_declaration(w, state)?;
-            self.print_members_label(w, state)?;
+            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
+            state.line_option(w, |w, state| self.print_declaration(w, state))?;
+            state.line_option(w, |w, state| self.print_members_label(w, state))?;
             state.indent(|state| self.print_members(w, state, unit, Some(0)))
         })
     }
@@ -1656,32 +1654,17 @@ impl<'input> UnionType<'input> {
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
 
         state.indent(|state| {
-                if a.byte_size == b.byte_size {
-                    state.prefix_equal(|state| a.print_byte_size(w, &mut state.a))?;
-                } else {
-                    state.prefix_diff(|state| {
-                            a.print_byte_size(w, &mut state.a)?;
-                            b.print_byte_size(w, &mut state.b)
-                        })?;
-                }
+                state.line_option(w,
+                                 |w, state| a.print_byte_size(w, state),
+                                 |w, state| b.print_byte_size(w, state))?;
 
-                if a.declaration == b.declaration {
-                    state.prefix_equal(|state| a.print_declaration(w, &mut state.a))?;
-                } else {
-                    state.prefix_diff(|state| {
-                            a.print_declaration(w, &mut state.a)?;
-                            b.print_declaration(w, &mut state.b)
-                        })?;
-                }
+                state.line_option(w,
+                                 |w, state| a.print_declaration(w, state),
+                                 |w, state| b.print_declaration(w, state))?;
 
-                if a.members.is_empty() == b.members.is_empty() {
-                    state.prefix_equal(|state| a.print_members_label(w, &mut state.a))?;
-                } else {
-                    state.prefix_diff(|state| {
-                            a.print_members_label(w, &mut state.a)?;
-                            b.print_members_label(w, &mut state.b)
-                        })?;
-                }
+                state.line_option(w,
+                                 |w, state| a.print_members_label(w, state),
+                                 |w, state| b.print_members_label(w, state))?;
 
                 state.indent(|state| {
                     Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
@@ -1691,34 +1674,25 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
         if let Some(size) = self.byte_size {
-            state.line(w, |w, _state| {
-                    write!(w, "size: {}", size)?;
-                    Ok(())
-                })?;
+            write!(w, "size: {}", size)?;
         } else if !self.declaration {
             debug!("struct with no size");
         }
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_declaration(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
         if self.declaration {
-            state.line(w, |w, _state| {
-                    write!(w, "declaration: yes")?;
-                    Ok(())
-                })?;
+            write!(w, "declaration: yes")?;
         }
         Ok(())
     }
 
-    fn print_members_label(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_members_label(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
         if !self.members.is_empty() {
-            state.line(w, |w, _state| {
-                    write!(w, "members:")?;
-                    Ok(())
-                })?;
+            write!(w, "members:")?;
         }
         Ok(())
     }
@@ -1854,7 +1828,8 @@ impl<'input> Member<'input> {
         unit: &Unit,
         end_bit_offset: &mut Option<u64>
     ) -> Result<()> {
-        Self::print_padding(w, state, self.padding(*end_bit_offset))?;
+        state.line_option(w,
+                         |w, _state| Self::print_padding(w, self.padding(*end_bit_offset)))?;
         state.line(w,
                   |w, state| self.print_name(w, state, unit, end_bit_offset))?;
         if self.is_inline(unit) {
@@ -1873,16 +1848,9 @@ impl<'input> Member<'input> {
         b: &Member,
         end_bit_offset_b: &mut Option<u64>
     ) -> Result<()> {
-        let padding_a = a.padding(*end_bit_offset_a);
-        let padding_b = b.padding(*end_bit_offset_b);
-        if padding_a == padding_b {
-            state.prefix_equal(|state| Self::print_padding(w, &mut state.a, padding_a))?;
-        } else {
-            state.prefix_diff(|state| {
-                    Self::print_padding(w, &mut state.a, padding_a)?;
-                    Self::print_padding(w, &mut state.b, padding_b)
-                })?;
-        }
+        state.line_option(w,
+                         |w, _state| Self::print_padding(w, a.padding(*end_bit_offset_a)),
+                         |w, _state| Self::print_padding(w, b.padding(*end_bit_offset_b)))?;
 
         state.line(w,
                   |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
@@ -1914,19 +1882,12 @@ impl<'input> Member<'input> {
         None
     }
 
-    fn print_padding(
-        w: &mut Write,
-        state: &mut PrintState,
-        padding: Option<(u64, u64)>
-    ) -> Result<()> {
+    fn print_padding(w: &mut Write, padding: Option<(u64, u64)>) -> Result<()> {
         if let Some((padding_bit_offset, padding_bit_size)) = padding {
-            state.line(w, |w, _state| {
-                    write!(w,
-                           "{}[{}]\t<padding>",
-                           format_bit(padding_bit_offset),
-                           format_bit(padding_bit_size))?;
-                    Ok(())
-                })?;
+            write!(w,
+                   "{}[{}]\t<padding>",
+                   format_bit(padding_bit_offset),
+                   format_bit(padding_bit_size))?;
         }
         Ok(())
     }
