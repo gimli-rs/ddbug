@@ -1597,13 +1597,13 @@ impl<'input> StructType<'input> {
                 if let Some(a) = iter_a.next() {
                     state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
                 }
-                index_a = index_a + 1;
+                index_a += 1;
             }
             while index_b < b.0 {
                 if let Some(b) = iter_b.next() {
                     state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
                 }
-                index_b = index_b + 1;
+                index_b += 1;
             }
 
             // Diff the pair.
@@ -1619,8 +1619,8 @@ impl<'input> StructType<'input> {
                                      &mut bit_offset_b)
                     })?;
             }
-            index_a = index_a + 1;
-            index_b = index_b + 1;
+            index_a += 1;
+            index_b += 1;
         }
 
         // Print trailing members.
