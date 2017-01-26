@@ -330,6 +330,7 @@ fn test_struct_diff_member() {
 
 #[test]
 fn test_struct_diff_member_reorder() {
+    // TODO: T.c should show no difference.
     diff_c(concat!("struct T {",
                    "  char a;",
                    "  char b;",
@@ -353,9 +354,10 @@ fn test_struct_diff_member_reorder() {
                    "  \tmembers:\n",
                    "- \t\t0[1]\ta: char\n",
                    "- \t\t1[1]\tb: char\n",
-                   "+ \t\t0[2]\td: [char; 2]\n",
-                   "  \t\t2[1]\tc: char\n",
+                   "- \t\t2[1]\tc: char\n",
                    "- \t\t3[2]\td: [char; 2]\n",
+                   "+ \t\t0[2]\td: [char; 2]\n",
+                   "+ \t\t2[1]\tc: char\n",
                    "+ \t\t3[1]\ta: char\n",
                    "+ \t\t4[1]\tb: char\n",
                    "  \t\t5[1]\tx: char\n",
