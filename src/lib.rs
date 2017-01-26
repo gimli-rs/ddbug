@@ -216,11 +216,21 @@ pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result
     cb(&mut file)
 }
 
+#[derive(Debug, Clone, Copy,)]
+enum DiffPrefix {
+    None,
+    Equal,
+    Less,
+    Greater,
+}
+
 struct PrintState<'a, 'input>
     where 'input: 'a
 {
     indent: usize,
-    prefix: &'static str,
+    prefix: DiffPrefix,
+    // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
+    diff: bool,
 
     // The remaining fields contain information that is commonly needed in print methods.
     file: &'a File<'input>,
@@ -239,7 +249,8 @@ impl<'a, 'input> PrintState<'a, 'input>
     ) -> Self {
         PrintState {
             indent: 0,
-            prefix: "",
+            prefix: DiffPrefix::None,
+            diff: false,
             file: file,
             all_subprograms: subprograms,
             flags: flags,
@@ -255,7 +266,7 @@ impl<'a, 'input> PrintState<'a, 'input>
         ret
     }
 
-    fn prefix<F>(&mut self, prefix: &'static str, mut f: F) -> Result<()>
+    fn prefix<F>(&mut self, prefix: DiffPrefix, mut f: F) -> Result<()>
         where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
     {
         let prev = self.prefix;
@@ -268,7 +279,18 @@ impl<'a, 'input> PrintState<'a, 'input>
     fn line<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
         where F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
     {
-        write!(w, "{}", self.prefix)?;
+        match self.prefix {
+            DiffPrefix::None => {}
+            DiffPrefix::Equal => write!(w, "  ")?,
+            DiffPrefix::Less => {
+                write!(w, "- ")?;
+                self.diff = true;
+            }
+            DiffPrefix::Greater => {
+                write!(w, "+ ")?;
+                self.diff = true;
+            }
+        }
         for _ in 0..self.indent {
             write!(w, "\t")?;
         }
@@ -430,6 +452,19 @@ impl<'a, 'input> DiffState<'a, 'input>
         Ok(())
     }
 
+    fn diff<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
+        where F: FnMut(&mut Write, &mut DiffState<'a, 'input>) -> Result<()>
+    {
+        let mut buf = Vec::new();
+        self.a.diff = false;
+        self.b.diff = false;
+        f(&mut buf, self)?;
+        if self.a.diff || self.b.diff {
+            w.write_all(&*buf)?;
+        }
+        Ok(())
+    }
+
     fn indent<F>(&mut self, mut f: F) -> Result<()>
         where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
     {
@@ -446,8 +481,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     {
         let prev_a = self.a.prefix;
         let prev_b = self.b.prefix;
-        self.a.prefix = "  ";
-        self.b.prefix = "  ";
+        self.a.prefix = DiffPrefix::Equal;
+        self.b.prefix = DiffPrefix::Equal;
         let ret = f(self);
         self.a.prefix = prev_a;
         self.b.prefix = prev_b;
@@ -457,13 +492,13 @@ impl<'a, 'input> DiffState<'a, 'input>
     fn prefix_less<F>(&mut self, f: F) -> Result<()>
         where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
     {
-        self.a.prefix("- ", f)
+        self.a.prefix(DiffPrefix::Less, f)
     }
 
     fn prefix_greater<F>(&mut self, f: F) -> Result<()>
         where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
     {
-        self.b.prefix("+ ", f)
+        self.b.prefix(DiffPrefix::Greater, f)
     }
 
     fn prefix_diff<F>(&mut self, mut f: F) -> Result<()>
@@ -471,8 +506,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     {
         let prev_a = self.a.prefix;
         let prev_b = self.b.prefix;
-        self.a.prefix = "- ";
-        self.b.prefix = "+ ";
+        self.a.prefix = DiffPrefix::Less;
+        self.b.prefix = DiffPrefix::Greater;
         let ret = f(self);
         self.a.prefix = prev_a;
         self.b.prefix = prev_b;
@@ -823,11 +858,11 @@ impl<'input> Unit<'input> {
                    &mut unit_b.filter_types(flags, true).iter(),
                    |a, b| Type::cmp_id(a, b),
                    |w, state, a, b| {
-                if !Type::equal(unit_a, a, unit_b, b) {
+                state.diff(w, |w, state| {
                     Type::diff(w, state, unit_a, a, unit_b, b)?;
                     writeln!(w, "")?;
-                }
-                Ok(())
+                    Ok(())
+                })
             },
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
@@ -836,11 +871,11 @@ impl<'input> Unit<'input> {
                    &mut unit_b.filter_subprograms(flags, true).iter(),
                    |a, b| Subprogram::cmp_id(a, b),
                    |w, state, a, b| {
-                if !Subprogram::equal(unit_a, a, unit_b, b) {
+                state.diff(w, |w, state| {
                     Subprogram::diff(w, state, unit_a, a, unit_b, b)?;
                     writeln!(w, "")?;
-                }
-                Ok(())
+                    Ok(())
+                })
             },
                    |w, state, a| a.print(w, state, unit_a),
                    |w, state, b| b.print(w, state, unit_b))?;
@@ -849,14 +884,22 @@ impl<'input> Unit<'input> {
                    &mut unit_b.filter_variables(flags, true).iter(),
                    |a, b| Variable::cmp_id(a, b),
                    |w, state, a, b| {
-                if !Variable::equal(unit_a, a, unit_b, b) {
+                state.diff(w, |w, state| {
                     Variable::diff(w, state, unit_a, a, unit_b, b)?;
                     writeln!(w, "")?;
-                }
-                Ok(())
+                    Ok(())
+                })
             },
-                   |w, state, a| a.print(w, state, unit_a),
-                   |w, state, b| b.print(w, state, unit_b))?;
+                   |w, state, a| {
+                       a.print(w, state, unit_a)?;
+                       writeln!(w, "")?;
+                       Ok(())
+                   },
+                   |w, state, b| {
+                       b.print(w, state, unit_b)?;
+                       writeln!(w, "")?;
+                       Ok(())
+                   })?;
         Ok(())
     }
 }
