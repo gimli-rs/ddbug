@@ -1984,32 +1984,38 @@ impl<'input> EnumerationType<'input> {
         flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
     }
 
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
-
         state.indent(|state| {
-            if let Some(size) = self.byte_size {
-                state.line(w, |w, _state| {
-                        write!(w, "size: {}", size)?;
-                        Ok(())
-                    })?;
-            }
-
-            if !self.enumerators.is_empty() {
-                state.line(w, |w, _state| {
-                        write!(w, "enumerators:")?;
-                        Ok(())
-                    })?;
-                state.indent(|state| {
-                        for enumerator in &self.enumerators {
-                            enumerator.print(w, state)?;
-                        }
-                        Ok(())
-                    })?;
-            }
-
-            Ok(())
+            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
+            self.print_enumerators(w, state)
         })
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _unit_a: &Unit,
+        a: &EnumerationType,
+        _unit_b: &Unit,
+        b: &EnumerationType
+    ) -> Result<()> {
+        // The names should be the same, but we can't be sure.
+        state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
+        state.indent(|state| {
+                state.line_option(w,
+                                 |w, state| a.print_byte_size(w, state),
+                                 |w, state| b.print_byte_size(w, state))?;
+                Self::diff_enumerators(w, state, a, b)
+            })?;
+        Ok(())
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -2022,26 +2028,73 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    /// Compare the identifying information of two types.
-    /// This can be used to sort, and to determine if two types refer to the same definition
-    /// (even if there are differences in the definitions).
-    fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+        if let Some(size) = self.byte_size {
+            write!(w, "size: {}", size)?;
+        } else {
+            debug!("enum with no size");
+        }
+        Ok(())
     }
 
-    fn diff(
+    fn print_enumerators(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line_option(w, |w, state| self.print_enumerators_label(w, state))?;
+        state.indent(|state| self.print_enumerators_entries(w, state))
+    }
+
+    fn diff_enumerators(
         w: &mut Write,
         state: &mut DiffState,
-        _unit_a: &Unit,
         a: &EnumerationType,
-        _unit_b: &Unit,
         b: &EnumerationType
     ) -> Result<()> {
-        // TODO
-        state.prefix_diff(|state| {
-                a.print(w, &mut state.a)?;
-                b.print(w, &mut state.b)
-            })?;
+        state.line_option(w,
+                         |w, state| a.print_enumerators_label(w, state),
+                         |w, state| b.print_enumerators_label(w, state))?;
+        state.indent(|state| Self::diff_enumerators_entries(w, state, a, b))
+    }
+
+    fn print_enumerators_label(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+        if !self.enumerators.is_empty() {
+            write!(w, "enumerators:")?;
+        } else {
+            debug!("enum with no enumerators");
+        }
+        Ok(())
+    }
+
+    fn print_enumerators_entries(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        for enumerator in &self.enumerators {
+            enumerator.print(w, state)?;
+        }
+        Ok(())
+    }
+
+    fn diff_enumerators_entries(
+        w: &mut Write,
+        state: &mut DiffState,
+        a: &EnumerationType,
+        b: &EnumerationType
+    ) -> Result<()> {
+        // Sort by value.
+        let mut enumerators_a = a.enumerators.iter().collect::<Vec<_>>();
+        enumerators_a.sort_by(|x, y| x.value.cmp(&y.value));
+        let mut enumerators_b = b.enumerators.iter().collect::<Vec<_>>();
+        enumerators_b.sort_by(|x, y| x.value.cmp(&y.value));
+
+        state.merge(w,
+                   &mut enumerators_a.iter(),
+                   &mut enumerators_b.iter(),
+                   |a, b| {
+                if a.name.cmp(&b.name) == cmp::Ordering::Equal {
+                    cmp::Ordering::Equal
+                } else {
+                    a.value.cmp(&b.value)
+                }
+            },
+                   |w, state, a, b| Enumerator::diff(w, state, a, b),
+                   |w, state, a| a.print(w, state),
+                   |w, state, b| b.print(w, state))?;
         Ok(())
     }
 }
@@ -2053,20 +2106,28 @@ struct Enumerator<'input> {
 }
 
 impl<'input> Enumerator<'input> {
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        state.line(w, |w, _state| {
-            self.print_ref(w)?;
-            if let Some(value) = self.value {
-                write!(w, "({})", value)?;
-            }
-            Ok(())
-        })
-    }
-
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", name.to_string_lossy())?,
             None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line(w, |w, _state| self.print_name_value(w))
+    }
+
+    fn diff(w: &mut Write, state: &mut DiffState, a: &Enumerator, b: &Enumerator) -> Result<()> {
+        state.line(w,
+                   |w, _state| a.print_name_value(w),
+                   |w, _state| b.print_name_value(w))
+    }
+
+    fn print_name_value(&self, w: &mut Write) -> Result<()> {
+        self.print_ref(w)?;
+        if let Some(value) = self.value {
+            write!(w, "({})", value)?;
         }
         Ok(())
     }

@@ -242,6 +242,8 @@ fn test_typedef_diff_struct_size() {
            flags().name("T"));
 }
 
+// TODO: typedef_diff_union, typedef_diff_enum, typedef_diff_pointer_anon
+
 #[test]
 fn test_struct_diff_defn_equal() {
     diff_c(concat!("struct T { char c; } s;\n",
@@ -689,6 +691,41 @@ fn test_member_diff_inline_none_struct() {
                    "- \t\t0[1]\ta: char\n",
                    "+ \t\t0[1]\ta: struct <anon>\n",
                    "+ \t\t\t0[1]\tb: char\n",
+                   "\n"),
+           flags().name("T"));
+}
+
+#[test]
+fn test_enum_diff_equal() {
+    diff_c(concat!("enum T { A=1, B=3, C=2 };\n",
+                   "enum T t;\n",
+                   "int main() {}\n"),
+           concat!("enum T { A=1, C=2, B=3 };\n",
+                   "enum T t;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("T"));
+}
+
+#[test]
+fn test_enum_diff() {
+    diff_c(concat!("enum T { A=1, B=2, C=3, D=4, E=5 };\n",
+                   "enum T t;\n",
+                   "int main() {}\n"),
+           concat!("enum T { A=1, C=2, B=3, E=5, F=6 };\n",
+                   "enum T t;\n",
+                   "int main() {}\n"),
+           concat!("  enum T\n",
+                   "  \tsize: 4\n",
+                   "  \tenumerators:\n",
+                   "  \t\tA(1)\n",
+                   "- \t\tB(2)\n",
+                   "+ \t\tC(2)\n",
+                   "- \t\tC(3)\n",
+                   "+ \t\tB(3)\n",
+                   "- \t\tD(4)\n",
+                   "  \t\tE(5)\n",
+                   "+ \t\tF(6)\n",
                    "\n"),
            flags().name("T"));
 }
