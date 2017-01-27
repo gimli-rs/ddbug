@@ -1012,28 +1012,23 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         match self.kind {
             TypeKind::Base(ref val) => val.print_ref(w),
             TypeKind::Def(ref val) => val.print_ref(w),
             TypeKind::Struct(ref val) => val.print_ref(w),
             TypeKind::Union(ref val) => val.print_ref(w),
             TypeKind::Enumeration(ref val) => val.print_ref(w),
-            TypeKind::Array(ref val) => val.print_ref(w, state, unit),
-            TypeKind::Subroutine(ref val) => val.print_ref(w, state, unit),
-            TypeKind::Modifier(ref val) => val.print_ref(w, state, unit),
+            TypeKind::Array(ref val) => val.print_ref(w, unit),
+            TypeKind::Subroutine(ref val) => val.print_ref(w, unit),
+            TypeKind::Modifier(ref val) => val.print_ref(w, unit),
             TypeKind::Unimplemented(..) => Err(format!("can't print_ref {:?}", self).into()),
         }
     }
 
-    fn print_ref_from_offset(
-        w: &mut Write,
-        state: &PrintState,
-        unit: &Unit,
-        offset: gimli::UnitOffset
-    ) -> Result<()> {
+    fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: gimli::UnitOffset) -> Result<()> {
         match Type::from_offset(unit, offset) {
-            Some(ty) => ty.print_ref(w, state, unit)?,
+            Some(ty) => ty.print_ref(w, unit)?,
             None => write!(w, "<invalid-type>")?,
         }
         Ok(())
@@ -1245,7 +1240,7 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if let Some(name) = self.name {
             // Not sure namespace is required here.
             self.namespace.print(w)?;
@@ -1257,7 +1252,7 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
             }
             match self.ty {
-                Some(ty) => Type::print_ref_from_offset(w, state, unit, ty)?,
+                Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
                 None => write!(w, "<unknown-type>")?,
             }
         }
@@ -1310,12 +1305,12 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print_name(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
         write!(w, "type ")?;
         self.print_ref(w)?;
         write!(w, " = ")?;
         match self.ty {
-            Some(ty) => Type::print_ref_from_offset(w, state, unit, ty)?,
+            Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
             None => write!(w, "<unknown-type>")?,
         }
         Ok(())
@@ -1916,7 +1911,7 @@ impl<'input> Member<'input> {
     fn print_name(
         &self,
         w: &mut Write,
-        state: &mut PrintState,
+        _state: &mut PrintState,
         unit: &Unit,
         end_bit_offset: &mut Option<u64>
     ) -> Result<()> {
@@ -1939,7 +1934,7 @@ impl<'input> Member<'input> {
         }
         if let Some(ty) = self.ty(unit) {
             write!(w, ": ")?;
-            ty.print_ref(w, state, unit)?;
+            ty.print_ref(w, unit)?;
         } else {
             write!(w, ": <invalid-type>")?;
         }
@@ -2153,10 +2148,10 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         write!(w, "[")?;
         match self.ty {
-            Some(ty) => Type::print_ref_from_offset(w, state, unit, ty)?,
+            Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
             None => write!(w, "<unknown-type>")?,
         }
         if let Some(count) = self.count {
@@ -2182,7 +2177,7 @@ impl<'input> SubroutineType<'input> {
         self.return_type.and_then(|v| unit.types.get(&v.0))
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         let mut first = true;
         write!(w, "(")?;
         for parameter in &self.parameters {
@@ -2191,13 +2186,13 @@ impl<'input> SubroutineType<'input> {
             } else {
                 write!(w, ", ")?;
             }
-            parameter.print(w, state, unit)?;
+            parameter.print(w, unit)?;
         }
         write!(w, ")")?;
 
         if let Some(return_type) = self.return_type(unit) {
             write!(w, " -> ")?;
-            return_type.print_ref(w, state, unit)?;
+            return_type.print_ref(w, unit)?;
         }
         Ok(())
     }
@@ -2290,14 +2285,14 @@ impl<'input> Subprogram<'input> {
                         Ok(())
                     })?;
                 state.indent(|state| {
-                        state.line(w, |w, state| {
+                        state.line(w, |w, _state| {
                             match Type::from_offset(unit, return_type)
                                 .and_then(|t| t.bit_size(unit)) {
                                 Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
                                 None => write!(w, "[??]")?,
                             }
                             write!(w, "\t")?;
-                            Type::print_ref_from_offset(w, state, unit, return_type)?;
+                            Type::print_ref_from_offset(w, unit, return_type)?;
                             Ok(())
                         })
                     })?;
@@ -2310,13 +2305,13 @@ impl<'input> Subprogram<'input> {
                     })?;
                 state.indent(|state| {
                         for parameter in &self.parameters {
-                            state.line(w, |w, state| {
+                            state.line(w, |w, _state| {
                                     match parameter.bit_size(unit) {
                                         Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
                                         None => write!(w, "[??]")?,
                                     }
                                     write!(w, "\t")?;
-                                    parameter.print(w, state, unit)
+                                    parameter.print(w, unit)
                                 })?;
                         }
                         Ok(())
@@ -2415,12 +2410,12 @@ impl<'input> Parameter<'input> {
         self.ty(unit).and_then(|t| t.bit_size(unit))
     }
 
-    fn print(&self, w: &mut Write, state: &PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}: ", name.to_string_lossy())?;
         }
         match self.ty(unit) {
-            Some(ty) => ty.print_ref(w, state, unit)?,
+            Some(ty) => ty.print_ref(w, unit)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -2490,44 +2485,11 @@ impl<'input> Variable<'input> {
         flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(w, |w, state| {
-                write!(w, "var ")?;
-                self.print_ref(w)?;
-                write!(w, ": ")?;
-                match self.ty {
-                    Some(offset) => Type::print_ref_from_offset(w, state, unit, offset)?,
-                    None => write!(w, "<anon>")?,
-                }
-                Ok(())
-            })?;
-
-        state.indent(|state| {
-            if let Some(linkage_name) = self.linkage_name {
-                state.line(w, |w, _state| {
-                        write!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
-                        Ok(())
-                    })?;
-            }
-
-            if let Some(bit_size) = self.bit_size(unit) {
-                state.line(w, |w, _state| {
-                        write!(w, "size: {}", format_bit(bit_size))?;
-                        Ok(())
-                    })?;
-            } else if !self.declaration {
-                debug!("variable with no size");
-            }
-
-            if self.declaration {
-                state.line(w, |w, _state| {
-                        write!(w, "declaration: yes")?;
-                        Ok(())
-                    })?;
-            }
-
-            Ok(())
-        })
+    /// Compare the identifying information of two variables.
+    /// This can be used to sort, and to determine if two variables refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -2539,11 +2501,14 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    /// Compare the identifying information of two variables.
-    /// This can be used to sort, and to determine if two variables refer to the same definition
-    /// (even if there are differences in the definitions).
-    fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.line(w, |w, _state| self.print_name(w, unit))?;
+        state.indent(|state| {
+            state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+            state.line_option(w, |w, _state| self.print_size(w, unit))?;
+            state.line_option(w, |w, _state| self.print_declaration(w))
+            // TODO: print anon type inline
+        })
     }
 
     fn diff(
@@ -2554,11 +2519,53 @@ impl<'input> Variable<'input> {
         unit_b: &Unit,
         b: &Variable
     ) -> Result<()> {
-        // TODO
-        state.prefix_diff(|state| {
-                a.print(w, &mut state.a, unit_a)?;
-                b.print(w, &mut state.b, unit_b)
-            })?;
+        state.line(w,
+                  |w, _state| a.print_name(w, unit_a),
+                  |w, _state| b.print_name(w, unit_b))?;
+        state.indent(|state| {
+            state.line_option(w,
+                             |w, _state| a.print_linkage_name(w),
+                             |w, _state| b.print_linkage_name(w))?;
+            state.line_option(w,
+                             |w, _state| a.print_size(w, unit_a),
+                             |w, _state| b.print_size(w, unit_b))?;
+            state.line_option(w,
+                              |w, _state| a.print_declaration(w),
+                              |w, _state| b.print_declaration(w))
+        })
+    }
+
+    fn print_name(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        write!(w, "var ")?;
+        self.print_ref(w)?;
+        write!(w, ": ")?;
+        match self.ty {
+            Some(offset) => Type::print_ref_from_offset(w, unit, offset)?,
+            None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
+    fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
+        if let Some(linkage_name) = self.linkage_name {
+            write!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
+        }
+        Ok(())
+    }
+
+    fn print_size(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        if let Some(bit_size) = self.bit_size(unit) {
+            write!(w, "size: {}", format_bit(bit_size))?;
+        } else if !self.declaration {
+            debug!("variable with no size");
+        }
+        Ok(())
+    }
+
+    fn print_declaration(&self, w: &mut Write) -> Result<()> {
+        if self.declaration {
+            write!(w, "declaration: yes")?;
+        }
         Ok(())
     }
 }

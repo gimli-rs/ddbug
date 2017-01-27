@@ -773,3 +773,40 @@ fn test_array_diff_size() {
                    "\n"),
            flags().name("T"));
 }
+
+#[test]
+fn test_variable_equal() {
+    diff_c(concat!("char V;\n",
+                   "int main() {}\n"),
+           concat!("char V;\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("V"));
+}
+
+#[test]
+fn test_variable_diff_size() {
+    diff_c(concat!("char V[1];\n",
+                   "int main() {}\n"),
+           concat!("char V[2];\n",
+                   "int main() {}\n"),
+           concat!("- var V: [char; 1]\n",
+                   "+ var V: [char; 2]\n",
+                   "- \tsize: 1\n",
+                   "+ \tsize: 2\n",
+                   "\n"),
+           flags().name("V"));
+}
+
+#[test]
+fn test_variable_diff_decl() {
+    diff_c(concat!("char **environ;\n",
+                   "int main() {}\n"),
+           concat!("extern char **environ;\n",
+                   "int main() { environ == 0; }\n"),
+           concat!("  var environ: * * char\n",
+                   "  \tsize: 8\n",
+                   "+ \tdeclaration: yes\n",
+                   "\n"),
+           flags().name("environ"));
+}
