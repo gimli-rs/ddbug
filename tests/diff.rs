@@ -57,6 +57,29 @@ fn flags() -> ddbug::Flags<'static> {
     }
 }
 
+fn equal(mut diff: &str, expect: &str) -> bool {
+    let mut expects = expect.split("[..]");
+    if let Some(e) = expects.next() {
+        if !diff.starts_with(e) {
+            return false;
+        }
+        diff = &diff[e.len()..];
+    }
+    for e in expects {
+        loop {
+            if diff.starts_with(e) {
+                diff = &diff[e.len()..];
+                break;
+            }
+            if diff.is_empty() {
+                return false;
+            }
+            diff = &diff[1..];
+        }
+    }
+    diff.is_empty()
+}
+
 fn diff(output_file_1: &str, output_file_2: &str, expect: &str, flags: &ddbug::Flags) {
     let mut diff = Vec::new();
     ddbug::parse_file(output_file_1,
@@ -66,7 +89,7 @@ fn diff(output_file_1: &str, output_file_2: &str, expect: &str, flags: &ddbug::F
     })
         .unwrap();
     let diff = String::from_utf8(diff).unwrap();
-    if diff != expect {
+    if !equal(&diff, expect) {
         println!("\nDiff:");
         println!("{}", diff);
         println!("Expected:");
@@ -772,6 +795,53 @@ fn test_array_diff_size() {
                    "+ \tsize: 2\n",
                    "\n"),
            flags().name("T"));
+}
+
+#[test]
+fn test_function_equal() {
+    diff_c(concat!("char F(char a, char b) {}\n",
+                   "int main() {}\n"),
+           concat!("char F(char a, char b) {}\n",
+                   "int main() {}\n"),
+           concat!(""),
+           flags().name("F"));
+}
+
+#[test]
+fn test_function_diff_return_type() {
+    diff_c(concat!("char F() {}\n",
+                   "int main() {}\n"),
+           concat!("int F() {}\n",
+                   "int main() {}\n"),
+           concat!("  fn F\n",
+                   "[..]\n",
+                   "  \treturn type:\n",
+                   "- \t\t[1]\tchar\n",
+                   "+ \t\t[4]\tint\n",
+                   "\n"),
+           flags().name("F"));
+}
+
+#[test]
+fn test_function_diff_parameters() {
+    diff_c(concat!("char F(char a, char c, char d, char e) {}\n",
+                   "int main() {}\n"),
+           concat!("char F(char b, char c, int d, char f) {}\n",
+                   "int main() {}\n"),
+           concat!("  fn F\n",
+                   "[..]\n",
+                   "  \treturn type:\n",
+                   "  \t\t[1]\tchar\n",
+                   "  \tparameters:\n",
+                   "- \t\t[1]\ta: char\n",
+                   "+ \t\t[1]\tb: char\n",
+                   "  \t\t[1]\tc: char\n",
+                   "- \t\t[1]\td: char\n",
+                   "+ \t\t[4]\td: int\n",
+                   "- \t\t[1]\te: char\n",
+                   "+ \t\t[1]\tf: char\n",
+                   "\n"),
+           flags().name("F"));
 }
 
 #[test]

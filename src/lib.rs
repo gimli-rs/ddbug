@@ -2245,139 +2245,20 @@ impl<'input> Subprogram<'input> {
         flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(w, |w, _state| {
-                write!(w, "fn ")?;
-                self.namespace.print(w)?;
-                match self.name {
-                    Some(name) => write!(w, "{}", name.to_string_lossy())?,
-                    None => write!(w, "<anon>")?,
-                }
-                Ok(())
-            })?;
-
-        state.indent(|state| {
-            if let Some(linkage_name) = self.linkage_name {
-                state.line(w, |w, _state| {
-                        write!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
-                        Ok(())
-                    })?;
+    fn calls(&self, file: &File) -> Vec<u64> {
+        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
+            if low_pc != 0 {
+                return disassemble(file.machine, &file.region, low_pc, high_pc);
             }
+        }
+        Vec::new()
+    }
 
-            if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
-                state.line(w, |w, _state| {
-                        if high_pc > low_pc {
-                            write!(w, "address: 0x{:x}-0x{:x}", low_pc, high_pc - 1)?;
-                        } else {
-                            write!(w, "address: 0x{:x}", low_pc)?;
-                        }
-                        Ok(())
-                    })?;
-            } else if !self.inline && !self.declaration {
-                debug!("non-inline subprogram with no address");
-            }
-
-            if let Some(size) = self.size {
-                state.line(w, |w, _state| {
-                        write!(w, "size: {}", size)?;
-                        Ok(())
-                    })?;
-            }
-
-            if self.inline {
-                state.line(w, |w, _state| {
-                        write!(w, "inline: yes")?;
-                        Ok(())
-                    })?;
-            }
-            if self.declaration {
-                state.line(w, |w, _state| {
-                        write!(w, "declaration: yes")?;
-                        Ok(())
-                    })?;
-            }
-
-            if let Some(return_type) = self.return_type {
-                state.line(w, |w, _state| {
-                        write!(w, "return type:")?;
-                        Ok(())
-                    })?;
-                state.indent(|state| {
-                        state.line(w, |w, _state| {
-                            match Type::from_offset(unit, return_type)
-                                .and_then(|t| t.bit_size(unit)) {
-                                Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
-                                None => write!(w, "[??]")?,
-                            }
-                            write!(w, "\t")?;
-                            Type::print_ref_from_offset(w, unit, return_type)?;
-                            Ok(())
-                        })
-                    })?;
-            }
-
-            if !self.parameters.is_empty() {
-                state.line(w, |w, _state| {
-                        write!(w, "parameters:")?;
-                        Ok(())
-                    })?;
-                state.indent(|state| {
-                        for parameter in &self.parameters {
-                            state.line(w, |w, _state| {
-                                    match parameter.bit_size(unit) {
-                                        Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
-                                        None => write!(w, "[??]")?,
-                                    }
-                                    write!(w, "\t")?;
-                                    parameter.print(w, unit)
-                                })?;
-                        }
-                        Ok(())
-                    })?;
-            }
-
-            if state.flags.inline_depth > 0 && !self.inlined_subroutines.is_empty() {
-                state.line(w, |w, _state| {
-                        write!(w, "inlined subroutines:")?;
-                        Ok(())
-                    })?;
-                state.indent(|state| {
-                        for subroutine in &self.inlined_subroutines {
-                            subroutine.print(w, state, unit, 1)?;
-                        }
-                        Ok(())
-                    })?;
-            }
-
-            if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
-                if low_pc != 0 && state.flags.calls {
-                    let calls =
-                        disassemble(state.file.machine, &state.file.region, low_pc, high_pc);
-                    if !calls.is_empty() {
-                        state.line(w, |w, _state| {
-                                write!(w, "calls:")?;
-                                Ok(())
-                            })?;
-                        state.indent(|state| {
-                                for call in &calls {
-                                    state.line(w, |w, state| {
-                                            write!(w, "0x{:x}", call)?;
-                                            if let Some(subprogram) = state.all_subprograms
-                                                .get(call) {
-                                                write!(w, " ")?;
-                                                subprogram.print_ref(w)?;
-                                            }
-                                            Ok(())
-                                        })?;
-                                }
-                                Ok(())
-                            })?;
-                    }
-                }
-            }
-
-            Ok(())
-        })
+    /// Compare the identifying information of two subprograms.
+    /// This can be used to sort, and to determine if two subprograms refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -2389,11 +2270,33 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    /// Compare the identifying information of two subprograms.
-    /// This can be used to sort, and to determine if two subprograms refer to the same definition
-    /// (even if there are differences in the definitions).
-    fn cmp_id(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.line(w, |w, _state| self.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+            state.line_option(w, |w, _state| self.print_address(w))?;
+            state.line_option(w, |w, _state| self.print_size(w))?;
+            state.line_option(w, |w, _state| self.print_inline(w))?;
+            state.line_option(w, |w, _state| self.print_declaration(w))?;
+            state.line_option(w, |w, _state| self.print_return_type_label(w))?;
+            state.indent(|state| {
+                state.line_option(w, |w, _state| self.print_return_type(w, unit))
+            })?;
+            state.line_option(w, |w, _state| self.print_parameters_label(w))?;
+            state.indent(|state| self.print_parameters(w, state, unit))?;
+            if state.flags.inline_depth > 0 {
+                state.line_option(w, |w, _state| self.print_inlined_subroutines_label(w))?;
+                state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
+            }
+            if state.flags.calls {
+                let calls = self.calls(&state.file);
+                if !calls.is_empty() {
+                    state.line(w, |w, _state| self.print_calls_label(w))?;
+                    state.indent(|state| self.print_calls(w, state, &calls))?;
+                }
+            }
+            Ok(())
+        })
     }
 
     fn diff(
@@ -2404,13 +2307,316 @@ impl<'input> Subprogram<'input> {
         unit_b: &Unit,
         b: &Subprogram
     ) -> Result<()> {
-        // TODO
-        state.prefix_diff(|state| {
-                a.print(w, &mut state.a, unit_a)?;
-                b.print(w, &mut state.b, unit_b)
-            })?;
+        state.line(w, |w, _state| a.print_name(w), |w, _state| b.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w,
+                             |w, _state| a.print_linkage_name(w),
+                             |w, _state| b.print_linkage_name(w))?;
+            state.line_option(w,
+                             |w, _state| a.print_address(w),
+                             |w, _state| b.print_address(w))?;
+            state.line_option(w, |w, _state| a.print_size(w), |w, _state| b.print_size(w))?;
+            state.line_option(w,
+                             |w, _state| a.print_inline(w),
+                             |w, _state| b.print_inline(w))?;
+            state.line_option(w,
+                             |w, _state| a.print_declaration(w),
+                             |w, _state| b.print_declaration(w))?;
+            state.line_option(w,
+                             |w, _state| a.print_return_type_label(w),
+                             |w, _state| b.print_return_type_label(w))?;
+            state.indent(|state| {
+                    state.line_option(w,
+                                      |w, _state| a.print_return_type(w, unit_a),
+                                      |w, _state| b.print_return_type(w, unit_b))
+                })?;
+            state.line_option(w,
+                             |w, _state| a.print_parameters_label(w),
+                             |w, _state| b.print_parameters_label(w))?;
+            state.indent(|state| Subprogram::diff_parameters(w, state, unit_a, a, unit_b, b))?;
+            /*
+            if state.a.flags.inline_depth > 0 {
+                state.line_option(w,
+                                 |w, _state| a.print_inlined_subroutines_label(w),
+                                 |w, _state| b.print_inlined_subroutines_label(w))?;
+                state.indent(|state| {
+                        Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b)
+                    })?;
+            }
+            if state.a.flags.calls {
+                let calls_a = a.calls(&state.a.file);
+                let calls_b = b.calls(&state.b.file);
+                state.line_option(w,
+                                 |w, _state| {
+                                     if !calls_a.is_empty() {
+                                         a.print_calls_label(w)?;
+                                     }
+                                     Ok(())
+                                 },
+                                 |w, _state| {
+                                     if !calls_b.is_empty() {
+                                         b.print_calls_label(w)?;
+                                     }
+                                     Ok(())
+                                 })?;
+                state.indent(|state| Subprogram::diff_calls(w, state, &calls_a, &calls_b))?;
+            }
+            */
+            Ok(())
+        })
+    }
+
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        write!(w, "fn ")?;
+        self.namespace.print(w)?;
+        match self.name {
+            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            None => write!(w, "<anon>")?,
+        }
         Ok(())
     }
+
+    fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
+        if let Some(linkage_name) = self.linkage_name {
+            write!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
+        }
+        Ok(())
+    }
+
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
+            if high_pc > low_pc {
+                write!(w, "address: 0x{:x}-0x{:x}", low_pc, high_pc - 1)?;
+            } else {
+                write!(w, "address: 0x{:x}", low_pc)?;
+            }
+        } else if !self.inline && !self.declaration {
+            debug!("non-inline subprogram with no address");
+        }
+        Ok(())
+    }
+
+    fn print_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.size {
+            write!(w, "size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_inline(&self, w: &mut Write) -> Result<()> {
+        if self.inline {
+            write!(w, "inline: yes")?;
+        }
+        Ok(())
+    }
+
+    fn print_declaration(&self, w: &mut Write) -> Result<()> {
+        if self.declaration {
+            write!(w, "declaration: yes")?;
+        }
+        Ok(())
+    }
+
+    fn print_return_type_label(&self, w: &mut Write) -> Result<()> {
+        if self.return_type.is_some() {
+            write!(w, "return type:")?;
+        }
+        Ok(())
+    }
+
+    fn print_return_type(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        if let Some(return_type) = self.return_type {
+            match Type::from_offset(unit, return_type).and_then(|t| t.bit_size(unit)) {
+                Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+                None => write!(w, "[??]")?,
+            }
+            write!(w, "\t")?;
+            Type::print_ref_from_offset(w, unit, return_type)?;
+        }
+        Ok(())
+    }
+
+    fn print_parameters_label(&self, w: &mut Write) -> Result<()> {
+        if !self.parameters.is_empty() {
+            write!(w, "parameters:")?;
+        }
+        Ok(())
+    }
+
+    fn print_parameters(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        for parameter in &self.parameters {
+            state.line(w, |w, _state| Self::print_parameter(w, unit, parameter))?;
+        }
+        Ok(())
+    }
+
+    fn diff_parameters(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &Subprogram,
+        unit_b: &Unit,
+        b: &Subprogram
+    ) -> Result<()> {
+        // Enumerate parameters and sort by name. Exclude anonymous members.
+        let mut parameters_a =
+            a.parameters.iter().enumerate().filter(|a| a.1.name.is_some()).collect::<Vec<_>>();
+        parameters_a.sort_by(|x, y| Parameter::cmp_id(x.1, y.1));
+        let mut parameters_b =
+            b.parameters.iter().enumerate().filter(|b| b.1.name.is_some()).collect::<Vec<_>>();
+        parameters_b.sort_by(|x, y| Parameter::cmp_id(x.1, y.1));
+
+        // Find pairs of parameters with the same name.
+        let mut pairs = Vec::new();
+        for m in MergeIterator::new(parameters_a.iter(),
+                                    parameters_b.iter(),
+                                    |a, b| Parameter::cmp_id(a.1, b.1)) {
+            if let MergeResult::Both(a, b) = m {
+                if a.1.name.is_some() {
+                    pairs.push((a, b));
+                }
+            }
+        }
+        // TODO: For remaining parameters, find pairs of parameters with the same type.
+
+        // Sort pairs by the indices.
+        // TODO: also sort by equality (eg print and compare).
+        pairs.sort_by(|&(xa, xb), &(ya, yb)| {
+            match (xa.0.cmp(&ya.0), xb.0.cmp(&yb.0)) {
+                (cmp::Ordering::Less, cmp::Ordering::Less) => cmp::Ordering::Less,
+                (cmp::Ordering::Greater, cmp::Ordering::Greater) => cmp::Ordering::Greater,
+                (_cmp_a, cmp_b) => cmp_b,
+            }
+        });
+
+        // Loop through the pairs.
+        let mut index_a = 0;
+        let mut index_b = 0;
+        let mut iter_a = a.parameters.iter();
+        let mut iter_b = b.parameters.iter();
+        for &(a, b) in &pairs {
+            // Skip pairs that are already partially printed.
+            if a.0 < index_a || b.0 < index_b {
+                continue;
+            }
+
+            // Print parameters leading up to the pair.
+            while index_a < a.0 {
+                if let Some(a) = iter_a.next() {
+                    state.prefix_less(|state| {
+                            state.line(w, |w, _state| Self::print_parameter(w, unit_a, a))
+                        })?;
+                }
+                index_a += 1;
+            }
+            while index_b < b.0 {
+                if let Some(b) = iter_b.next() {
+                    state.prefix_greater(|state| {
+                            state.line(w, |w, _state| Self::print_parameter(w, unit_b, b))
+                        })?;
+                }
+                index_b += 1;
+            }
+
+            // Diff the pair.
+            if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                state.line(w,
+                          |w, _state| Self::print_parameter(w, unit_a, a),
+                          |w, _state| Self::print_parameter(w, unit_b, b))?;
+            }
+            index_a += 1;
+            index_b += 1;
+        }
+
+        // Print trailing parameters.
+        for a in iter_a {
+            state.prefix_less(|state| {
+                state.line(w, |w, _state| Self::print_parameter(w, unit_a, a))
+            })?;
+        }
+        for b in iter_b {
+            state.prefix_greater(|state| {
+                    state.line(w, |w, _state| Self::print_parameter(w, unit_b, b))
+                })?;
+        }
+
+        Ok(())
+    }
+
+    fn print_parameter(w: &mut Write, unit: &Unit, parameter: &Parameter) -> Result<()> {
+        match parameter.bit_size(unit) {
+            Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+            None => write!(w, "[??]")?,
+        }
+        write!(w, "\t")?;
+        parameter.print(w, unit)
+    }
+
+    fn print_inlined_subroutines_label(&self, w: &mut Write) -> Result<()> {
+        if !self.inlined_subroutines.is_empty() {
+            write!(w, "inlined subroutines:")?;
+        }
+        Ok(())
+    }
+
+    fn print_inlined_subroutines(
+        &self,
+        w: &mut Write,
+        state: &mut PrintState,
+        unit: &Unit
+    ) -> Result<()> {
+        for subroutine in &self.inlined_subroutines {
+            subroutine.print(w, state, unit, 1)?;
+        }
+        Ok(())
+    }
+
+    /*
+    fn diff_inlined_subroutines(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &Subprogram,
+        unit_b: &Unit,
+        b: &Subprogram
+    ) -> Result<()> {
+        // TODO
+        Ok(())
+    }
+    */
+
+    fn print_calls_label(&self, w: &mut Write) -> Result<()> {
+        if self.return_type.is_some() {
+            write!(w, "calls:")?;
+        }
+        Ok(())
+    }
+
+    fn print_calls(&self, w: &mut Write, state: &mut PrintState, calls: &[u64]) -> Result<()> {
+        for call in calls {
+            state.line(w, |w, state| {
+                    write!(w, "0x{:x}", call)?;
+                    if let Some(subprogram) = state.all_subprograms.get(call) {
+                        write!(w, " ")?;
+                        subprogram.print_ref(w)?;
+                    }
+                    Ok(())
+                })?;
+        }
+        Ok(())
+    }
+
+    /*
+    fn diff_calls(
+        w: &mut Write,
+        state: &mut DiffState,
+        calls_a: &[u64],
+        calls_b: &[u64]
+    ) -> Result<()> {
+        // TODO
+        Ok(())
+    }
+    */
 }
 
 #[derive(Debug, Default)]
@@ -2426,6 +2632,10 @@ impl<'input> Parameter<'input> {
 
     fn bit_size(&self, unit: &Unit) -> Option<u64> {
         self.ty(unit).and_then(|t| t.bit_size(unit))
+    }
+
+    fn cmp_id(a: &Parameter, b: &Parameter) -> cmp::Ordering {
+        a.name.cmp(&b.name)
     }
 
     fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
