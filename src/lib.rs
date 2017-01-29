@@ -1534,7 +1534,9 @@ impl<'input> StructType<'input> {
                                     members_b.iter(),
                                     |a, b| Member::cmp_id(a.1, b.1)) {
             if let MergeResult::Both(a, b) = m {
-                pairs.push((a, b));
+                if a.1.name.is_some() {
+                    pairs.push((a, b));
+                }
             }
         }
         // TODO: For remaining members, find pairs of members with the same type.
