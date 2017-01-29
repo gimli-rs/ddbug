@@ -864,8 +864,16 @@ impl<'input> Unit<'input> {
                     Ok(())
                 })
             },
-                   |w, state, a| a.print(w, state, unit_a),
-                   |w, state, b| b.print(w, state, unit_b))?;
+                   |w, state, a| {
+                       a.print(w, state, unit_a)?;
+                       writeln!(w, "")?;
+                       Ok(())
+                   },
+                   |w, state, b| {
+                       b.print(w, state, unit_b)?;
+                       writeln!(w, "")?;
+                       Ok(())
+                   })?;
         state.merge(w,
                    &mut unit_a.filter_subprograms(flags, true).iter(),
                    &mut unit_b.filter_subprograms(flags, true).iter(),
@@ -877,8 +885,16 @@ impl<'input> Unit<'input> {
                     Ok(())
                 })
             },
-                   |w, state, a| a.print(w, state, unit_a),
-                   |w, state, b| b.print(w, state, unit_b))?;
+                   |w, state, a| {
+                       a.print(w, state, unit_a)?;
+                       writeln!(w, "")?;
+                       Ok(())
+                   },
+                   |w, state, b| {
+                       b.print(w, state, unit_b)?;
+                       writeln!(w, "")?;
+                       Ok(())
+                   })?;
         state.merge(w,
                    &mut unit_a.filter_variables(flags, true).iter(),
                    &mut unit_b.filter_variables(flags, true).iter(),
