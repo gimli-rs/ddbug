@@ -2375,8 +2375,8 @@ impl<'input> Subprogram<'input> {
                              |w, _state| a.print_parameters_label(w),
                              |w, _state| b.print_parameters_label(w))?;
             state.indent(|state| Subprogram::diff_parameters(w, state, unit_a, a, unit_b, b))?;
-            /*
-            if state.flags.inline_depth > 0 {
+            // TODO
+            if false && state.flags.inline_depth > 0 {
                 state.line_option(w,
                                  |w, _state| a.print_inlined_subroutines_label(w),
                                  |w, _state| b.print_inlined_subroutines_label(w))?;
@@ -2384,7 +2384,8 @@ impl<'input> Subprogram<'input> {
                         Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b)
                     })?;
             }
-            if state.flags.calls {
+            // TODO
+            if false && state.flags.calls {
                 let calls_a = a.calls(&state.a.file);
                 let calls_b = b.calls(&state.b.file);
                 state.line_option(w,
@@ -2402,7 +2403,6 @@ impl<'input> Subprogram<'input> {
                                  })?;
                 state.indent(|state| Subprogram::diff_calls(w, state, &calls_a, &calls_b))?;
             }
-            */
             Ok(())
         })
     }
@@ -2612,19 +2612,17 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    /*
     fn diff_inlined_subroutines(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Subprogram,
-        unit_b: &Unit,
-        b: &Subprogram
+        _w: &mut Write,
+        _state: &mut DiffState,
+        _unit_a: &Unit,
+        _a: &Subprogram,
+        _unit_b: &Unit,
+        _b: &Subprogram
     ) -> Result<()> {
         // TODO
         Ok(())
     }
-    */
 
     fn print_calls_label(&self, w: &mut Write) -> Result<()> {
         if self.return_type.is_some() {
@@ -2647,17 +2645,15 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    /*
     fn diff_calls(
-        w: &mut Write,
-        state: &mut DiffState,
-        calls_a: &[u64],
-        calls_b: &[u64]
+        _w: &mut Write,
+        _state: &mut DiffState,
+        _calls_a: &[u64],
+        _calls_b: &[u64]
     ) -> Result<()> {
         // TODO
         Ok(())
     }
-    */
 }
 
 #[derive(Debug, Default)]
