@@ -54,6 +54,7 @@ fn flags() -> ddbug::Flags<'static> {
         unit: None,
         name: None,
         namespace: Vec::new(),
+        ..Default::default()
     }
 }
 

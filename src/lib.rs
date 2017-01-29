@@ -64,10 +64,15 @@ impl From<gimli::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Flags<'a> {
     pub calls: bool,
     pub sort: bool,
+    pub ignore_added: bool,
+    pub ignore_deleted: bool,
+    pub ignore_function_address: bool,
+    pub ignore_function_size: bool,
+    pub ignore_function_inline: bool,
     pub inline_depth: usize,
     pub unit: Option<&'a str>,
     pub name: Option<&'a str>,
@@ -407,6 +412,7 @@ struct DiffState<'a, 'input>
 {
     a: PrintState<'a, 'input>,
     b: PrintState<'a, 'input>,
+    flags: &'a Flags<'a>,
 }
 
 impl<'a, 'input> DiffState<'a, 'input>
@@ -422,6 +428,7 @@ impl<'a, 'input> DiffState<'a, 'input>
         DiffState {
             a: PrintState::new(file_a, subprograms_a, flags),
             b: PrintState::new(file_b, subprograms_b, flags),
+            flags: flags,
         }
     }
 
@@ -461,6 +468,19 @@ impl<'a, 'input> DiffState<'a, 'input>
         f(&mut buf, self)?;
         if self.a.diff || self.b.diff {
             w.write_all(&*buf)?;
+        }
+        Ok(())
+    }
+
+    fn ignore_diff<F>(&mut self, flag: bool, mut f: F) -> Result<()>
+        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    {
+        let a_diff = self.a.diff;
+        let b_diff = self.b.diff;
+        f(self)?;
+        if flag {
+            self.a.diff = a_diff;
+            self.b.diff = b_diff;
         }
         Ok(())
     }
@@ -865,15 +885,19 @@ impl<'input> Unit<'input> {
                 })
             },
                    |w, state, a| {
-                       a.print(w, state, unit_a)?;
-                       writeln!(w, "")?;
-                       Ok(())
-                   },
+                if !flags.ignore_deleted {
+                    a.print(w, state, unit_a)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            },
                    |w, state, b| {
-                       b.print(w, state, unit_b)?;
-                       writeln!(w, "")?;
-                       Ok(())
-                   })?;
+                if !flags.ignore_added {
+                    b.print(w, state, unit_b)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            })?;
         state.merge(w,
                    &mut unit_a.filter_subprograms(flags, true).iter(),
                    &mut unit_b.filter_subprograms(flags, true).iter(),
@@ -886,15 +910,19 @@ impl<'input> Unit<'input> {
                 })
             },
                    |w, state, a| {
-                       a.print(w, state, unit_a)?;
-                       writeln!(w, "")?;
-                       Ok(())
-                   },
+                if !flags.ignore_deleted {
+                    a.print(w, state, unit_a)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            },
                    |w, state, b| {
-                       b.print(w, state, unit_b)?;
-                       writeln!(w, "")?;
-                       Ok(())
-                   })?;
+                if !flags.ignore_added {
+                    b.print(w, state, unit_b)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            })?;
         state.merge(w,
                    &mut unit_a.filter_variables(flags, true).iter(),
                    &mut unit_b.filter_variables(flags, true).iter(),
@@ -907,15 +935,19 @@ impl<'input> Unit<'input> {
                 })
             },
                    |w, state, a| {
-                       a.print(w, state, unit_a)?;
-                       writeln!(w, "")?;
-                       Ok(())
-                   },
+                if !flags.ignore_deleted {
+                    a.print(w, state, unit_a)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            },
                    |w, state, b| {
-                       b.print(w, state, unit_b)?;
-                       writeln!(w, "")?;
-                       Ok(())
-                   })?;
+                if !flags.ignore_added {
+                    b.print(w, state, unit_b)?;
+                    writeln!(w, "")?;
+                }
+                Ok(())
+            })?;
         Ok(())
     }
 }
@@ -2312,13 +2344,22 @@ impl<'input> Subprogram<'input> {
             state.line_option(w,
                              |w, _state| a.print_linkage_name(w),
                              |w, _state| b.print_linkage_name(w))?;
-            state.line_option(w,
-                             |w, _state| a.print_address(w),
-                             |w, _state| b.print_address(w))?;
-            state.line_option(w, |w, _state| a.print_size(w), |w, _state| b.print_size(w))?;
-            state.line_option(w,
-                             |w, _state| a.print_inline(w),
-                             |w, _state| b.print_inline(w))?;
+            let flag = state.flags.ignore_function_address;
+            state.ignore_diff(flag, |state| {
+                    state.line_option(w,
+                                      |w, _state| a.print_address(w),
+                                      |w, _state| b.print_address(w))
+                })?;
+            let flag = state.flags.ignore_function_size;
+            state.ignore_diff(flag, |state| {
+                    state.line_option(w, |w, _state| a.print_size(w), |w, _state| b.print_size(w))
+                })?;
+            let flag = state.flags.ignore_function_inline;
+            state.ignore_diff(flag, |state| {
+                    state.line_option(w,
+                                      |w, _state| a.print_inline(w),
+                                      |w, _state| b.print_inline(w))
+                })?;
             state.line_option(w,
                              |w, _state| a.print_declaration(w),
                              |w, _state| b.print_declaration(w))?;
@@ -2335,7 +2376,7 @@ impl<'input> Subprogram<'input> {
                              |w, _state| b.print_parameters_label(w))?;
             state.indent(|state| Subprogram::diff_parameters(w, state, unit_a, a, unit_b, b))?;
             /*
-            if state.a.flags.inline_depth > 0 {
+            if state.flags.inline_depth > 0 {
                 state.line_option(w,
                                  |w, _state| a.print_inlined_subroutines_label(w),
                                  |w, _state| b.print_inlined_subroutines_label(w))?;
@@ -2343,7 +2384,7 @@ impl<'input> Subprogram<'input> {
                         Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b)
                     })?;
             }
-            if state.a.flags.calls {
+            if state.flags.calls {
                 let calls_a = a.calls(&state.a.file);
                 let calls_b = b.calls(&state.b.file);
                 state.line_option(w,

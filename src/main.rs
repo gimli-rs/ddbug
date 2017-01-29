@@ -15,6 +15,21 @@ fn main() {
     opts.optflag("", "calls", "print subprogram calls");
     opts.optflag("", "diff", "print difference between two files");
     opts.optflag("", "sort", "sort entries by type and name");
+    opts.optflag("",
+                 "ignore-added",
+                 "don't display differences due to added functions/types/variables");
+    opts.optflag("",
+                 "ignore-deleted",
+                 "don't display differences due to deleted functions/types/variables");
+    opts.optflag("",
+                 "ignore-function-address",
+                 "don't display function differences due to address changes");
+    opts.optflag("",
+                 "ignore-function-size",
+                 "don't display function differences due to size changes");
+    opts.optflag("",
+                 "ignore-function-inline",
+                 "don't display function differences due to inline changes");
     opts.optopt("",
                 "inline-depth",
                 "depth of inlined subroutine calls (0 to disable)",
@@ -40,6 +55,11 @@ fn main() {
     let calls = matches.opt_present("calls");
     let diff = matches.opt_present("diff");
     let sort = matches.opt_present("sort");
+    let ignore_added = matches.opt_present("ignore-added");
+    let ignore_deleted = matches.opt_present("ignore-deleted");
+    let ignore_function_address = matches.opt_present("ignore-function-address");
+    let ignore_function_size = matches.opt_present("ignore-function-size");
+    let ignore_function_inline = matches.opt_present("ignore-function-inline");
     let inline_depth = if let Some(inline_depth) = matches.opt_str("inline-depth") {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
@@ -66,6 +86,11 @@ fn main() {
     let flags = ddbug::Flags {
         calls: calls,
         sort: sort,
+        ignore_added: ignore_added,
+        ignore_deleted: ignore_deleted,
+        ignore_function_address: ignore_function_address,
+        ignore_function_size: ignore_function_size,
+        ignore_function_inline: ignore_function_inline,
         inline_depth: inline_depth,
         unit: unit,
         name: name,
