@@ -1,3 +1,4 @@
+use std::ffi;
 use std::rc::Rc;
 
 use gimli;
@@ -80,8 +81,12 @@ fn parse_unit<'input, Endian>(
         let mut attrs = entry.attrs();
         while let Some(attr) = attrs.next()? {
             match attr.name() {
-                gimli::DW_AT_name => unit.name = attr.string_value(&dwarf.debug_str),
-                gimli::DW_AT_comp_dir => unit.dir = attr.string_value(&dwarf.debug_str),
+                gimli::DW_AT_name => {
+                    unit.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes)
+                }
+                gimli::DW_AT_comp_dir => {
+                    unit.dir = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes)
+                }
                 gimli::DW_AT_language => {
                     if let gimli::AttributeValue::Language(language) = attr.value() {
                         unit.language = Some(language);
@@ -183,7 +188,7 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    name = attr.string_value(&dwarf.debug_str);
+                    name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line => {}
@@ -281,7 +286,7 @@ fn parse_type_modifier<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    modifier.name = attr.string_value(&dwarf.debug_str);
+                    modifier.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -325,7 +330,7 @@ fn parse_base_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str);
+                    ty.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -366,7 +371,7 @@ fn parse_typedef<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    typedef.name = attr.string_value(&dwarf.debug_str);
+                    typedef.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -412,7 +417,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str);
+                    ty.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -468,7 +473,7 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str);
+                    ty.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -524,7 +529,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    member.name = attr.string_value(&dwarf.debug_str);
+                    member.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -636,7 +641,7 @@ fn parse_enumeration_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str);
+                    ty.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -688,7 +693,7 @@ fn parse_enumerator<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(ref attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    enumerator.name = attr.string_value(&dwarf.debug_str);
+                    enumerator.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_const_value => {
                     if let Some(value) = attr.sdata_value() {
@@ -854,10 +859,11 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    subprogram.name = attr.string_value(&dwarf.debug_str);
+                    subprogram.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_linkage_name => {
-                    subprogram.linkage_name = attr.string_value(&dwarf.debug_str);
+                    subprogram.linkage_name = attr.string_value(&dwarf.debug_str)
+                        .map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_inline => {
                     if let gimli::AttributeValue::Inline(val) = attr.value() {
@@ -969,7 +975,7 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    parameter.name = attr.string_value(&dwarf.debug_str);
+                    parameter.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
@@ -1161,10 +1167,11 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    variable.name = attr.string_value(&dwarf.debug_str);
+                    variable.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_linkage_name => {
-                    variable.linkage_name = attr.string_value(&dwarf.debug_str);
+                    variable.linkage_name = attr.string_value(&dwarf.debug_str)
+                        .map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {

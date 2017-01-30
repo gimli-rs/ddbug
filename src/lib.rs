@@ -14,7 +14,6 @@ use std::cmp;
 use std::error;
 use std::fmt::{self, Debug};
 use std::fs;
-use std::ffi;
 use std::io::Write;
 use std::result;
 use std::rc::Rc;
@@ -90,7 +89,7 @@ impl<'a> Flags<'a> {
         self
     }
 
-    fn filter_unit(&self, unit: Option<&ffi::CStr>) -> bool {
+    fn filter_unit(&self, unit: Option<&[u8]>) -> bool {
         if let Some(filter) = self.unit {
             filter_name(unit, filter)
         } else {
@@ -98,7 +97,7 @@ impl<'a> Flags<'a> {
         }
     }
 
-    fn filter_name(&self, name: Option<&ffi::CStr>) -> bool {
+    fn filter_name(&self, name: Option<&[u8]>) -> bool {
         if let Some(filter) = self.name {
             filter_name(name, filter)
         } else {
@@ -111,9 +110,9 @@ impl<'a> Flags<'a> {
     }
 }
 
-fn filter_name(name: Option<&ffi::CStr>, filter: &str) -> bool {
+fn filter_name(name: Option<&[u8]>, filter: &str) -> bool {
     match name {
-        Some(name) => name.to_bytes() == filter.as_bytes(),
+        Some(name) => name == filter.as_bytes(),
         None => false,
     }
 }
@@ -611,7 +610,7 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
 #[derive(Debug, Default)]
 struct Namespace<'input> {
     parent: Option<Rc<Namespace<'input>>>,
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
 }
 
 impl Namespace<'static> {
@@ -624,10 +623,7 @@ impl Namespace<'static> {
 }
 
 impl<'input> Namespace<'input> {
-    fn new(
-        parent: &Rc<Namespace<'input>>,
-        name: Option<&'input ffi::CStr>
-    ) -> Rc<Namespace<'input>> {
+    fn new(parent: &Rc<Namespace<'input>>, name: Option<&'input [u8]>) -> Rc<Namespace<'input>> {
         Rc::new(Namespace {
             parent: Some(parent.clone()),
             name: name,
@@ -656,7 +652,7 @@ impl<'input> Namespace<'input> {
         if let Some(ref parent) = self.parent {
             parent.print(w)?;
             match self.name {
-                Some(name) => write!(w, "{}", name.to_string_lossy())?,
+                Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
                 None => write!(w, "<anon>")?,
             }
             write!(w, "::")?;
@@ -724,9 +720,9 @@ impl<'input> Namespace<'input> {
 
 fn cmp_ns_and_name(
     ns1: &Namespace,
-    name1: Option<&ffi::CStr>,
+    name1: Option<&[u8]>,
     ns2: &Namespace,
-    name2: Option<&ffi::CStr>
+    name2: Option<&[u8]>
 ) -> cmp::Ordering {
     match Namespace::cmp(ns1, ns2) {
         cmp::Ordering::Equal => name1.cmp(&name2),
@@ -736,8 +732,8 @@ fn cmp_ns_and_name(
 
 #[derive(Debug, Default)]
 pub struct Unit<'input> {
-    dir: Option<&'input ffi::CStr>,
-    name: Option<&'input ffi::CStr>,
+    dir: Option<&'input [u8]>,
+    name: Option<&'input [u8]>,
     language: Option<gimli::DwLang>,
     address_size: Option<u64>,
     low_pc: Option<u64>,
@@ -837,7 +833,7 @@ impl<'input> Unit<'input> {
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -1261,7 +1257,7 @@ struct TypeModifier<'input> {
     kind: TypeModifierKind,
     ty: Option<gimli::UnitOffset>,
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     byte_size: Option<u64>,
 }
 
@@ -1292,7 +1288,7 @@ impl<'input> TypeModifier<'input> {
         if let Some(name) = self.name {
             // Not sure namespace is required here.
             self.namespace.print(w)?;
-            write!(w, "{}", name.to_string_lossy())?;
+            write!(w, "{}", String::from_utf8_lossy(name))?;
         } else {
             match self.kind {
                 TypeModifierKind::Const => write!(w, "const ")?,
@@ -1310,7 +1306,7 @@ impl<'input> TypeModifier<'input> {
 
 #[derive(Debug, Default)]
 struct BaseType<'input> {
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     byte_size: Option<u64>,
 }
 
@@ -1321,7 +1317,7 @@ impl<'input> BaseType<'input> {
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon-base-type>")?,
         }
         Ok(())
@@ -1331,7 +1327,7 @@ impl<'input> BaseType<'input> {
 #[derive(Debug, Default)]
 struct TypeDef<'input> {
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     ty: Option<gimli::UnitOffset>,
 }
 
@@ -1347,7 +1343,7 @@ impl<'input> TypeDef<'input> {
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon-typedef>")?,
         }
         Ok(())
@@ -1422,7 +1418,7 @@ impl<'input> TypeDef<'input> {
 #[derive(Debug, Default)]
 struct StructType<'input> {
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     byte_size: Option<u64>,
     declaration: bool,
     members: Vec<Member<'input>>,
@@ -1655,7 +1651,7 @@ impl<'input> StructType<'input> {
         write!(w, "struct ")?;
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -1676,7 +1672,7 @@ impl<'input> StructType<'input> {
 #[derive(Debug, Default)]
 struct UnionType<'input> {
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     byte_size: Option<u64>,
     declaration: bool,
     members: Vec<Member<'input>>,
@@ -1838,7 +1834,7 @@ impl<'input> UnionType<'input> {
         write!(w, "union ")?;
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -1858,7 +1854,7 @@ impl<'input> UnionType<'input> {
 
 #[derive(Debug, Default)]
 struct Member<'input> {
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     // TODO: treat padding as typeless member?
     ty: Option<gimli::UnitOffset>,
     // Defaults to 0, so always present.
@@ -1979,7 +1975,7 @@ impl<'input> Member<'input> {
             }
         }
         match self.name {
-            Some(name) => write!(w, "\t{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "\t{}", String::from_utf8_lossy(name))?,
             None => write!(w, "\t<anon>")?,
         }
         if let Some(ty) = self.ty(unit) {
@@ -1994,7 +1990,7 @@ impl<'input> Member<'input> {
     fn is_inline(&self, unit: &Unit) -> bool {
         match self.name {
             Some(s) => {
-                if s.to_bytes().starts_with(b"RUST$ENCODED$ENUM$") {
+                if s.starts_with(b"RUST$ENCODED$ENUM$") {
                     return true;
                 }
             }
@@ -2015,7 +2011,7 @@ impl<'input> Member<'input> {
 #[derive(Debug, Default)]
 struct EnumerationType<'input> {
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     byte_size: Option<u64>,
     enumerators: Vec<Enumerator<'input>>,
 }
@@ -2067,7 +2063,7 @@ impl<'input> EnumerationType<'input> {
         write!(w, "enum ")?;
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -2146,14 +2142,14 @@ impl<'input> EnumerationType<'input> {
 
 #[derive(Debug, Default)]
 struct Enumerator<'input> {
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     value: Option<i64>,
 }
 
 impl<'input> Enumerator<'input> {
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -2252,8 +2248,8 @@ impl<'input> SubroutineType<'input> {
 struct Subprogram<'input> {
     offset: gimli::UnitOffset,
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
-    linkage_name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
+    linkage_name: Option<&'input [u8]>,
     low_pc: Option<u64>,
     high_pc: Option<u64>,
     size: Option<u64>,
@@ -2296,7 +2292,7 @@ impl<'input> Subprogram<'input> {
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -2411,7 +2407,7 @@ impl<'input> Subprogram<'input> {
         write!(w, "fn ")?;
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -2419,7 +2415,7 @@ impl<'input> Subprogram<'input> {
 
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
-            write!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
+            write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
         }
         Ok(())
     }
@@ -2658,7 +2654,7 @@ impl<'input> Subprogram<'input> {
 
 #[derive(Debug, Default)]
 struct Parameter<'input> {
-    name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
     ty: Option<gimli::UnitOffset>,
 }
 
@@ -2677,7 +2673,7 @@ impl<'input> Parameter<'input> {
 
     fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if let Some(name) = self.name {
-            write!(w, "{}: ", name.to_string_lossy())?;
+            write!(w, "{}: ", String::from_utf8_lossy(name))?;
         }
         match self.ty(unit) {
             Some(ty) => ty.print_ref(w, unit)?,
@@ -2731,8 +2727,8 @@ impl<'input> InlinedSubroutine<'input> {
 #[derive(Debug, Default)]
 struct Variable<'input> {
     namespace: Rc<Namespace<'input>>,
-    name: Option<&'input ffi::CStr>,
-    linkage_name: Option<&'input ffi::CStr>,
+    name: Option<&'input [u8]>,
+    linkage_name: Option<&'input [u8]>,
     ty: Option<gimli::UnitOffset>,
     declaration: bool,
 }
@@ -2760,7 +2756,7 @@ impl<'input> Variable<'input> {
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         self.namespace.print(w)?;
         match self.name {
-            Some(name) => write!(w, "{}", name.to_string_lossy())?,
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -2813,7 +2809,7 @@ impl<'input> Variable<'input> {
 
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
-            write!(w, "linkage name: {}", linkage_name.to_string_lossy())?;
+            write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
         }
         Ok(())
     }
