@@ -797,8 +797,7 @@ impl<'input> Unit<'input> {
                 TypeKind::Base(..) |
                 TypeKind::Array(..) |
                 TypeKind::Subroutine(..) |
-                TypeKind::Modifier(..) |
-                TypeKind::Unimplemented(..) => return false,
+                TypeKind::Modifier(..) => return false,
             }
             // Filter out inline types.
             !inline_types.contains(&t.offset.0)
@@ -958,7 +957,6 @@ enum TypeKind<'input> {
     Array(ArrayType<'input>),
     Subroutine(SubroutineType<'input>),
     Modifier(TypeModifier<'input>),
-    Unimplemented(gimli::DwTag),
 }
 
 impl<'input> TypeKind<'input> {
@@ -972,7 +970,6 @@ impl<'input> TypeKind<'input> {
             TypeKind::Array(..) => 5,
             TypeKind::Subroutine(..) => 6,
             TypeKind::Modifier(..) => 7,
-            TypeKind::Unimplemented(..) => 8,
         }
     }
 }
@@ -987,7 +984,7 @@ impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
             offset: gimli::UnitOffset(0),
-            kind: TypeKind::Unimplemented(gimli::DwTag(0)),
+            kind: TypeKind::Base(BaseType::default()),
         }
     }
 }
@@ -1010,7 +1007,6 @@ impl<'input> Type<'input> {
             TypeKind::Array(ref val) => val.bit_size(unit),
             TypeKind::Subroutine(ref val) => val.bit_size(unit),
             TypeKind::Modifier(ref val) => val.bit_size(unit),
-            TypeKind::Unimplemented(_) => None,
         }
     }
 
@@ -1023,8 +1019,7 @@ impl<'input> Type<'input> {
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
-            TypeKind::Modifier(..) |
-            TypeKind::Unimplemented(_) => {}
+            TypeKind::Modifier(..) => {}
         }
     }
 
@@ -1037,8 +1032,7 @@ impl<'input> Type<'input> {
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
-            TypeKind::Modifier(..) |
-            TypeKind::Unimplemented(_) => flags.name.is_none(),
+            TypeKind::Modifier(..) => flags.name.is_none(),
         }
     }
 
@@ -1051,8 +1045,7 @@ impl<'input> Type<'input> {
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
-            TypeKind::Modifier(..) |
-            TypeKind::Unimplemented(..) => Err(format!("can't print {:?}", self).into()),
+            TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
         }
     }
 
@@ -1066,7 +1059,6 @@ impl<'input> Type<'input> {
             TypeKind::Array(ref val) => val.print_ref(w, unit),
             TypeKind::Subroutine(ref val) => val.print_ref(w, unit),
             TypeKind::Modifier(ref val) => val.print_ref(w, unit),
-            TypeKind::Unimplemented(..) => Err(format!("can't print_ref {:?}", self).into()),
         }
     }
 
@@ -1087,8 +1079,7 @@ impl<'input> Type<'input> {
             TypeKind::Enumeration(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
-            TypeKind::Modifier(..) |
-            TypeKind::Unimplemented(..) => false,
+            TypeKind::Modifier(..) => false,
         }
     }
 

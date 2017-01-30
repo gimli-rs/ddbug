@@ -258,7 +258,7 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                                    iter,
                                                    TypeModifierKind::Restrict)?)
         }
-        _ => TypeKind::Unimplemented(tag),
+        _ => return Err(format!("Unexpected type tag {:?}", tag).into()),
     };
     Ok(ty)
 }
