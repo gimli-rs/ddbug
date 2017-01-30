@@ -974,26 +974,32 @@ impl<'input> TypeKind<'input> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct TypeOffset(usize);
+
+impl From<gimli::UnitOffset> for TypeOffset {
+    fn from(o: gimli::UnitOffset) -> TypeOffset {
+        TypeOffset(o.0)
+    }
+}
+
 #[derive(Debug)]
 struct Type<'input> {
-    offset: gimli::UnitOffset,
+    offset: TypeOffset,
     kind: TypeKind<'input>,
 }
 
 impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
-            offset: gimli::UnitOffset(0),
+            offset: TypeOffset(0),
             kind: TypeKind::Base(BaseType::default()),
         }
     }
 }
 
 impl<'input> Type<'input> {
-    fn from_offset<'a>(
-        unit: &'a Unit<'input>,
-        offset: gimli::UnitOffset
-    ) -> Option<&'a Type<'input>> {
+    fn from_offset<'a>(unit: &'a Unit<'input>, offset: TypeOffset) -> Option<&'a Type<'input>> {
         unit.types.get(&offset.0)
     }
 
@@ -1062,7 +1068,7 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: gimli::UnitOffset) -> Result<()> {
+    fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: TypeOffset) -> Result<()> {
         match Type::from_offset(unit, offset) {
             Some(ty) => ty.print_ref(w, unit)?,
             None => write!(w, "<invalid-type>")?,
@@ -1246,7 +1252,7 @@ impl<'input> Type<'input> {
 #[derive(Debug)]
 struct TypeModifier<'input> {
     kind: TypeModifierKind,
-    ty: Option<gimli::UnitOffset>,
+    ty: Option<TypeOffset>,
     namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
     byte_size: Option<u64>,
@@ -1319,7 +1325,7 @@ impl<'input> BaseType<'input> {
 struct TypeDef<'input> {
     namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
-    ty: Option<gimli::UnitOffset>,
+    ty: Option<TypeOffset>,
 }
 
 impl<'input> TypeDef<'input> {
@@ -1847,7 +1853,7 @@ impl<'input> UnionType<'input> {
 struct Member<'input> {
     name: Option<&'input [u8]>,
     // TODO: treat padding as typeless member?
-    ty: Option<gimli::UnitOffset>,
+    ty: Option<TypeOffset>,
     // Defaults to 0, so always present.
     bit_offset: u64,
     bit_size: Option<u64>,
@@ -2167,7 +2173,7 @@ impl<'input> Enumerator<'input> {
 
 #[derive(Debug, Default)]
 struct ArrayType<'input> {
-    ty: Option<gimli::UnitOffset>,
+    ty: Option<TypeOffset>,
     count: Option<u64>,
     phantom: std::marker::PhantomData<&'input [u8]>,
 }
@@ -2202,7 +2208,7 @@ impl<'input> ArrayType<'input> {
 #[derive(Debug, Default)]
 struct SubroutineType<'input> {
     parameters: Vec<Parameter<'input>>,
-    return_type: Option<gimli::UnitOffset>,
+    return_type: Option<TypeOffset>,
 }
 
 impl<'input> SubroutineType<'input> {
@@ -2235,9 +2241,18 @@ impl<'input> SubroutineType<'input> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct SubprogramOffset(usize);
+
+impl From<gimli::UnitOffset> for SubprogramOffset {
+    fn from(o: gimli::UnitOffset) -> SubprogramOffset {
+        SubprogramOffset(o.0)
+    }
+}
+
 #[derive(Debug)]
 struct Subprogram<'input> {
-    offset: gimli::UnitOffset,
+    offset: SubprogramOffset,
     namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
     linkage_name: Option<&'input [u8]>,
@@ -2247,7 +2262,7 @@ struct Subprogram<'input> {
     inline: bool,
     declaration: bool,
     parameters: Vec<Parameter<'input>>,
-    return_type: Option<gimli::UnitOffset>,
+    return_type: Option<TypeOffset>,
     inlined_subroutines: Vec<InlinedSubroutine<'input>>,
     variables: Vec<Variable<'input>>,
 }
@@ -2255,7 +2270,7 @@ struct Subprogram<'input> {
 impl<'input> Subprogram<'input> {
     fn from_offset<'a>(
         unit: &'a Unit<'input>,
-        offset: gimli::UnitOffset
+        offset: SubprogramOffset
     ) -> Option<&'a Subprogram<'input>> {
         unit.subprograms.get(&offset.0)
     }
@@ -2646,7 +2661,7 @@ impl<'input> Subprogram<'input> {
 #[derive(Debug, Default)]
 struct Parameter<'input> {
     name: Option<&'input [u8]>,
-    ty: Option<gimli::UnitOffset>,
+    ty: Option<TypeOffset>,
 }
 
 impl<'input> Parameter<'input> {
@@ -2676,7 +2691,7 @@ impl<'input> Parameter<'input> {
 
 #[derive(Debug, Default)]
 struct InlinedSubroutine<'input> {
-    abstract_origin: Option<gimli::UnitOffset>,
+    abstract_origin: Option<SubprogramOffset>,
     size: Option<u64>,
     inlined_subroutines: Vec<InlinedSubroutine<'input>>,
     variables: Vec<Variable<'input>>,
@@ -2720,7 +2735,7 @@ struct Variable<'input> {
     namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
     linkage_name: Option<&'input [u8]>,
-    ty: Option<gimli::UnitOffset>,
+    ty: Option<TypeOffset>,
     declaration: bool,
 }
 
