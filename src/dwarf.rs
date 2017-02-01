@@ -240,21 +240,18 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         gimli::DW_TAG_const_type => {
             TypeKind::Modifier(parse_type_modifier(dwarf,
                                                    dwarf_unit,
-                                                   namespace,
                                                    iter,
                                                    TypeModifierKind::Const)?)
         }
         gimli::DW_TAG_pointer_type => {
             TypeKind::Modifier(parse_type_modifier(dwarf,
                                                    dwarf_unit,
-                                                   namespace,
                                                    iter,
                                                    TypeModifierKind::Pointer)?)
         }
         gimli::DW_TAG_restrict_type => {
             TypeKind::Modifier(parse_type_modifier(dwarf,
                                                    dwarf_unit,
-                                                   namespace,
                                                    iter,
                                                    TypeModifierKind::Restrict)?)
         }
@@ -267,7 +264,6 @@ fn parse_type_modifier<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     (
     dwarf: &DwarfFileState<'input, Endian>,
      _unit: &mut DwarfUnitState<'state, 'input, Endian>,
-     namespace: &Rc<Namespace<'input>>,
      mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>,
      kind: TypeModifierKind
 ) -> Result<TypeModifier<'input>>
@@ -276,7 +272,6 @@ fn parse_type_modifier<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     let mut modifier = TypeModifier {
         kind: kind,
         ty: None,
-        namespace: namespace.clone(),
         name: None,
         byte_size: None,
     };
@@ -851,8 +846,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         variables: Vec::new(),
     };
 
-    let offset = iter.entry().unwrap().offset();
-
     {
         let entry = iter.entry().unwrap();
         let mut attrs = entry.attrs();
@@ -955,7 +948,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
-    unit.subprograms.insert(offset.0, subprogram);
+    unit.subprograms.insert(subprogram.offset.0, subprogram);
     Ok(())
 }
 

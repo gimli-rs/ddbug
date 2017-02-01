@@ -1253,7 +1253,6 @@ impl<'input> Type<'input> {
 struct TypeModifier<'input> {
     kind: TypeModifierKind,
     ty: Option<TypeOffset>,
-    namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
     byte_size: Option<u64>,
 }
@@ -1283,8 +1282,6 @@ impl<'input> TypeModifier<'input> {
 
     fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if let Some(name) = self.name {
-            // Not sure namespace is required here.
-            self.namespace.print(w)?;
             write!(w, "{}", String::from_utf8_lossy(name))?;
         } else {
             match self.kind {
