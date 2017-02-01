@@ -4,6 +4,7 @@ extern crate log;
 extern crate memmap;
 extern crate xmas_elf;
 extern crate panopticon;
+extern crate pdb as crate_pdb;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
@@ -21,6 +22,7 @@ use std::rc::Rc;
 use panopticon::amd64;
 
 mod dwarf;
+mod pdb;
 
 #[derive(Debug)]
 pub struct Error(pub Cow<'static, str>);
@@ -58,6 +60,12 @@ impl From<std::io::Error> for Error {
 impl From<gimli::Error> for Error {
     fn from(e: gimli::Error) -> Error {
         Error(Cow::Owned(format!("DWARF error: {}", e)))
+    }
+}
+
+impl From<crate_pdb::Error> for Error {
+    fn from(e: crate_pdb::Error) -> Error {
+        Error(Cow::Owned(format!("PDB error: {}", e)))
     }
 }
 
@@ -124,12 +132,16 @@ fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
     o.and_then(|v| if f(v) { Some(v) } else { None })
 }
 
-
 #[derive(Debug)]
-pub struct File<'input> {
+pub struct CodeRegion {
     // TODO: use format independent machine type
     machine: xmas_elf::header::Machine,
     region: panopticon::Region,
+}
+
+#[derive(Debug)]
+pub struct File<'input> {
+    code: Option<CodeRegion>,
     units: Vec<Unit<'input>>,
 }
 
@@ -173,6 +185,16 @@ pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result
     };
 
     let input = unsafe { file.as_slice() };
+    if input.starts_with(&xmas_elf::header::MAGIC) {
+        parse_elf(input, cb)
+    } else if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
+        pdb::parse(input, cb)
+    } else {
+        Err("unrecognized file format".into())
+    }
+}
+
+pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let elf = xmas_elf::ElfFile::new(input);
     let machine = elf.header.pt2?.machine();
     let mut region = match machine {
@@ -212,8 +234,10 @@ pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result
     };
 
     let mut file = File {
-        machine: machine,
-        region: region,
+        code: Some(CodeRegion {
+            machine: machine,
+            region: region,
+        }),
         units: units,
     };
 
@@ -1071,7 +1095,7 @@ impl<'input> Type<'input> {
     fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: TypeOffset) -> Result<()> {
         match Type::from_offset(unit, offset) {
             Some(ty) => ty.print_ref(w, unit)?,
-            None => write!(w, "<invalid-type>")?,
+            None => write!(w, "<invalid-type {}>", offset.0)?,
         }
         Ok(())
     }
@@ -1846,7 +1870,7 @@ impl<'input> UnionType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Member<'input> {
     name: Option<&'input [u8]>,
     // TODO: treat padding as typeless member?
@@ -1972,11 +1996,10 @@ impl<'input> Member<'input> {
             Some(name) => write!(w, "\t{}", String::from_utf8_lossy(name))?,
             None => write!(w, "\t<anon>")?,
         }
-        if let Some(ty) = self.ty(unit) {
-            write!(w, ": ")?;
-            ty.print_ref(w, unit)?;
-        } else {
-            write!(w, ": <invalid-type>")?;
+        write!(w, ": ")?;
+        match self.ty {
+            Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
+            None => write!(w, "<unknown-type>")?,
         }
         Ok(())
     }
@@ -2134,7 +2157,7 @@ impl<'input> EnumerationType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Enumerator<'input> {
     name: Option<&'input [u8]>,
     value: Option<i64>,
@@ -2279,7 +2302,9 @@ impl<'input> Subprogram<'input> {
     fn calls(&self, file: &File) -> Vec<u64> {
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if low_pc != 0 {
-                return disassemble(file.machine, &file.region, low_pc, high_pc);
+                if let Some(ref code) = file.code {
+                    return disassemble(code, low_pc, high_pc);
+                }
             }
         }
         Vec::new()
@@ -2834,15 +2859,10 @@ impl<'input> Variable<'input> {
     }
 }
 
-fn disassemble(
-    machine: xmas_elf::header::Machine,
-    region: &panopticon::Region,
-    low_pc: u64,
-    high_pc: u64
-) -> Vec<u64> {
-    match machine {
+fn disassemble(code: &CodeRegion, low_pc: u64, high_pc: u64) -> Vec<u64> {
+    match code.machine {
         xmas_elf::header::Machine::X86_64 => {
-            disassemble_arch::<amd64::Amd64>(region, low_pc, high_pc, amd64::Mode::Long)
+            disassemble_arch::<amd64::Amd64>(&code.region, low_pc, high_pc, amd64::Mode::Long)
         }
         _ => Vec::new(),
     }
