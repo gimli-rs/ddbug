@@ -641,6 +641,11 @@ fn parse_enumeration_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
                 }
+                gimli::DW_AT_declaration => {
+                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                        ty.declaration = flag;
+                    }
+                }
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_sibling |

@@ -230,6 +230,7 @@ fn parse_enumeration<'input>(
                           kind: TypeKind::Enumeration(EnumerationType {
                               namespace: namespace.clone(),
                               name: Some(name.as_bytes()),
+                              declaration: false,
                               // TODO: size
                               byte_size: None,
                               enumerators: enumerators, // TODO: underlying_type

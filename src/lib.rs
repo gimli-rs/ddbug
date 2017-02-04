@@ -1460,8 +1460,8 @@ impl<'input> StructType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
+            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_members(w, state, unit, Some(0))
         })
     }
@@ -1478,11 +1478,11 @@ impl<'input> StructType<'input> {
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
         state.indent(|state| {
                 state.line_option(w,
-                                 |w, state| a.print_byte_size(w, state),
-                                 |w, state| b.print_byte_size(w, state))?;
-                state.line_option(w,
                                  |w, state| a.print_declaration(w, state),
                                  |w, state| b.print_declaration(w, state))?;
+                state.line_option(w,
+                                 |w, state| a.print_byte_size(w, state),
+                                 |w, state| b.print_byte_size(w, state))?;
                 Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
             })?;
 
@@ -1714,8 +1714,8 @@ impl<'input> UnionType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
+            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_members(w, state, unit, Some(0))
         })
     }
@@ -1732,11 +1732,11 @@ impl<'input> UnionType<'input> {
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
         state.indent(|state| {
                 state.line_option(w,
-                                 |w, state| a.print_byte_size(w, state),
-                                 |w, state| b.print_byte_size(w, state))?;
-                state.line_option(w,
                                  |w, state| a.print_declaration(w, state),
                                  |w, state| b.print_declaration(w, state))?;
+                state.line_option(w,
+                                 |w, state| a.print_byte_size(w, state),
+                                 |w, state| b.print_byte_size(w, state))?;
                 Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
             })?;
 
@@ -2029,6 +2029,7 @@ impl<'input> Member<'input> {
 struct EnumerationType<'input> {
     namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
+    declaration: bool,
     byte_size: Option<u64>,
     enumerators: Vec<Enumerator<'input>>,
 }
@@ -2052,6 +2053,7 @@ impl<'input> EnumerationType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
+            state.line_option(w, |w, _state| self.print_declaration(w))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_enumerators(w, state)
         })
@@ -2069,6 +2071,9 @@ impl<'input> EnumerationType<'input> {
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
         state.indent(|state| {
                 state.line_option(w,
+                                 |w, _state| a.print_declaration(w),
+                                 |w, _state| b.print_declaration(w))?;
+                state.line_option(w,
                                  |w, state| a.print_byte_size(w, state),
                                  |w, state| b.print_byte_size(w, state))?;
                 Self::diff_enumerators(w, state, a, b)
@@ -2082,6 +2087,13 @@ impl<'input> EnumerationType<'input> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
+    fn print_declaration(&self, w: &mut Write) -> Result<()> {
+        if self.declaration {
+            write!(w, "declaration: yes")?;
         }
         Ok(())
     }
