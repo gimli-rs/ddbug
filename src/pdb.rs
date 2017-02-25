@@ -19,6 +19,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
 
     let mut member_lists = BTreeMap::new();
     let mut enumerator_lists = BTreeMap::new();
+    let mut argument_lists = BTreeMap::new();
 
     let mut unit = Unit::default();
     let namespace = Namespace::root();
@@ -64,6 +65,20 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                   fields,
                                   name)?;
             }
+            Ok(pdb::TypeData::Procedure { return_type,
+                                          attributes,
+                                          parameter_count,
+                                          argument_list }) => {
+                let return_type = parse_type_index(return_type);
+                let argument_list = parse_type_index(argument_list);
+                parse_procedure(&mut unit,
+                                &argument_lists,
+                                index,
+                                return_type,
+                                attributes,
+                                parameter_count,
+                                argument_list)?;
+            }
             Ok(pdb::TypeData::Pointer { underlying_type, .. }) => {
                 let underlying_type = parse_type_index(underlying_type);
                 unit.types.insert(index,
@@ -84,6 +99,9 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                  index,
                                  fields,
                                  continuation)?;
+            }
+            Ok(pdb::TypeData::ArgumentList { arguments }) => {
+                argument_lists.insert(index, arguments);
             }
             Ok(other) => {
                 debug!("PDB unimplemented type {} {:?}", index, other);
@@ -290,6 +308,7 @@ fn parse_enumeration<'input>(
         None => Vec::new(),
     };
     unit.types.insert(index,
+                      // TODO: underlying_type
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Enumeration(EnumerationType {
@@ -297,7 +316,52 @@ fn parse_enumeration<'input>(
                               name: Some(name.as_bytes()),
                               declaration: declaration,
                               byte_size: None,
-                              enumerators: enumerators, // TODO: underlying_type
+                              enumerators: enumerators,
+                          }),
+                      });
+    Ok(())
+}
+
+fn parse_procedure<'input>(
+    unit: &mut Unit<'input>,
+    argument_lists: &BTreeMap<usize, Vec<pdb::TypeIndex>>,
+    index: usize,
+    return_type: Option<TypeOffset>,
+    _attributes: pdb::FunctionAttributes,
+    parameter_count: u16,
+    argument_list: Option<TypeOffset>
+) -> Result<()> {
+    let parameters = match argument_list {
+        Some(ref argument_list) => {
+            match argument_lists.get(&argument_list.0) {
+                Some(arguments) => {
+                    if arguments.len() != parameter_count as usize {
+                        debug!("PDB parameter count mismatch {}, {}",
+                               arguments.len(),
+                               parameter_count);
+                    }
+                    arguments.iter()
+                        .map(|argument| {
+                            Parameter {
+                                name: None,
+                                ty: parse_type_index(*argument),
+                            }
+                        })
+                        .collect()
+                }
+                None => return Err(format!("Missing argument list {}", argument_list.0).into()),
+            }
+        }
+        None => Vec::new(),
+    };
+
+    unit.types.insert(index,
+                      // TODO: attributes
+                      Type {
+                          offset: TypeOffset(index),
+                          kind: TypeKind::Subroutine(SubroutineType {
+                              parameters: parameters,
+                              return_type: return_type,
                           }),
                       });
     Ok(())
