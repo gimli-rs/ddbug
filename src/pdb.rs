@@ -92,14 +92,14 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     }
 
     let mut symbols = symbol_table.iter();
+    let mut symbol_index = 0;
     while let Some(symbol) = symbols.next()? {
         match symbol.parse()? {
             pdb::SymbolData::PublicSymbol { function, offset, .. } => {
                 if function {
-                    // TODO: check duplicate offset
-                    unit.subprograms.insert(offset as usize,
+                    unit.subprograms.insert(symbol_index,
                                             Subprogram {
-                                                offset: SubprogramOffset(offset as usize),
+                                                offset: SubprogramOffset(symbol_index),
                                                 namespace: namespace.clone(),
                                                 name: Some(symbol.name()?.as_bytes()),
                                                 linkage_name: None,
@@ -113,6 +113,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                                 inlined_subroutines: Vec::new(),
                                                 variables: Vec::new(),
                                             });
+                    symbol_index += 1;
                 }
             }
             _ => {}

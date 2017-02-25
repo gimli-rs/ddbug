@@ -153,6 +153,7 @@ impl<'input> File<'input> {
         for unit in &self.units {
             for subprogram in unit.subprograms.values() {
                 if let Some(low_pc) = subprogram.low_pc {
+                    // TODO: handle duplicate addresses
                     all_subprograms.insert(low_pc, subprogram);
                 }
             }
@@ -2467,6 +2468,8 @@ impl<'input> Subprogram<'input> {
             } else {
                 write!(w, "address: 0x{:x}", low_pc)?;
             }
+        } else if let Some(low_pc) = self.low_pc {
+            write!(w, "address: 0x{:x}", low_pc)?;
         } else if !self.inline && !self.declaration {
             debug!("non-inline subprogram with no address");
         }
