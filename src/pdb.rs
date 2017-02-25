@@ -31,6 +31,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
         match ty.parse() {
             Ok(pdb::TypeData::Class { properties, fields, size, name, .. }) => {
                 // TODO: derived_from, vtable_shape
+                let fields = fields.and_then(parse_type_index);
                 parse_class(&mut unit,
                             &member_lists,
                             &namespace,
@@ -41,6 +42,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                             name)?;
             }
             Ok(pdb::TypeData::Union { properties, fields, size, name, .. }) => {
+                let fields = parse_type_index(fields);
                 parse_union(&mut unit,
                             &member_lists,
                             &namespace,
@@ -51,6 +53,8 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                             name)?;
             }
             Ok(pdb::TypeData::Enumeration { properties, underlying_type, fields, name, .. }) => {
+                let underlying_type = parse_type_index(underlying_type);
+                let fields = parse_type_index(fields);
                 parse_enumeration(&mut unit,
                                   &enumerator_lists,
                                   &namespace,
@@ -61,18 +65,20 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                   name)?;
             }
             Ok(pdb::TypeData::Pointer { underlying_type, .. }) => {
+                let underlying_type = parse_type_index(underlying_type);
                 unit.types.insert(index,
                                   Type {
                                       offset: TypeOffset(index),
                                       kind: TypeKind::Modifier(TypeModifier {
                                           kind: TypeModifierKind::Pointer,
-                                          ty: Some(TypeOffset(underlying_type as usize)),
+                                          ty: underlying_type,
                                           name: None,
                                           byte_size: None,
                                       }),
                                   });
             }
             Ok(pdb::TypeData::FieldList { fields, continuation }) => {
+                let continuation = continuation.and_then(parse_type_index);
                 parse_field_list(&mut member_lists,
                                  &mut enumerator_lists,
                                  index,
@@ -199,17 +205,17 @@ fn parse_class<'input>(
     namespace: &Rc<Namespace<'input>>,
     index: usize,
     properties: pdb::TypeProperties,
-    fields: Option<pdb::TypeIndex>,
+    fields: Option<TypeOffset>,
     size: u16,
     name: pdb::RawString<'input>
 ) -> Result<()> {
     let declaration = properties.forward_reference();
     let byte_size = if declaration { None } else { Some(size as u64) };
     let members = match fields {
-        Some(fields) => {
-            match member_lists.get(&(fields as usize)) {
+        Some(ref fields) => {
+            match member_lists.get(&fields.0) {
                 Some(members) => members.clone(),
-                None => return Err(format!("Missing field list for index {}", fields).into()),
+                None => return Err(format!("Missing field list for index {}", fields.0).into()),
             }
         }
         None => Vec::new(),
@@ -234,7 +240,7 @@ fn parse_union<'input>(
     namespace: &Rc<Namespace<'input>>,
     index: usize,
     properties: pdb::TypeProperties,
-    fields: Option<pdb::TypeIndex>,
+    fields: Option<TypeOffset>,
     size: u32,
     name: pdb::RawString<'input>
 ) -> Result<()> {
@@ -242,9 +248,9 @@ fn parse_union<'input>(
     let byte_size = if declaration { None } else { Some(size as u64) };
     let members = match fields {
         Some(fields) => {
-            match member_lists.get(&(fields as usize)) {
+            match member_lists.get(&fields.0) {
                 Some(members) => members.clone(),
-                None => return Err(format!("Missing field list for index {}", fields).into()),
+                None => return Err(format!("Missing field list for index {}", fields.0).into()),
             }
         }
         None => Vec::new(),
@@ -269,16 +275,16 @@ fn parse_enumeration<'input>(
     namespace: &Rc<Namespace<'input>>,
     index: usize,
     properties: pdb::TypeProperties,
-    _underlying_type: pdb::TypeIndex,
-    fields: Option<pdb::TypeIndex>,
+    _underlying_type: Option<TypeOffset>,
+    fields: Option<TypeOffset>,
     name: pdb::RawString<'input>
 ) -> Result<()> {
     let declaration = properties.forward_reference();
     let enumerators = match fields {
-        Some(fields) => {
-            match enumerator_lists.get(&(fields as usize)) {
+        Some(ref fields) => {
+            match enumerator_lists.get(&fields.0) {
                 Some(enumerators) => enumerators.clone(),
-                None => return Err(format!("Missing field list for index {}", fields).into()),
+                None => return Err(format!("Missing field list for index {}", fields.0).into()),
             }
         }
         None => Vec::new(),
@@ -302,7 +308,7 @@ fn parse_field_list<'input>(
     enumerator_lists: &mut BTreeMap<usize, Vec<Enumerator<'input>>>,
     index: usize,
     fields: Vec<pdb::TypeData<'input>>,
-    continuation: Option<pdb::TypeIndex>
+    continuation: Option<TypeOffset>
 ) -> Result<()> {
     if continuation.is_some() {
         return Err("Unsupported PDB field list continuation".into());
@@ -312,9 +318,10 @@ fn parse_field_list<'input>(
     for field in fields {
         match field {
             pdb::TypeData::Member { field_type, offset, name, .. } => {
+                let field_type = parse_type_index(field_type);
                 members.push(Member {
                     name: Some(name.as_bytes()),
-                    ty: Some(TypeOffset(field_type as usize)),
+                    ty: field_type,
                     bit_offset: offset as u64 * 8,
                     bit_size: None,
                 });
@@ -343,4 +350,12 @@ fn parse_field_list<'input>(
     member_lists.insert(index, members);
     enumerator_lists.insert(index, enumerators);
     Ok(())
+}
+
+fn parse_type_index(index: pdb::TypeIndex) -> Option<TypeOffset> {
+    if index == 0 {
+        None
+    } else {
+        Some(TypeOffset(index as usize))
+    }
 }
