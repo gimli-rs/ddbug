@@ -133,7 +133,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
 
 fn add_primitive_types<'input>(types: &mut BTreeMap<usize, Type<'input>>) {
     add_primitive_type(types, 0x00, b"NoType", 4);
-    add_primitive_type(types, 0x00, b"void", 0);
+    add_primitive_type(types, 0x03, b"void", 0);
     add_primitive_type(types, 0x10, b"i8", 1);  // char
     add_primitive_type(types, 0x11, b"i16", 2); // short
     add_primitive_type(types, 0x12, b"i32", 4); // long
