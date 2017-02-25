@@ -40,6 +40,16 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                             size,
                             name)?;
             }
+            Ok(pdb::TypeData::Union { properties, fields, size, name, .. }) => {
+                parse_union(&mut unit,
+                            &member_lists,
+                            &namespace,
+                            index,
+                            properties,
+                            fields,
+                            size,
+                            name)?;
+            }
             Ok(pdb::TypeData::Enumeration { properties, underlying_type, fields, name, .. }) => {
                 parse_enumeration(&mut unit,
                                   &enumerator_lists,
@@ -207,6 +217,41 @@ fn parse_class<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Struct(StructType {
+                              namespace: namespace.clone(),
+                              name: Some(name.as_bytes()),
+                              byte_size: byte_size,
+                              declaration: declaration,
+                              members: members,
+                          }),
+                      });
+    Ok(())
+}
+
+fn parse_union<'input>(
+    unit: &mut Unit<'input>,
+    member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
+    namespace: &Rc<Namespace<'input>>,
+    index: usize,
+    properties: pdb::TypeProperties,
+    fields: Option<pdb::TypeIndex>,
+    size: u32,
+    name: pdb::RawString<'input>
+) -> Result<()> {
+    let declaration = properties.forward_reference();
+    let byte_size = if declaration { None } else { Some(size as u64) };
+    let members = match fields {
+        Some(fields) => {
+            match member_lists.get(&(fields as usize)) {
+                Some(members) => members.clone(),
+                None => return Err(format!("Missing field list for index {}", fields).into()),
+            }
+        }
+        None => Vec::new(),
+    };
+    unit.types.insert(index,
+                      Type {
+                          offset: TypeOffset(index),
+                          kind: TypeKind::Union(UnionType {
                               namespace: namespace.clone(),
                               name: Some(name.as_bytes()),
                               byte_size: byte_size,
