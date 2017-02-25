@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
-use super::{Error, Result};
+use super::Result;
 use super::{File, Unit, Namespace, SubprogramOffset, Subprogram, InlinedSubroutine, Variable,
             TypeOffset, Type, TypeKind, BaseType, TypeDef, StructType, UnionType, EnumerationType,
             Enumerator, ArrayType, SubroutineType, TypeModifier, TypeModifierKind, Member,
@@ -28,7 +28,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     add_primitive_types(&mut unit.types);
     while let Some(ty) = types.next()? {
         let index = ty.type_index() as usize;
-        // debug!("Type: {:?}", ty.parse());
+        // debug!("Type: {} {:?}", index, ty.parse());
         match ty.parse() {
             Ok(pdb::TypeData::Class { properties, fields, size, name, .. }) => {
                 // TODO: derived_from, vtable_shape
@@ -79,6 +79,28 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                 parameter_count,
                                 argument_list)?;
             }
+            Ok(pdb::TypeData::MemberFunction { return_type,
+                                               class_type,
+                                               this_pointer_type,
+                                               attributes,
+                                               parameter_count,
+                                               argument_list,
+                                               this_adjustment }) => {
+                let return_type = parse_type_index(return_type);
+                let class_type = parse_type_index(class_type);
+                let this_pointer_type = parse_type_index(this_pointer_type);
+                let argument_list = parse_type_index(argument_list);
+                parse_member_function(&mut unit,
+                                      &argument_lists,
+                                      index,
+                                      return_type,
+                                      class_type,
+                                      this_pointer_type,
+                                      attributes,
+                                      parameter_count,
+                                      argument_list,
+                                      this_adjustment)?;
+            }
             Ok(pdb::TypeData::Pointer { underlying_type, .. }) => {
                 let underlying_type = parse_type_index(underlying_type);
                 unit.types.insert(index,
@@ -91,6 +113,16 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                           byte_size: None,
                                       }),
                                   });
+            }
+            Ok(pdb::TypeData::Array { element_type, indexing_type, stride, dimensions }) => {
+                let element_type = parse_type_index(element_type);
+                let indexing_type = parse_type_index(indexing_type);
+                parse_array(&mut unit,
+                            index,
+                            element_type,
+                            indexing_type,
+                            stride,
+                            dimensions)?;
             }
             Ok(pdb::TypeData::FieldList { fields, continuation }) => {
                 let continuation = continuation.and_then(parse_type_index);
@@ -362,6 +394,86 @@ fn parse_procedure<'input>(
                           kind: TypeKind::Subroutine(SubroutineType {
                               parameters: parameters,
                               return_type: return_type,
+                          }),
+                      });
+    Ok(())
+}
+
+fn parse_member_function<'input>(
+    unit: &mut Unit<'input>,
+    argument_lists: &BTreeMap<usize, Vec<pdb::TypeIndex>>,
+    index: usize,
+    return_type: Option<TypeOffset>,
+    _class_type: Option<TypeOffset>,
+    this_pointer_type: Option<TypeOffset>,
+    _attributes: pdb::FunctionAttributes,
+    parameter_count: u16,
+    argument_list: Option<TypeOffset>,
+    _this_adjustment: u32
+) -> Result<()> {
+    let mut parameters = Vec::with_capacity(parameter_count as usize + 1);
+    match this_pointer_type {
+        None |
+        Some(TypeOffset(3)) => {}
+        ty => {
+            parameters.push(Parameter {
+                name: None,
+                ty: ty,
+            });
+        }
+    }
+    if let Some(ref argument_list) = argument_list {
+        match argument_lists.get(&argument_list.0) {
+            Some(arguments) => {
+                if arguments.len() != parameter_count as usize {
+                    debug!("PDB parameter count mismatch {}, {}",
+                           arguments.len(),
+                           parameter_count);
+                }
+                for argument in arguments {
+                    parameters.push(Parameter {
+                        name: None,
+                        ty: parse_type_index(*argument),
+                    });
+                }
+            }
+            None => return Err(format!("Missing argument list {}", argument_list.0).into()),
+        }
+    };
+
+    unit.types.insert(index,
+                      // TODO: class_type, attributes, this_adjustment
+                      Type {
+                          offset: TypeOffset(index),
+                          kind: TypeKind::Subroutine(SubroutineType {
+                              parameters: parameters,
+                              return_type: return_type,
+                          }),
+                      });
+    Ok(())
+}
+
+fn parse_array<'input>(
+    unit: &mut Unit<'input>,
+    index: usize,
+    element_type: Option<TypeOffset>,
+    _indexing_type: Option<TypeOffset>,
+    _stride: Option<u32>,
+    dimensions: Vec<u32>
+) -> Result<()> {
+    if dimensions.len() != 1 {
+        return Err("Unsupported multi-dimensional array".into());
+    }
+    let count = Some(dimensions[0] as u64);
+    // FIXME: count is in bytes, not elements
+    unit.types.insert(index,
+                      // TODO: indexing_type, stride
+                      Type {
+                          offset: TypeOffset(index),
+                          kind: TypeKind::Array(ArrayType {
+                              ty: element_type,
+                              count: count,
+                              ..Default::default()
                           }),
                       });
     Ok(())
