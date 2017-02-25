@@ -29,20 +29,23 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
         let index = ty.type_index() as usize;
         // debug!("Type: {:?}", ty.parse());
         match ty.parse() {
-            Ok(pdb::TypeData::Class { fields, size, name, .. }) => {
+            Ok(pdb::TypeData::Class { properties, fields, size, name, .. }) => {
+                // TODO: derived_from, vtable_shape
                 parse_class(&mut unit,
                             &member_lists,
                             &namespace,
                             index,
+                            properties,
                             fields,
                             size,
                             name)?;
             }
-            Ok(pdb::TypeData::Enumeration { underlying_type, fields, name, .. }) => {
+            Ok(pdb::TypeData::Enumeration { properties, underlying_type, fields, name, .. }) => {
                 parse_enumeration(&mut unit,
                                   &enumerator_lists,
                                   &namespace,
                                   index,
+                                  properties,
                                   underlying_type,
                                   fields,
                                   name)?;
@@ -184,15 +187,18 @@ fn parse_class<'input>(
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
     namespace: &Rc<Namespace<'input>>,
     index: usize,
+    properties: pdb::TypeProperties,
     fields: Option<pdb::TypeIndex>,
     size: u16,
     name: pdb::RawString<'input>
 ) -> Result<()> {
+    let declaration = properties.forward_reference();
+    let byte_size = if declaration { None } else { Some(size as u64) };
     let members = match fields {
-        Some(index) => {
-            match member_lists.get(&(index as usize)) {
+        Some(fields) => {
+            match member_lists.get(&(fields as usize)) {
                 Some(members) => members.clone(),
-                None => return Err(format!("Missing field list for index {}", index).into()),
+                None => return Err(format!("Missing field list for index {}", fields).into()),
             }
         }
         None => Vec::new(),
@@ -203,8 +209,8 @@ fn parse_class<'input>(
                           kind: TypeKind::Struct(StructType {
                               namespace: namespace.clone(),
                               name: Some(name.as_bytes()),
-                              byte_size: Some(size as u64),
-                              declaration: false, // TODO
+                              byte_size: byte_size,
+                              declaration: declaration,
                               members: members,
                           }),
                       });
@@ -216,13 +222,20 @@ fn parse_enumeration<'input>(
     enumerator_lists: &BTreeMap<usize, Vec<Enumerator<'input>>>,
     namespace: &Rc<Namespace<'input>>,
     index: usize,
+    properties: pdb::TypeProperties,
     _underlying_type: pdb::TypeIndex,
-    fields: pdb::TypeIndex,
+    fields: Option<pdb::TypeIndex>,
     name: pdb::RawString<'input>
 ) -> Result<()> {
-    let enumerators = match enumerator_lists.get(&(fields as usize)) {
-        Some(enumerators) => (*enumerators).clone(),
-        None => return Err(format!("Missing field list for index {}", index).into()),
+    let declaration = properties.forward_reference();
+    let enumerators = match fields {
+        Some(fields) => {
+            match enumerator_lists.get(&(fields as usize)) {
+                Some(enumerators) => enumerators.clone(),
+                None => return Err(format!("Missing field list for index {}", fields).into()),
+            }
+        }
+        None => Vec::new(),
     };
     unit.types.insert(index,
                       Type {
@@ -230,8 +243,7 @@ fn parse_enumeration<'input>(
                           kind: TypeKind::Enumeration(EnumerationType {
                               namespace: namespace.clone(),
                               name: Some(name.as_bytes()),
-                              declaration: false,
-                              // TODO: size
+                              declaration: declaration,
                               byte_size: None,
                               enumerators: enumerators, // TODO: underlying_type
                           }),
