@@ -1553,6 +1553,8 @@ impl<'input> StructType<'input> {
         mut bit_offset: Option<u64>
     ) -> Result<()> {
         for member in &self.members {
+            state.line_option(w,
+                             |w, _state| Member::print_padding(w, member.padding(bit_offset)))?;
             member.print(w, state, unit, &mut bit_offset)?;
         }
         state.line_option(w,
@@ -1629,6 +1631,9 @@ impl<'input> StructType<'input> {
 
             // Diff the pair.
             if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                state.line_option(w,
+                                 |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
+                                 |w, _state| Member::print_padding(w, b.padding(bit_offset_b)))?;
                 state.prefix_diff(|state| {
                         Member::diff(w,
                                      state,
@@ -1808,6 +1813,7 @@ impl<'input> UnionType<'input> {
     ) -> Result<()> {
         for member in &self.members {
             let mut bit_offset = bit_offset;
+            // TODO: padding?
             member.print(w, state, unit, &mut bit_offset)?;
         }
         // TODO: trailing padding?
@@ -1837,6 +1843,7 @@ impl<'input> UnionType<'input> {
                    &mut members_b.iter(),
                    |a, b| Member::cmp_id(a, b),
                    |w, state, a, b| {
+                // TODO: padding?
                 Member::diff(w,
                              state,
                              unit_a,
@@ -1904,8 +1911,6 @@ impl<'input> Member<'input> {
         unit: &Unit,
         end_bit_offset: &mut Option<u64>
     ) -> Result<()> {
-        state.line_option(w,
-                         |w, _state| Self::print_padding(w, self.padding(*end_bit_offset)))?;
         state.line(w,
                   |w, state| self.print_name(w, state, unit, end_bit_offset))?;
         state.indent(|state| {
@@ -1928,9 +1933,6 @@ impl<'input> Member<'input> {
         b: &Member,
         end_bit_offset_b: &mut Option<u64>
     ) -> Result<()> {
-        state.line_option(w,
-                         |w, _state| Self::print_padding(w, a.padding(*end_bit_offset_a)),
-                         |w, _state| Self::print_padding(w, b.padding(*end_bit_offset_b)))?;
         state.line(w,
                   |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
                   |w, state| b.print_name(w, state, unit_b, end_bit_offset_b))?;
