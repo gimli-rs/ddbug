@@ -190,7 +190,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
 fn add_primitive_types<'input>(types: &mut BTreeMap<usize, Type<'input>>) {
     add_primitive_type(types, 0x00, b"NoType", 4);
     add_primitive_type(types, 0x03, b"void", 0);
-    add_primitive_type(types, 0x10, b"i8", 1);  // char
+    add_primitive_type(types, 0x10, b"i8", 1);  // signed char
     add_primitive_type(types, 0x11, b"i16", 2); // short
     add_primitive_type(types, 0x12, b"i32", 4); // long
     add_primitive_type(types, 0x13, b"i64", 8);
@@ -203,6 +203,8 @@ fn add_primitive_types<'input>(types: &mut BTreeMap<usize, Type<'input>>) {
     add_primitive_type(types, 0x41, b"f64", 8); // double
     add_primitive_type(types, 0x68, b"i8", 1); // int8_t
     add_primitive_type(types, 0x69, b"u8", 1); // uint8_t
+    add_primitive_type(types, 0x70, b"i8", 1); // char
+    add_primitive_type(types, 0x71, b"wchar_t", 2); // wchar_t
     add_primitive_type(types, 0x72, b"i16", 4); // int16_t
     add_primitive_type(types, 0x73, b"u16", 4); // uint16_t
     add_primitive_type(types, 0x74, b"i32", 4); // int32_t
