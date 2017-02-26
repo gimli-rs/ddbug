@@ -1287,6 +1287,7 @@ enum TypeModifierKind {
     Const,
     Pointer,
     Restrict,
+    Other,
 }
 
 impl<'input> TypeModifier<'input> {
@@ -1300,7 +1301,8 @@ impl<'input> TypeModifier<'input> {
         }
         match self.kind {
             TypeModifierKind::Const |
-            TypeModifierKind::Restrict => self.ty(unit).and_then(|v| v.bit_size(unit)),
+            TypeModifierKind::Restrict |
+            TypeModifierKind::Other => self.ty(unit).and_then(|v| v.bit_size(unit)),
             TypeModifierKind::Pointer => unit.address_size.map(|v| v * 8),
         }
     }
@@ -1313,6 +1315,7 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Const => write!(w, "const ")?,
                 TypeModifierKind::Pointer => write!(w, "* ")?,
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
+                TypeModifierKind::Other => {}
             }
             match self.ty {
                 Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,

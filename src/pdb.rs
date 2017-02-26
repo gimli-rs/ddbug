@@ -20,6 +20,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     let mut member_lists = BTreeMap::new();
     let mut enumerator_lists = BTreeMap::new();
     let mut argument_lists = BTreeMap::new();
+    let mut bitfields = BTreeMap::new();
 
     let mut unit = Unit::default();
     let namespace = Namespace::root();
@@ -114,6 +115,28 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                       }),
                                   });
             }
+            Ok(pdb::TypeData::Modifier { underlying_type, constant, .. }) => {
+                let underlying_type = parse_type_index(underlying_type);
+                // TODO: volatile, unaligned
+                let kind = if constant {
+                    TypeModifierKind::Const
+                } else {
+                    TypeModifierKind::Other
+                };
+                unit.types.insert(index,
+                                  Type {
+                                      offset: TypeOffset(index),
+                                      kind: TypeKind::Modifier(TypeModifier {
+                                          kind: kind,
+                                          ty: underlying_type,
+                                          name: None,
+                                          byte_size: None,
+                                      }),
+                                  });
+            }
+            Ok(pdb::TypeData::Bitfield { underlying_type, length, position }) => {
+                bitfields.insert(index, (underlying_type, position, length));
+            }
             Ok(pdb::TypeData::Array { element_type, indexing_type, stride, dimensions }) => {
                 let element_type = parse_type_index(element_type);
                 let indexing_type = parse_type_index(indexing_type);
@@ -128,6 +151,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 let continuation = continuation.and_then(parse_type_index);
                 parse_field_list(&mut member_lists,
                                  &mut enumerator_lists,
+                                 &bitfields,
                                  index,
                                  fields,
                                  continuation)?;
@@ -484,6 +508,7 @@ fn parse_array<'input>(
 fn parse_field_list<'input>(
     member_lists: &mut BTreeMap<usize, Vec<Member<'input>>>,
     enumerator_lists: &mut BTreeMap<usize, Vec<Enumerator<'input>>>,
+    bitfields: &BTreeMap<usize, (pdb::TypeIndex, u8, u8)>,
     index: usize,
     fields: Vec<pdb::TypeData<'input>>,
     continuation: Option<TypeOffset>
@@ -496,12 +521,22 @@ fn parse_field_list<'input>(
     for field in fields {
         match field {
             pdb::TypeData::Member { field_type, offset, name, .. } => {
-                let field_type = parse_type_index(field_type);
+                let mut ty = parse_type_index(field_type);
+                let mut bit_offset = offset as u64 * 8;
+                let mut bit_size = None;
+                match bitfields.get(&(field_type as usize)) {
+                    Some(&(bitfield_type, bitfield_offset, bitfield_size)) => {
+                        ty = parse_type_index(bitfield_type);
+                        bit_offset += bitfield_offset as u64;
+                        bit_size = Some(bitfield_size as u64);
+                    }
+                    None => {}
+                }
                 members.push(Member {
                     name: Some(name.as_bytes()),
-                    ty: field_type,
-                    bit_offset: offset as u64 * 8,
-                    bit_size: None,
+                    ty: ty,
+                    bit_offset: bit_offset,
+                    bit_size: bit_size,
                 });
             }
             pdb::TypeData::Enumerate { value, name, .. } => {
