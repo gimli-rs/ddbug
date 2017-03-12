@@ -350,7 +350,7 @@ fn parse_enumeration<'input>(
     namespace: &Rc<Namespace<'input>>,
     index: usize,
     properties: pdb::TypeProperties,
-    _underlying_type: Option<TypeOffset>,
+    underlying_type: Option<TypeOffset>,
     fields: Option<TypeOffset>,
     name: pdb::RawString<'input>
 ) -> Result<()> {
@@ -365,13 +365,13 @@ fn parse_enumeration<'input>(
         None => Vec::new(),
     };
     unit.types.insert(index,
-                      // TODO: underlying_type
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Enumeration(EnumerationType {
                                                           namespace: namespace.clone(),
                                                           name: Some(name.as_bytes()),
                                                           declaration: declaration,
+                                                          ty: underlying_type,
                                                           byte_size: None,
                                                           enumerators: enumerators,
                                                       }),

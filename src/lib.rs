@@ -1039,16 +1039,16 @@ impl<'input> Type<'input> {
         unit.types.get(&offset.0)
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
         match self.kind {
-            TypeKind::Base(ref val) => val.bit_size(unit),
-            TypeKind::Def(ref val) => val.bit_size(unit),
-            TypeKind::Struct(ref val) => val.bit_size(unit),
-            TypeKind::Union(ref val) => val.bit_size(unit),
-            TypeKind::Enumeration(ref val) => val.bit_size(unit),
-            TypeKind::Array(ref val) => val.bit_size(unit),
-            TypeKind::Subroutine(ref val) => val.bit_size(unit),
-            TypeKind::Modifier(ref val) => val.bit_size(unit),
+            TypeKind::Base(ref val) => val.byte_size(unit),
+            TypeKind::Def(ref val) => val.byte_size(unit),
+            TypeKind::Struct(ref val) => val.byte_size(unit),
+            TypeKind::Union(ref val) => val.byte_size(unit),
+            TypeKind::Enumeration(ref val) => val.byte_size(unit),
+            TypeKind::Array(ref val) => val.byte_size(unit),
+            TypeKind::Subroutine(ref val) => val.byte_size(unit),
+            TypeKind::Modifier(ref val) => val.byte_size(unit),
         }
     }
 
@@ -1083,7 +1083,7 @@ impl<'input> Type<'input> {
             TypeKind::Def(ref val) => val.print(w, state, unit),
             TypeKind::Struct(ref val) => val.print(w, state, unit),
             TypeKind::Union(ref val) => val.print(w, state, unit),
-            TypeKind::Enumeration(ref val) => val.print(w, state),
+            TypeKind::Enumeration(ref val) => val.print(w, state, unit),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
@@ -1306,15 +1306,15 @@ impl<'input> TypeModifier<'input> {
         self.ty.and_then(|v| Type::from_offset(unit, v))
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
-        if let Some(byte_size) = self.byte_size {
-            return Some(byte_size * 8);
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+        if self.byte_size.is_some() {
+            return self.byte_size;
         }
         match self.kind {
             TypeModifierKind::Const |
             TypeModifierKind::Restrict |
-            TypeModifierKind::Other => self.ty(unit).and_then(|v| v.bit_size(unit)),
-            TypeModifierKind::Pointer => unit.address_size.map(|v| v * 8),
+            TypeModifierKind::Other => self.ty(unit).and_then(|v| v.byte_size(unit)),
+            TypeModifierKind::Pointer => unit.address_size,
         }
     }
 
@@ -1344,8 +1344,8 @@ struct BaseType<'input> {
 }
 
 impl<'input> BaseType<'input> {
-    fn bit_size(&self, _unit: &Unit) -> Option<u64> {
-        self.byte_size.map(|v| v * 8)
+    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+        self.byte_size
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -1369,8 +1369,8 @@ impl<'input> TypeDef<'input> {
         self.ty.and_then(|t| Type::from_offset(unit, t))
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
-        self.ty(unit).and_then(|v| v.bit_size(unit))
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+        self.ty(unit).and_then(|v| v.byte_size(unit))
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -1393,9 +1393,9 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_bit_size(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
-        if let Some(bit_size) = self.bit_size(unit) {
-            write!(w, "size: {}", format_bit(bit_size))?;
+    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
+        if let Some(byte_size) = self.byte_size(unit) {
+            write!(w, "size: {}", byte_size)?;
         }
         Ok(())
     }
@@ -1408,7 +1408,7 @@ impl<'input> TypeDef<'input> {
         let ty = self.ty(unit);
         state.line(w, |w, state| self.print_name(w, state, unit))?;
         state.indent(|state| {
-                state.line(w, |w, state| self.print_bit_size(w, state, unit))?;
+                state.line(w, |w, state| self.print_byte_size(w, state, unit))?;
                 if let Some(ty) = ty {
                     if ty.is_anon() {
                         Type::print_members(w, state, unit, Some(ty), Some(0))?;
@@ -1439,8 +1439,8 @@ impl<'input> TypeDef<'input> {
                    |w, state| b.print_name(w, state, unit_b))?;
         state.indent(|state| {
             state.line_option(w,
-                              |w, state| a.print_bit_size(w, state, unit_a),
-                              |w, state| b.print_bit_size(w, state, unit_b))?;
+                              |w, state| a.print_byte_size(w, state, unit_a),
+                              |w, state| b.print_byte_size(w, state, unit_b))?;
             let ty_a = filter_option(a.ty(unit_a), Type::is_anon);
             let ty_b = filter_option(b.ty(unit_b), Type::is_anon);
             Type::diff_members(w, state, unit_a, ty_a, Some(0), unit_b, ty_b, Some(0))
@@ -1458,8 +1458,8 @@ struct StructType<'input> {
 }
 
 impl<'input> StructType<'input> {
-    fn bit_size(&self, _unit: &Unit) -> Option<u64> {
-        self.byte_size.map(|v| v * 8)
+    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+        self.byte_size
     }
 
     fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
@@ -1723,8 +1723,8 @@ struct UnionType<'input> {
 }
 
 impl<'input> UnionType<'input> {
-    fn bit_size(&self, _unit: &Unit) -> Option<u64> {
-        self.byte_size.map(|v| v * 8)
+    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+        self.byte_size
     }
 
     fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
@@ -1917,7 +1917,7 @@ impl<'input> Member<'input> {
         if self.bit_size.is_some() {
             self.bit_size
         } else {
-            self.ty(unit).and_then(|v| v.bit_size(unit))
+            self.ty(unit).and_then(|v| v.byte_size(unit).map(|v| v * 8))
         }
     }
 
@@ -2053,13 +2053,22 @@ struct EnumerationType<'input> {
     namespace: Rc<Namespace<'input>>,
     name: Option<&'input [u8]>,
     declaration: bool,
+    ty: Option<TypeOffset>,
     byte_size: Option<u64>,
     enumerators: Vec<Enumerator<'input>>,
 }
 
 impl<'input> EnumerationType<'input> {
-    fn bit_size(&self, _unit: &Unit) -> Option<u64> {
-        self.byte_size.map(|v| v * 8)
+    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
+        self.ty.and_then(|t| Type::from_offset(unit, t))
+    }
+
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+        if self.byte_size.is_some() {
+            self.byte_size
+        } else {
+            self.ty(unit).and_then(|v| v.byte_size(unit))
+        }
     }
 
     fn filter(&self, flags: &Flags) -> bool {
@@ -2073,11 +2082,11 @@ impl<'input> EnumerationType<'input> {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
                          state.line_option(w, |w, _state| self.print_declaration(w))?;
-                         state.line_option(w, |w, state| self.print_byte_size(w, state))?;
+                         state.line_option(w, |w, state| self.print_byte_size(w, state, unit))?;
                          self.print_enumerators(w, state)
                      })
     }
@@ -2085,9 +2094,9 @@ impl<'input> EnumerationType<'input> {
     fn diff(
         w: &mut Write,
         state: &mut DiffState,
-        _unit_a: &Unit,
+        unit_a: &Unit,
         a: &EnumerationType,
-        _unit_b: &Unit,
+        unit_b: &Unit,
         b: &EnumerationType
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
@@ -2097,8 +2106,8 @@ impl<'input> EnumerationType<'input> {
                                   |w, _state| a.print_declaration(w),
                                   |w, _state| b.print_declaration(w))?;
                 state.line_option(w,
-                                  |w, state| a.print_byte_size(w, state),
-                                  |w, state| b.print_byte_size(w, state))?;
+                                  |w, state| a.print_byte_size(w, state, unit_a),
+                                  |w, state| b.print_byte_size(w, state, unit_b))?;
                 Self::diff_enumerators(w, state, a, b)
             })?;
         Ok(())
@@ -2121,8 +2130,8 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
-        if let Some(size) = self.byte_size {
+    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
+        if let Some(size) = self.byte_size(unit) {
             write!(w, "size: {}", size)?;
         } else {
             debug!("enum with no size");
@@ -2236,9 +2245,9 @@ impl<'input> ArrayType<'input> {
         self.ty.and_then(|v| unit.types.get(&v.0))
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
         if let (Some(ty), Some(count)) = (self.ty(unit), self.count) {
-            ty.bit_size(unit).map(|v| v * count)
+            ty.byte_size(unit).map(|v| v * count)
         } else {
             None
         }
@@ -2265,7 +2274,7 @@ struct SubroutineType<'input> {
 }
 
 impl<'input> SubroutineType<'input> {
-    fn bit_size(&self, _unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
         None
     }
 
@@ -2526,8 +2535,8 @@ impl<'input> Subprogram<'input> {
 
     fn print_return_type(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if let Some(return_type) = self.return_type {
-            match Type::from_offset(unit, return_type).and_then(|t| t.bit_size(unit)) {
-                Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+            match Type::from_offset(unit, return_type).and_then(|t| t.byte_size(unit)) {
+                Some(byte_size) => write!(w, "[{}]", byte_size)?,
                 None => write!(w, "[??]")?,
             }
             write!(w, "\t")?;
@@ -2654,8 +2663,8 @@ impl<'input> Subprogram<'input> {
     }
 
     fn print_parameter(w: &mut Write, unit: &Unit, parameter: &Parameter) -> Result<()> {
-        match parameter.bit_size(unit) {
-            Some(bit_size) => write!(w, "[{}]", format_bit(bit_size))?,
+        match parameter.byte_size(unit) {
+            Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
@@ -2736,8 +2745,8 @@ impl<'input> Parameter<'input> {
         self.ty.and_then(|v| Type::from_offset(unit, v))
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
-        self.ty(unit).and_then(|t| t.bit_size(unit))
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+        self.ty(unit).and_then(|v| v.byte_size(unit))
     }
 
     fn cmp_id(a: &Parameter, b: &Parameter) -> cmp::Ordering {
@@ -2811,8 +2820,8 @@ impl<'input> Variable<'input> {
         self.ty.and_then(|v| Type::from_offset(unit, v))
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
-        self.ty(unit).and_then(|t| t.bit_size(unit))
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+        self.ty(unit).and_then(|t| t.byte_size(unit))
     }
 
     fn filter(&self, flags: &Flags) -> bool {
@@ -2888,8 +2897,8 @@ impl<'input> Variable<'input> {
     }
 
     fn print_size(&self, w: &mut Write, unit: &Unit) -> Result<()> {
-        if let Some(bit_size) = self.bit_size(unit) {
-            write!(w, "size: {}", format_bit(bit_size))?;
+        if let Some(byte_size) = self.byte_size(unit) {
+            write!(w, "size: {}", byte_size)?;
         } else if !self.declaration {
             debug!("variable with no size");
         }
