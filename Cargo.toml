@@ -6,7 +6,7 @@ authors = ["Philip Craig <philipjcraig@gmail.com>"]
 [dependencies]
 env_logger = "0.3.5"
 getopts = "0.2.14"
-gimli = { git = "https://github.com/gimli-rs/gimli", rev = "f9c150aefe55d82130060ddb5392aa8f63b97277" }
+gimli = { git = "https://github.com/gimli-rs/gimli", rev = "e2271620b63319a7513c738281764fd869980be8" }
 log = "0.3.6"
 memmap = "0.4.0"
 panopticon = { git = "https://github.com/philipc/panopticon", branch = "ddbug" }

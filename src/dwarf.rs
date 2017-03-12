@@ -4,7 +4,7 @@ use std::rc::Rc;
 use gimli;
 use xmas_elf;
 
-use super::{Error, Result};
+use super::Result;
 use super::{Unit, Namespace, Subprogram, InlinedSubroutine, Variable, Type, TypeKind, BaseType,
             TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType, SubroutineType,
             TypeModifier, TypeModifierKind, Member, Parameter};
@@ -538,7 +538,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     match attr.value() {
                         gimli::AttributeValue::Udata(v) => member.bit_offset = v * 8,
                         gimli::AttributeValue::Exprloc(expr) => {
-                            match evaluate(dwarf_unit.header, expr.0) {
+                            match evaluate(dwarf_unit.header, expr) {
                                 Ok(gimli::Location::Address { address }) => {
                                     member.bit_offset = address * 8;
                                 }
@@ -1216,51 +1216,26 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     Ok(variable)
 }
 
-#[derive(Debug)]
-struct SimpleContext;
-
-impl<'input> gimli::EvaluationContext<'input> for SimpleContext {
-    type ContextError = Error;
-
-    fn read_memory(&self, _addr: u64, _nbytes: u8, _space: Option<u64>) -> Result<u64> {
-        Err("unsupported evalation read_memory callback".into())
-    }
-    fn read_register(&self, _regno: u64) -> Result<u64> {
-        Err("unsupported evalation read_register callback".into())
-    }
-    fn frame_base(&self) -> Result<u64> {
-        Err("unsupported evalation frame_base callback".into())
-    }
-    fn read_tls(&self, _slot: u64) -> Result<u64> {
-        Err("unsupported evalation read_tls callback".into())
-    }
-    fn call_frame_cfa(&self) -> Result<u64> {
-        Err("unsupported evalation call_frame_cfa callback".into())
-    }
-    fn get_at_location(&self, _die: gimli::DieReference) -> Result<&'input [u8]> {
-        Err("unsupported evalation get_at_location callback".into())
-    }
-    fn evaluate_entry_value(&self, _expression: &[u8]) -> Result<u64> {
-        Err("unsupported evalation evaluate_entry_value callback".into())
-    }
-}
-
 
 fn evaluate<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<Endian>,
-    bytecode: &'input [u8]
+    bytecode: gimli::EndianBuf<'input, Endian>
 ) -> Result<gimli::Location<'input>>
-    where Endian: gimli::Endianity
+    where Endian: gimli::Endianity + 'input
 {
-    let mut context = SimpleContext {};
-    let mut evaluation = gimli::Evaluation::<Endian, SimpleContext>::new(bytecode,
-                                                                         unit.address_size(),
-                                                                         unit.format(),
-                                                                         &mut context);
+    let mut evaluation =
+        gimli::Evaluation::<Endian>::new(bytecode, unit.address_size(), unit.format());
     evaluation.set_initial_value(0);
-    let pieces = evaluation.evaluate()?;
-    if pieces.len() != 1 {
-        return Err(format!("unsupported number of evaluation pieces: {}", pieces.len()).into());
+    let result = evaluation.evaluate()?;
+    match result {
+        gimli::EvaluationResult::Complete => {
+            let pieces = evaluation.result();
+            if pieces.len() != 1 {
+                return Err(format!("unsupported number of evaluation pieces: {}", pieces.len())
+                               .into());
+            }
+            Ok(pieces[0].location)
+        }
+        _ => Err("unsupported evaluation expression".into()),
     }
-    Ok(pieces[0].location)
 }

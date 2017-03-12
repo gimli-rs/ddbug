@@ -4,7 +4,7 @@ version = "0.1.0"
 dependencies = [
  "env_logger 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)",
- "gimli 0.10.0 (git+https://github.com/gimli-rs/gimli?rev=f9c150aefe55d82130060ddb5392aa8f63b97277)",
+ "gimli 0.12.0 (git+https://github.com/gimli-rs/gimli?rev=e2271620b63319a7513c738281764fd869980be8)",
  "log 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "memmap 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "panopticon 0.16.0 (git+https://github.com/philipc/panopticon?branch=ddbug)",
@@ -98,8 +98,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "gimli"
-version = "0.10.0"
-source = "git+https://github.com/gimli-rs/gimli?rev=f9c150aefe55d82130060ddb5392aa8f63b97277#f9c150aefe55d82130060ddb5392aa8f63b97277"
+version = "0.12.0"
+source = "git+https://github.com/gimli-rs/gimli?rev=e2271620b63319a7513c738281764fd869980be8#e2271620b63319a7513c738281764fd869980be8"
 dependencies = [
  "arrayvec 0.3.20 (registry+https://github.com/rust-lang/crates.io-index)",
  "byteorder 0.5.3 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -411,7 +411,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum fs2 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "bcd414e5a1a979b931bb92f41b7a54106d3f6d2e6c253e9ce943b7cd468251ef"
 "checksum gcc 0.3.41 (registry+https://github.com/rust-lang/crates.io-index)" = "3689e1982a563af74960ae3a4758aa632bb8fd984cfc3cc3b60ee6109477ab6e"
 "checksum getopts 0.2.14 (registry+https://github.com/rust-lang/crates.io-index)" = "d9047cfbd08a437050b363d35ef160452c5fe8ea5187ae0a624708c91581d685"
-"checksum gimli 0.10.0 (git+https://github.com/gimli-rs/gimli?rev=f9c150aefe55d82130060ddb5392aa8f63b97277)" = "<none>"
+"checksum gimli 0.12.0 (git+https://github.com/gimli-rs/gimli?rev=e2271620b63319a7513c738281764fd869980be8)" = "<none>"
 "checksum goblin 0.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "0c930d9f8abb2e85d2824c6fb849718967ba921602d444947f5d63d9d21d27d3"
 "checksum graph_algos 0.11.0 (git+https://github.com/flanfly/rust-graph-algos.git)" = "<none>"
 "checksum kernel32-sys 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "7507624b29483431c0ba2d82aece8ca6cdba9382bff4ddd0f7490560c056098d"
