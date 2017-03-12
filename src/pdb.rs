@@ -8,8 +8,7 @@ use crate_pdb::FallibleIterator;
 use super::Result;
 use super::{File, Unit, Namespace, SubprogramOffset, Subprogram, InlinedSubroutine, Variable,
             TypeOffset, Type, TypeKind, BaseType, TypeDef, StructType, UnionType, EnumerationType,
-            Enumerator, ArrayType, SubroutineType, TypeModifier, TypeModifierKind, Member,
-            Parameter};
+            Enumerator, ArrayType, SubroutineType, TypeModifier, TypeModifierKind, Member, Parameter};
 
 pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let mut cursor = io::Cursor::new(input);
@@ -108,11 +107,11 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                   Type {
                                       offset: TypeOffset(index),
                                       kind: TypeKind::Modifier(TypeModifier {
-                                          kind: TypeModifierKind::Pointer,
-                                          ty: underlying_type,
-                                          name: None,
-                                          byte_size: None,
-                                      }),
+                                                                   kind: TypeModifierKind::Pointer,
+                                                                   ty: underlying_type,
+                                                                   name: None,
+                                                                   byte_size: None,
+                                                               }),
                                   });
             }
             Ok(pdb::TypeData::Modifier { underlying_type, constant, .. }) => {
@@ -127,11 +126,11 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                   Type {
                                       offset: TypeOffset(index),
                                       kind: TypeKind::Modifier(TypeModifier {
-                                          kind: kind,
-                                          ty: underlying_type,
-                                          name: None,
-                                          byte_size: None,
-                                      }),
+                                                                   kind: kind,
+                                                                   ty: underlying_type,
+                                                                   name: None,
+                                                                   byte_size: None,
+                                                               }),
                                   });
             }
             Ok(pdb::TypeData::Bitfield { underlying_type, length, position }) => {
@@ -214,7 +213,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
 fn add_primitive_types<'input>(types: &mut BTreeMap<usize, Type<'input>>) {
     add_primitive_type(types, 0x00, b"NoType", 4);
     add_primitive_type(types, 0x03, b"void", 0);
-    add_primitive_type(types, 0x10, b"i8", 1);  // signed char
+    add_primitive_type(types, 0x10, b"i8", 1); // signed char
     add_primitive_type(types, 0x11, b"i16", 2); // short
     add_primitive_type(types, 0x12, b"i32", 4); // long
     add_primitive_type(types, 0x13, b"i64", 8);
@@ -247,31 +246,31 @@ fn add_primitive_type<'input>(
                  Type {
                      offset: TypeOffset(index),
                      kind: TypeKind::Base(BaseType {
-                         name: Some(name),
-                         byte_size: Some(size),
-                     }),
+                                              name: Some(name),
+                                              byte_size: Some(size),
+                                          }),
                  });
 
     types.insert(0x400 + index,
                  Type {
                      offset: TypeOffset(0x400 + index),
                      kind: TypeKind::Modifier(TypeModifier {
-                         kind: TypeModifierKind::Pointer,
-                         ty: Some(TypeOffset(index)),
-                         name: None,
-                         byte_size: Some(4),
-                     }),
+                                                  kind: TypeModifierKind::Pointer,
+                                                  ty: Some(TypeOffset(index)),
+                                                  name: None,
+                                                  byte_size: Some(4),
+                                              }),
                  });
 
     types.insert(0x600 + index,
                  Type {
                      offset: TypeOffset(0x600 + index),
                      kind: TypeKind::Modifier(TypeModifier {
-                         kind: TypeModifierKind::Pointer,
-                         ty: Some(TypeOffset(index)),
-                         name: None,
-                         byte_size: Some(8),
-                     }),
+                                                  kind: TypeModifierKind::Pointer,
+                                                  ty: Some(TypeOffset(index)),
+                                                  name: None,
+                                                  byte_size: Some(8),
+                                              }),
                  });
 }
 
@@ -300,12 +299,12 @@ fn parse_class<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Struct(StructType {
-                              namespace: namespace.clone(),
-                              name: Some(name.as_bytes()),
-                              byte_size: byte_size,
-                              declaration: declaration,
-                              members: members,
-                          }),
+                                                     namespace: namespace.clone(),
+                                                     name: Some(name.as_bytes()),
+                                                     byte_size: byte_size,
+                                                     declaration: declaration,
+                                                     members: members,
+                                                 }),
                       });
     Ok(())
 }
@@ -335,12 +334,12 @@ fn parse_union<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Union(UnionType {
-                              namespace: namespace.clone(),
-                              name: Some(name.as_bytes()),
-                              byte_size: byte_size,
-                              declaration: declaration,
-                              members: members,
-                          }),
+                                                    namespace: namespace.clone(),
+                                                    name: Some(name.as_bytes()),
+                                                    byte_size: byte_size,
+                                                    declaration: declaration,
+                                                    members: members,
+                                                }),
                       });
     Ok(())
 }
@@ -370,12 +369,12 @@ fn parse_enumeration<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Enumeration(EnumerationType {
-                              namespace: namespace.clone(),
-                              name: Some(name.as_bytes()),
-                              declaration: declaration,
-                              byte_size: None,
-                              enumerators: enumerators,
-                          }),
+                                                          namespace: namespace.clone(),
+                                                          name: Some(name.as_bytes()),
+                                                          declaration: declaration,
+                                                          byte_size: None,
+                                                          enumerators: enumerators,
+                                                      }),
                       });
     Ok(())
 }
@@ -400,11 +399,11 @@ fn parse_procedure<'input>(
                     }
                     arguments.iter()
                         .map(|argument| {
-                            Parameter {
-                                name: None,
-                                ty: parse_type_index(*argument),
-                            }
-                        })
+                                 Parameter {
+                                     name: None,
+                                     ty: parse_type_index(*argument),
+                                 }
+                             })
                         .collect()
                 }
                 None => return Err(format!("Missing argument list {}", argument_list.0).into()),
@@ -418,9 +417,9 @@ fn parse_procedure<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Subroutine(SubroutineType {
-                              parameters: parameters,
-                              return_type: return_type,
-                          }),
+                                                         parameters: parameters,
+                                                         return_type: return_type,
+                                                     }),
                       });
     Ok(())
 }
@@ -443,9 +442,9 @@ fn parse_member_function<'input>(
         Some(TypeOffset(3)) => {}
         ty => {
             parameters.push(Parameter {
-                name: None,
-                ty: ty,
-            });
+                                name: None,
+                                ty: ty,
+                            });
         }
     }
     if let Some(ref argument_list) = argument_list {
@@ -458,9 +457,9 @@ fn parse_member_function<'input>(
                 }
                 for argument in arguments {
                     parameters.push(Parameter {
-                        name: None,
-                        ty: parse_type_index(*argument),
-                    });
+                                        name: None,
+                                        ty: parse_type_index(*argument),
+                                    });
                 }
             }
             None => return Err(format!("Missing argument list {}", argument_list.0).into()),
@@ -472,9 +471,9 @@ fn parse_member_function<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Subroutine(SubroutineType {
-                              parameters: parameters,
-                              return_type: return_type,
-                          }),
+                                                         parameters: parameters,
+                                                         return_type: return_type,
+                                                     }),
                       });
     Ok(())
 }
@@ -497,10 +496,10 @@ fn parse_array<'input>(
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Array(ArrayType {
-                              ty: element_type,
-                              count: count,
-                              ..Default::default()
-                          }),
+                                                    ty: element_type,
+                                                    count: count,
+                                                    ..Default::default()
+                                                }),
                       });
     Ok(())
 }
@@ -533,11 +532,11 @@ fn parse_field_list<'input>(
                     None => {}
                 }
                 members.push(Member {
-                    name: Some(name.as_bytes()),
-                    ty: ty,
-                    bit_offset: bit_offset,
-                    bit_size: bit_size,
-                });
+                                 name: Some(name.as_bytes()),
+                                 ty: ty,
+                                 bit_offset: bit_offset,
+                                 bit_size: bit_size,
+                             });
             }
             pdb::TypeData::Enumerate { value, name, .. } => {
                 let value = match value {
@@ -551,9 +550,9 @@ fn parse_field_list<'input>(
                     pdb::EnumValue::I64(val) => val as i64,
                 };
                 enumerators.push(Enumerator {
-                    name: Some(name.as_bytes()),
-                    value: Some(value),
-                });
+                                     name: Some(name.as_bytes()),
+                                     value: Some(value),
+                                 });
             }
             _ => {
                 debug!("PDB unimplemented field type {:?}", field);

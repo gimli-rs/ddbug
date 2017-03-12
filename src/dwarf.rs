@@ -6,8 +6,8 @@ use xmas_elf;
 
 use super::{Error, Result};
 use super::{Unit, Namespace, Subprogram, InlinedSubroutine, Variable, Type, TypeKind, BaseType,
-            TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType,
-            SubroutineType, TypeModifier, TypeModifierKind, Member, Parameter};
+            TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType, SubroutineType,
+            TypeModifier, TypeModifierKind, Member, Parameter};
 
 struct DwarfFileState<'input, Endian>
     where Endian: gimli::Endianity
@@ -216,7 +216,10 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 {
     let tag = iter.entry().unwrap().tag();
     let mut ty = Type::default();
-    ty.offset = iter.entry().unwrap().offset().into();
+    ty.offset = iter.entry()
+        .unwrap()
+        .offset()
+        .into();
     ty.kind = match tag {
         gimli::DW_TAG_base_type => {
             TypeKind::Base(parse_base_type(dwarf, dwarf_unit, namespace, iter)?)
@@ -664,8 +667,7 @@ fn parse_enumeration_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_enumerator => {
-                ty.enumerators
-                    .push(parse_enumerator(dwarf, dwarf_unit, &namespace, child)?);
+                ty.enumerators.push(parse_enumerator(dwarf, dwarf_unit, &namespace, child)?);
             }
             gimli::DW_TAG_subprogram => {
                 parse_subprogram(unit, dwarf, dwarf_unit, &namespace, child)?;
@@ -815,8 +817,7 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_formal_parameter => {
-                subroutine.parameters
-                    .push(parse_parameter(dwarf, dwarf_unit, namespace, child)?);
+                subroutine.parameters.push(parse_parameter(dwarf, dwarf_unit, namespace, child)?);
             }
             tag => {
                 debug!("unknown subroutine child tag: {}", tag);
@@ -836,7 +837,10 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     where Endian: gimli::Endianity
 {
     let mut subprogram = Subprogram {
-        offset: iter.entry().unwrap().offset().into(),
+        offset: iter.entry()
+            .unwrap()
+            .offset()
+            .into(),
         namespace: namespace.clone(),
         name: None,
         linkage_name: None,
@@ -923,16 +927,16 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_formal_parameter => {
-                subprogram.parameters
-                    .push(parse_parameter(dwarf, dwarf_unit, namespace, child)?);
+                subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, namespace, child)?);
             }
             gimli::DW_TAG_inlined_subroutine => {
-                subprogram.inlined_subroutines
-                    .push(parse_inlined_subroutine(dwarf, dwarf_unit, namespace, child)?);
+                subprogram.inlined_subroutines.push(parse_inlined_subroutine(dwarf,
+                                                                             dwarf_unit,
+                                                                             namespace,
+                                                                             child)?);
             }
             gimli::DW_TAG_variable => {
-                subprogram.variables
-                    .push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
+                subprogram.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(&mut subprogram.inlined_subroutines,
@@ -1034,7 +1038,10 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                inlined_subroutines.push(parse_inlined_subroutine(dwarf, dwarf_unit, namespace, child)?);
+                inlined_subroutines.push(parse_inlined_subroutine(dwarf,
+                                                                  dwarf_unit,
+                                                                  namespace,
+                                                                  child)?);
             }
             gimli::DW_TAG_variable => {
                 variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
@@ -1128,8 +1135,10 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                subroutine.inlined_subroutines
-                    .push(parse_inlined_subroutine(dwarf, dwarf_unit, namespace, child)?);
+                subroutine.inlined_subroutines.push(parse_inlined_subroutine(dwarf,
+                                                                             dwarf_unit,
+                                                                             namespace,
+                                                                             child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(&mut subroutine.inlined_subroutines,
