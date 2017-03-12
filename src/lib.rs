@@ -2237,6 +2237,7 @@ impl<'input> Enumerator<'input> {
 struct ArrayType<'input> {
     ty: Option<TypeOffset>,
     count: Option<u64>,
+    byte_size: Option<u64>,
     phantom: std::marker::PhantomData<&'input [u8]>,
 }
 
@@ -2246,8 +2247,20 @@ impl<'input> ArrayType<'input> {
     }
 
     fn byte_size(&self, unit: &Unit) -> Option<u64> {
-        if let (Some(ty), Some(count)) = (self.ty(unit), self.count) {
+        if self.byte_size.is_some() {
+            self.byte_size
+        } else if let (Some(ty), Some(count)) = (self.ty(unit), self.count) {
             ty.byte_size(unit).map(|v| v * count)
+        } else {
+            None
+        }
+    }
+
+    fn count(&self, unit: &Unit) -> Option<u64> {
+        if self.count.is_some() {
+            self.count
+        } else if let (Some(ty), Some(byte_size)) = (self.ty(unit), self.byte_size) {
+            ty.byte_size(unit).map(|v| byte_size / v)
         } else {
             None
         }
@@ -2259,7 +2272,7 @@ impl<'input> ArrayType<'input> {
             Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
             None => write!(w, "<unknown-type>")?,
         }
-        if let Some(count) = self.count {
+        if let Some(count) = self.count(unit) {
             write!(w, "; {}", count)?;
         }
         write!(w, "]")?;

@@ -495,15 +495,14 @@ fn parse_array<'input>(
     if dimensions.len() != 1 {
         return Err("Unsupported multi-dimensional array".into());
     }
-    let count = Some(dimensions[0] as u64);
-    // FIXME: count is in bytes, not elements
+    let byte_size = Some(dimensions[0] as u64);
     unit.types.insert(index,
                       // TODO: indexing_type, stride
                       Type {
                           offset: TypeOffset(index),
                           kind: TypeKind::Array(ArrayType {
                                                     ty: element_type,
-                                                    count: count,
+                                                    byte_size: byte_size,
                                                     ..Default::default()
                                                 }),
                       });
