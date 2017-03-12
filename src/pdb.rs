@@ -101,8 +101,14 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                       argument_list,
                                       this_adjustment)?;
             }
-            Ok(pdb::TypeData::Pointer { underlying_type, .. }) => {
+            Ok(pdb::TypeData::Pointer { underlying_type, attributes }) => {
                 let underlying_type = parse_type_index(underlying_type);
+                let byte_size = attributes.size() as u64;
+                let byte_size = if byte_size == 0 {
+                    None
+                } else {
+                    Some(byte_size)
+                };
                 unit.types.insert(index,
                                   Type {
                                       offset: TypeOffset(index),
@@ -110,7 +116,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                                                    kind: TypeModifierKind::Pointer,
                                                                    ty: underlying_type,
                                                                    name: None,
-                                                                   byte_size: None,
+                                                                   byte_size: byte_size,
                                                                }),
                                   });
             }
