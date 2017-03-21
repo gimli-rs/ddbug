@@ -356,7 +356,7 @@ fn test_struct_diff_member() {
 
 #[test]
 fn test_struct_diff_member_reorder() {
-    // TODO: T.c should show no difference.
+    // TODO: T.c should show no difference?
     diff_c(concat!("struct T {",
                    "  char a;",
                    "  char b;",
@@ -378,14 +378,14 @@ fn test_struct_diff_member_reorder() {
            concat!("  struct T\n",
                    "  \tsize: 7\n",
                    "  \tmembers:\n",
-                   "- \t\t0[1]\ta: char\n",
-                   "- \t\t1[1]\tb: char\n",
-                   "- \t\t2[1]\tc: char\n",
-                   "- \t\t3[2]\td: [char; 2]\n",
                    "+ \t\t0[2]\td: [char; 2]\n",
                    "+ \t\t2[1]\tc: char\n",
+                   "- \t\t0[1]\ta: char\n",
                    "+ \t\t3[1]\ta: char\n",
+                   "- \t\t1[1]\tb: char\n",
                    "+ \t\t4[1]\tb: char\n",
+                   "- \t\t2[1]\tc: char\n",
+                   "- \t\t3[2]\td: [char; 2]\n",
                    "  \t\t5[1]\tx: char\n",
                    "- \t\t6[1]\ty: char\n",
                    "+ \t\t6[1]\tz: char\n",
@@ -825,9 +825,9 @@ fn test_function_diff_return_type() {
 
 #[test]
 fn test_function_diff_parameters() {
-    diff_c(concat!("char F(char a, char c, char d, char e) {}\n",
+    diff_c(concat!("char F(char a, char c, char d, char e, int extra, char g) {}\n",
                    "int main() {}\n"),
-           concat!("char F(char b, char c, int d, char f) {}\n",
+           concat!("char F(char b, char c, int d, char f, char g) {}\n",
                    "int main() {}\n"),
            concat!("  fn F\n",
                    "[..]\n",
@@ -841,6 +841,8 @@ fn test_function_diff_parameters() {
                    "+ \t\t[4]\td: int\n",
                    "- \t\t[1]\te: char\n",
                    "+ \t\t[1]\tf: char\n",
+                   "- \t\t[4]\textra: int\n",
+                   "  \t\t[1]\tg: char\n",
                    "\n"),
            flags().name("F"));
 }

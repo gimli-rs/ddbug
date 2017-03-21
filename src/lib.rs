@@ -21,6 +21,7 @@ use std::rc::Rc;
 
 use panopticon::amd64;
 
+mod diff;
 mod dwarf;
 mod pdb;
 
@@ -835,7 +836,7 @@ impl<'input> Unit<'input> {
             .filter(|a| filter_type(a))
             .collect();
         if diff || flags.sort {
-            types.sort_by(|a, b| Type::cmp_id(a, b));
+            types.sort_by(|a, b| Type::cmp_id(self, a, self, b));
         }
         types
     }
@@ -907,7 +908,7 @@ impl<'input> Unit<'input> {
         state.merge(w,
                     &mut unit_a.filter_types(flags, true).iter(),
                     &mut unit_b.filter_types(flags, true).iter(),
-                    |a, b| Type::cmp_id(a, b),
+                    |a, b| Type::cmp_id(unit_a, a, unit_b, b),
                     |w, state, a, b| {
                 state.diff(w, |w, state| {
                     Type::diff(w, state, unit_a, a, unit_b, b)?;
@@ -1129,13 +1130,19 @@ impl<'input> Type<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     /// This must only be called for types that have identifiers.
-    fn cmp_id(type_a: &Type, type_b: &Type) -> cmp::Ordering {
+    fn cmp_id(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> cmp::Ordering {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
+            (&Base(ref a), &Base(ref b)) => BaseType::cmp_id(a, b),
             (&Def(ref a), &Def(ref b)) => TypeDef::cmp_id(a, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::cmp_id(a, b),
             (&Union(ref a), &Union(ref b)) => UnionType::cmp_id(a, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_id(a, b),
+            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(unit_a, a, unit_b, b),
+            (&Subroutine(ref a), &Subroutine(ref b)) => {
+                SubroutineType::cmp_id(unit_a, a, unit_b, b)
+            }
+            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(unit_a, a, unit_b, b),
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
                 let discr_b = type_b.kind.discriminant_value();
@@ -1301,6 +1308,17 @@ enum TypeModifierKind {
     Other,
 }
 
+impl TypeModifierKind {
+    fn discriminant_value(&self) -> u8 {
+        match *self {
+            TypeModifierKind::Const => 0,
+            TypeModifierKind::Pointer => 1,
+            TypeModifierKind::Restrict => 2,
+            TypeModifierKind::Other => 3,
+        }
+    }
+}
+
 impl<'input> TypeModifier<'input> {
     fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(unit, v))
@@ -1335,6 +1353,30 @@ impl<'input> TypeModifier<'input> {
         }
         Ok(())
     }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(unit_a: &Unit, a: &TypeModifier, unit_b: &Unit, b: &TypeModifier) -> cmp::Ordering {
+        match (a.ty(unit_a), b.ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+        let discr_a = a.kind.discriminant_value();
+        let discr_b = b.kind.discriminant_value();
+        discr_a.cmp(&discr_b)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -1354,6 +1396,13 @@ impl<'input> BaseType<'input> {
             None => write!(w, "<anon-base-type>")?,
         }
         Ok(())
+    }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &BaseType, b: &BaseType) -> cmp::Ordering {
+        a.name.cmp(&b.name)
     }
 }
 
@@ -1583,101 +1632,67 @@ impl<'input> StructType<'input> {
         b: &StructType,
         mut bit_offset_b: Option<u64>
     ) -> Result<()> {
-        // Enumerate members and sort by name. Exclude anonymous members.
-        let mut members_a = a.members
-            .iter()
-            .enumerate()
-            .filter(|a| a.1.name.is_some())
-            .collect::<Vec<_>>();
-        members_a.sort_by(|x, y| Member::cmp_id(x.1, y.1));
-        let mut members_b = b.members
-            .iter()
-            .enumerate()
-            .filter(|b| b.1.name.is_some())
-            .collect::<Vec<_>>();
-        members_b.sort_by(|x, y| Member::cmp_id(x.1, y.1));
-
-        // Find pairs of members with the same name.
-        let mut pairs = Vec::new();
-        for m in MergeIterator::new(members_a.iter(),
-                                    members_b.iter(),
-                                    |a, b| Member::cmp_id(a.1, b.1)) {
-            if let MergeResult::Both(a, b) = m {
-                if a.1.name.is_some() {
-                    pairs.push((a, b));
+        let path = diff::shortest_path(&a.members, &b.members, 1, |a, b| {
+            let mut cost = 0;
+            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                cost += 1;
+            }
+            match (a.ty(unit_a), b.ty(unit_b)) {
+                (Some(ty_a), Some(ty_b)) => {
+                    if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                        cost += 1;
+                    }
+                }
+                (None, None) => {}
+                _ => {
+                    cost += 1;
                 }
             }
-        }
-        // TODO: For remaining members, find pairs of members with the same type.
-        // This should also handle matching up anonymous members.
+            cost
+        });
 
-        // Sort pairs by the indices.
-        // TODO: also sort by equality (eg print and compare).
-        pairs.sort_by(|&(xa, xb), &(ya, yb)| match (xa.0.cmp(&ya.0), xb.0.cmp(&yb.0)) {
-                          (cmp::Ordering::Less, cmp::Ordering::Less) => cmp::Ordering::Less,
-                          (cmp::Ordering::Greater, cmp::Ordering::Greater) => {
-                              cmp::Ordering::Greater
-                          }
-                          (_cmp_a, cmp_b) => cmp_b,
-                      });
-
-        // Loop through the pairs.
-        let mut index_a = 0;
-        let mut index_b = 0;
         let mut iter_a = a.members.iter();
         let mut iter_b = b.members.iter();
-        for &(a, b) in &pairs {
-            // Skip pairs that are already partially printed.
-            if a.0 < index_a || b.0 < index_b {
-                continue;
-            }
-
-            // Print members leading up to the pair.
-            while index_a < a.0 {
-                if let Some(a) = iter_a.next() {
-                    state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
+        for dir in path {
+            match dir {
+                diff::Direction::None => break,
+                diff::Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        state.line_option(w,
+                                          |w, _state| {
+                                              Member::print_padding(w, a.padding(bit_offset_a))
+                                          },
+                                          |w, _state| {
+                                              Member::print_padding(w, b.padding(bit_offset_b))
+                                          })?;
+                        state.prefix_diff(|state| {
+                                Member::diff(w,
+                                             state,
+                                             unit_a,
+                                             a,
+                                             &mut bit_offset_a,
+                                             unit_b,
+                                             b,
+                                             &mut bit_offset_b)
+                            })?;
+                    }
                 }
-                index_a += 1;
-            }
-            while index_b < b.0 {
-                if let Some(b) = iter_b.next() {
-                    state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
+                diff::Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
+                    }
                 }
-                index_b += 1;
+                diff::Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
+                    }
+                }
             }
-
-            // Diff the pair.
-            if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                state.line_option(w,
-                                  |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
-                                  |w, _state| Member::print_padding(w, b.padding(bit_offset_b)))?;
-                state.prefix_diff(|state| {
-                        Member::diff(w,
-                                     state,
-                                     unit_a,
-                                     a,
-                                     &mut bit_offset_a,
-                                     unit_b,
-                                     b,
-                                     &mut bit_offset_b)
-                    })?;
-            }
-            index_a += 1;
-            index_b += 1;
-        }
-
-        // Print trailing members.
-        for a in iter_a {
-            state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
-        }
-        for b in iter_b {
-            state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
         }
 
         state.line_option(w,
                           |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
                           |w, _state| Member::print_padding(w, b.padding(bit_offset_b)))?;
-
         Ok(())
     }
 
@@ -2278,6 +2293,28 @@ impl<'input> ArrayType<'input> {
         write!(w, "]")?;
         Ok(())
     }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> cmp::Ordering {
+        match (a.ty(unit_a), b.ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+        a.count.cmp(&b.count)
+    }
 }
 
 #[derive(Debug, Default)]
@@ -2313,6 +2350,46 @@ impl<'input> SubroutineType<'input> {
             return_type.print_ref(w, unit)?;
         }
         Ok(())
+    }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(
+        unit_a: &Unit,
+        a: &SubroutineType,
+        unit_b: &Unit,
+        b: &SubroutineType
+    ) -> cmp::Ordering {
+        for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
+            let ord = Parameter::cmp_id(unit_a, parameter_a, unit_b, parameter_b);
+            if ord != cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+
+        let ord = a.parameters.len().cmp(&b.parameters.len());
+        if ord != cmp::Ordering::Equal {
+            return ord;
+        }
+
+        match (a.return_type(unit_a), b.return_type(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+
+        cmp::Ordering::Equal
     }
 }
 
@@ -2580,98 +2657,57 @@ impl<'input> Subprogram<'input> {
         unit_b: &Unit,
         b: &Subprogram
     ) -> Result<()> {
-        // Enumerate parameters and sort by name. Exclude anonymous members.
-        let mut parameters_a = a.parameters
-            .iter()
-            .enumerate()
-            .filter(|a| a.1.name.is_some())
-            .collect::<Vec<_>>();
-        parameters_a.sort_by(|x, y| Parameter::cmp_id(x.1, y.1));
-        let mut parameters_b = b.parameters
-            .iter()
-            .enumerate()
-            .filter(|b| b.1.name.is_some())
-            .collect::<Vec<_>>();
-        parameters_b.sort_by(|x, y| Parameter::cmp_id(x.1, y.1));
-
-        // Find pairs of parameters with the same name.
-        let mut pairs = Vec::new();
-        for m in MergeIterator::new(parameters_a.iter(),
-                                    parameters_b.iter(),
-                                    |a, b| Parameter::cmp_id(a.1, b.1)) {
-            if let MergeResult::Both(a, b) = m {
-                if a.1.name.is_some() {
-                    pairs.push((a, b));
+        let path = diff::shortest_path(&a.parameters, &b.parameters, 1, |a, b| {
+            let mut cost = 0;
+            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                cost += 1;
+            }
+            match (a.ty(unit_a), b.ty(unit_b)) {
+                (Some(ty_a), Some(ty_b)) => {
+                    if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                        cost += 1;
+                    }
+                }
+                (None, None) => {}
+                _ => {
+                    cost += 1;
                 }
             }
-        }
-        // TODO: For remaining parameters, find pairs of parameters with the same type.
+            cost
+        });
 
-        // Sort pairs by the indices.
-        // TODO: also sort by equality (eg print and compare).
-        pairs.sort_by(|&(xa, xb), &(ya, yb)| match (xa.0.cmp(&ya.0), xb.0.cmp(&yb.0)) {
-                          (cmp::Ordering::Less, cmp::Ordering::Less) => cmp::Ordering::Less,
-                          (cmp::Ordering::Greater, cmp::Ordering::Greater) => {
-                              cmp::Ordering::Greater
-                          }
-                          (_cmp_a, cmp_b) => cmp_b,
-                      });
-
-        // Loop through the pairs.
-        let mut index_a = 0;
-        let mut index_b = 0;
         let mut iter_a = a.parameters.iter();
         let mut iter_b = b.parameters.iter();
-        for &(a, b) in &pairs {
-            // Skip pairs that are already partially printed.
-            if a.0 < index_a || b.0 < index_b {
-                continue;
-            }
-
-            // Print parameters leading up to the pair.
-            while index_a < a.0 {
-                if let Some(a) = iter_a.next() {
-                    state.prefix_less(|state| {
-                                          state.line(w, |w, _state| {
-                                Self::print_parameter(w, unit_a, a)
-                            })
-                                      })?;
+        for dir in path {
+            match dir {
+                diff::Direction::None => break,
+                diff::Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        state.line(w,
+                                   |w, _state| Self::print_parameter(w, unit_a, a),
+                                   |w, _state| Self::print_parameter(w, unit_b, b))?;
+                    }
                 }
-                index_a += 1;
-            }
-            while index_b < b.0 {
-                if let Some(b) = iter_b.next() {
-                    state.prefix_greater(|state| {
-                                             state.line(w, |w, _state| {
-                                Self::print_parameter(w, unit_b, b)
-                            })
-                                         })?;
+                diff::Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        state.prefix_less(|state| {
+                                              state.line(w, |w, _state| {
+                                    Self::print_parameter(w, unit_a, a)
+                                })
+                                          })?;
+                    }
                 }
-                index_b += 1;
+                diff::Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        state.prefix_greater(|state| {
+                                                 state.line(w, |w, _state| {
+                                    Self::print_parameter(w, unit_b, b)
+                                })
+                                             })?;
+                    }
+                }
             }
-
-            // Diff the pair.
-            if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                state.line(w,
-                           |w, _state| Self::print_parameter(w, unit_a, a),
-                           |w, _state| Self::print_parameter(w, unit_b, b))?;
-            }
-            index_a += 1;
-            index_b += 1;
         }
-
-        // Print trailing parameters.
-        for a in iter_a {
-            state.prefix_less(|state| {
-                                  state.line(w, |w, _state| Self::print_parameter(w, unit_a, a))
-                              })?;
-        }
-        for b in iter_b {
-            state.prefix_greater(|state| {
-                                     state.line(w, |w, _state| Self::print_parameter(w, unit_b, b))
-                                 })?;
-        }
-
         Ok(())
     }
 
@@ -2762,10 +2798,6 @@ impl<'input> Parameter<'input> {
         self.ty(unit).and_then(|v| v.byte_size(unit))
     }
 
-    fn cmp_id(a: &Parameter, b: &Parameter) -> cmp::Ordering {
-        a.name.cmp(&b.name)
-    }
-
     fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}: ", String::from_utf8_lossy(name))?;
@@ -2775,6 +2807,28 @@ impl<'input> Parameter<'input> {
             None => write!(w, "<anon>")?,
         }
         Ok(())
+    }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(unit_a: &Unit, a: &Parameter, unit_b: &Unit, b: &Parameter) -> cmp::Ordering {
+        match (a.ty(unit_a), b.ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+        a.name.cmp(&b.name)
     }
 }
 
