@@ -1862,31 +1862,66 @@ impl<'input> UnionType<'input> {
         b: &UnionType,
         bit_offset_b: Option<u64>
     ) -> Result<()> {
-        // Sort by name so that merging will compare members with the same name
-        // even if they were reordered.
-        // TODO: is this smart enough? maybe take type into account too.
-        let mut members_a = a.members.iter().collect::<Vec<_>>();
-        members_a.sort_by(|x, y| Member::cmp_id(x, y));
-        let mut members_b = b.members.iter().collect::<Vec<_>>();
-        members_b.sort_by(|x, y| Member::cmp_id(x, y));
+        // TODO: handle reordering better
+        let path = diff::shortest_path(&a.members, &b.members, 1, |a, b| {
+            let mut cost = 0;
+            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                cost += 1;
+            }
+            match (a.ty(unit_a), b.ty(unit_b)) {
+                (Some(ty_a), Some(ty_b)) => {
+                    if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                        cost += 1;
+                    }
+                }
+                (None, None) => {}
+                _ => {
+                    cost += 1;
+                }
+            }
+            cost
+        });
 
-        state.merge(w,
-                    &mut members_a.iter(),
-                    &mut members_b.iter(),
-                    |a, b| Member::cmp_id(a, b),
-                    |w, state, a, b| {
-                // TODO: padding?
-                Member::diff(w,
-                             state,
-                             unit_a,
-                             a,
-                             &mut bit_offset_a.clone(),
-                             unit_b,
-                             b,
-                             &mut bit_offset_b.clone())
-            },
-                    |w, state, a| a.print(w, state, unit_a, &mut bit_offset_a.clone()),
-                    |w, state, b| b.print(w, state, unit_b, &mut bit_offset_b.clone()))?;
+        let mut iter_a = a.members.iter();
+        let mut iter_b = b.members.iter();
+        for dir in path {
+            match dir {
+                diff::Direction::None => break,
+                diff::Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        // TODO: padding?
+                        state.prefix_diff(|state| {
+                                Member::diff(w,
+                                             state,
+                                             unit_a,
+                                             a,
+                                             &mut bit_offset_a.clone(),
+                                             unit_b,
+                                             b,
+                                             &mut bit_offset_b.clone())
+                            })?;
+                    }
+                }
+                diff::Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        state.prefix_less(|state| {
+                                              a.print(w, state, unit_a, &mut bit_offset_a.clone())
+                                          })?;
+                    }
+                }
+                diff::Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        state.prefix_greater(|state| {
+                                                 b.print(w,
+                                                         state,
+                                                         unit_b,
+                                                         &mut bit_offset_b.clone())
+                                             })?;
+                    }
+                }
+            }
+        }
+
         // TODO: trailing padding?
         Ok(())
     }
@@ -2057,10 +2092,6 @@ impl<'input> Member<'input> {
             false
         }
     }
-
-    fn cmp_id(a: &Member, b: &Member) -> cmp::Ordering {
-        a.name.cmp(&b.name)
-    }
 }
 
 #[derive(Debug, Default)]
@@ -2193,23 +2224,43 @@ impl<'input> EnumerationType<'input> {
         a: &EnumerationType,
         b: &EnumerationType
     ) -> Result<()> {
-        // Sort by value.
-        let mut enumerators_a = a.enumerators.iter().collect::<Vec<_>>();
-        enumerators_a.sort_by(|x, y| x.value.cmp(&y.value));
-        let mut enumerators_b = b.enumerators.iter().collect::<Vec<_>>();
-        enumerators_b.sort_by(|x, y| x.value.cmp(&y.value));
+        // TODO: handle reordering better
 
-        state.merge(w,
-                    &mut enumerators_a.iter(),
-                    &mut enumerators_b.iter(),
-                    |a, b| if a.name.cmp(&b.name) == cmp::Ordering::Equal {
-                        cmp::Ordering::Equal
-                    } else {
-                        a.value.cmp(&b.value)
-                    },
-                    |w, state, a, b| Enumerator::diff(w, state, a, b),
-                    |w, state, a| a.print(w, state),
-                    |w, state, b| b.print(w, state))?;
+        // A difference in name is usually more significant than a difference in value,
+        // such as for enums where the value is assigned by the compiler.
+        let path = diff::shortest_path(&a.enumerators, &b.enumerators, 3, |a, b| {
+            let mut cost = 0;
+            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                cost += 4;
+            }
+            if a.value.cmp(&b.value) != cmp::Ordering::Equal {
+                cost += 2;
+            }
+            cost
+        });
+
+        let mut iter_a = a.enumerators.iter();
+        let mut iter_b = b.enumerators.iter();
+        for dir in path {
+            match dir {
+                diff::Direction::None => break,
+                diff::Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        Enumerator::diff(w, state, a, b)?;
+                    }
+                }
+                diff::Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        state.prefix_less(|state| a.print(w, state))?;
+                    }
+                }
+                diff::Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        state.prefix_greater(|state| b.print(w, state))?;
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

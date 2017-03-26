@@ -510,9 +510,9 @@ fn test_union_diff_member_reorder() {
                    "- \tsize: 1\n",
                    "+ \tsize: 2\n",
                    "  \tmembers:\n",
+                   "+ \t\t0[2]\tb: [char; 2]\n",
                    "  \t\t0[1]\ta: char\n",
                    "- \t\t0[1]\tb: char\n",
-                   "+ \t\t0[2]\tb: [char; 2]\n",
                    "  \t\t0[1]\tc: char\n",
                    "\n"),
            flags().name("T"));
@@ -721,10 +721,10 @@ fn test_member_diff_inline_none_struct() {
 
 #[test]
 fn test_enum_diff_equal() {
-    diff_c(concat!("enum T { A=1, B=3, C=2 };\n",
+    diff_c(concat!("enum T { A=1, B=2, C=3 };\n",
                    "enum T t;\n",
                    "int main() {}\n"),
-           concat!("enum T { A=1, C=2, B=3 };\n",
+           concat!("enum T { A=1, B=2, C=3 };\n",
                    "enum T t;\n",
                    "int main() {}\n"),
            concat!(""),
