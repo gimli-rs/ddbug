@@ -826,6 +826,7 @@ impl<'input> Unit<'input> {
                 TypeKind::Base(..) |
                 TypeKind::Array(..) |
                 TypeKind::Subroutine(..) |
+                TypeKind::Unspecified(..) |
                 TypeKind::Modifier(..) => return false,
             }
             // Filter out inline types.
@@ -993,6 +994,7 @@ enum TypeKind<'input> {
     Enumeration(EnumerationType<'input>),
     Array(ArrayType<'input>),
     Subroutine(SubroutineType<'input>),
+    Unspecified(UnspecifiedType<'input>),
     Modifier(TypeModifier<'input>),
 }
 
@@ -1006,7 +1008,8 @@ impl<'input> TypeKind<'input> {
             TypeKind::Enumeration(..) => 4,
             TypeKind::Array(..) => 5,
             TypeKind::Subroutine(..) => 6,
-            TypeKind::Modifier(..) => 7,
+            TypeKind::Unspecified(..) => 7,
+            TypeKind::Modifier(..) => 8,
         }
     }
 }
@@ -1049,6 +1052,7 @@ impl<'input> Type<'input> {
             TypeKind::Enumeration(ref val) => val.byte_size(unit),
             TypeKind::Array(ref val) => val.byte_size(unit),
             TypeKind::Subroutine(ref val) => val.byte_size(unit),
+            TypeKind::Unspecified(..) => None,
             TypeKind::Modifier(ref val) => val.byte_size(unit),
         }
     }
@@ -1062,6 +1066,7 @@ impl<'input> Type<'input> {
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
+            TypeKind::Unspecified(..) |
             TypeKind::Modifier(..) => {}
         }
     }
@@ -1072,6 +1077,7 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.filter(flags),
             TypeKind::Union(ref val) => val.filter(flags),
             TypeKind::Enumeration(ref val) => val.filter(flags),
+            TypeKind::Unspecified(ref val) => val.filter(flags),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
@@ -1088,6 +1094,7 @@ impl<'input> Type<'input> {
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
+            TypeKind::Unspecified(..) |
             TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
         }
     }
@@ -1101,6 +1108,7 @@ impl<'input> Type<'input> {
             TypeKind::Enumeration(ref val) => val.print_ref(w),
             TypeKind::Array(ref val) => val.print_ref(w, unit),
             TypeKind::Subroutine(ref val) => val.print_ref(w, unit),
+            TypeKind::Unspecified(ref val) => val.print_ref(w),
             TypeKind::Modifier(ref val) => val.print_ref(w, unit),
         }
     }
@@ -1122,6 +1130,7 @@ impl<'input> Type<'input> {
             TypeKind::Enumeration(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
+            TypeKind::Unspecified(..) |
             TypeKind::Modifier(..) => false,
         }
     }
@@ -1142,6 +1151,7 @@ impl<'input> Type<'input> {
             (&Subroutine(ref a), &Subroutine(ref b)) => {
                 SubroutineType::cmp_id(unit_a, a, unit_b, b)
             }
+            (&Unspecified(ref a), &Unspecified(ref b)) => UnspecifiedType::cmp_id(a, b),
             (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(unit_a, a, unit_b, b),
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
@@ -1302,19 +1312,33 @@ struct TypeModifier<'input> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 enum TypeModifierKind {
-    Const,
     Pointer,
+    Reference,
+    Const,
+    Packed,
+    Volatile,
     Restrict,
+    Shared,
+    RvalueReference,
+    Atomic,
+    // TODO:
+    // Immutable,
     Other,
 }
 
 impl TypeModifierKind {
     fn discriminant_value(&self) -> u8 {
         match *self {
-            TypeModifierKind::Const => 0,
             TypeModifierKind::Pointer => 1,
-            TypeModifierKind::Restrict => 2,
-            TypeModifierKind::Other => 3,
+            TypeModifierKind::Reference => 2,
+            TypeModifierKind::Const => 3,
+            TypeModifierKind::Packed => 4,
+            TypeModifierKind::Volatile => 5,
+            TypeModifierKind::Restrict => 6,
+            TypeModifierKind::Shared => 7,
+            TypeModifierKind::RvalueReference => 8,
+            TypeModifierKind::Atomic => 9,
+            TypeModifierKind::Other => 10,
         }
     }
 }
@@ -1330,9 +1354,15 @@ impl<'input> TypeModifier<'input> {
         }
         match self.kind {
             TypeModifierKind::Const |
+            TypeModifierKind::Packed |
+            TypeModifierKind::Volatile |
             TypeModifierKind::Restrict |
+            TypeModifierKind::Shared |
+            TypeModifierKind::Atomic |
             TypeModifierKind::Other => self.ty(unit).and_then(|v| v.byte_size(unit)),
-            TypeModifierKind::Pointer => unit.address_size,
+            TypeModifierKind::Pointer |
+            TypeModifierKind::Reference |
+            TypeModifierKind::RvalueReference => unit.address_size,
         }
     }
 
@@ -1341,10 +1371,14 @@ impl<'input> TypeModifier<'input> {
             write!(w, "{}", String::from_utf8_lossy(name))?;
         } else {
             match self.kind {
-                TypeModifierKind::Const => write!(w, "const ")?,
                 TypeModifierKind::Pointer => write!(w, "* ")?,
+                TypeModifierKind::Reference |
+                TypeModifierKind::RvalueReference => write!(w, "& ")?,
+                TypeModifierKind::Const => write!(w, "const ")?,
+                TypeModifierKind::Volatile => write!(w, "volatile ")?,
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
-                TypeModifierKind::Other => {}
+                TypeModifierKind::Packed | TypeModifierKind::Shared |
+                TypeModifierKind::Atomic | TypeModifierKind::Other => {}
             }
             match self.ty {
                 Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
@@ -2441,6 +2475,34 @@ impl<'input> SubroutineType<'input> {
         }
 
         cmp::Ordering::Equal
+    }
+}
+
+#[derive(Debug, Default)]
+struct UnspecifiedType<'input> {
+    namespace: Rc<Namespace<'input>>,
+    name: Option<&'input [u8]>,
+}
+
+impl<'input> UnspecifiedType<'input> {
+    fn filter(&self, flags: &Flags) -> bool {
+        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+    }
+
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
+        self.namespace.print(w)?;
+        match self.name {
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            None => write!(w, "<void>")?,
+        }
+        Ok(())
+    }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 }
 

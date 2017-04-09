@@ -7,7 +7,7 @@ use xmas_elf;
 use super::Result;
 use super::{Unit, Namespace, Subprogram, InlinedSubroutine, Variable, Type, TypeKind, BaseType,
             TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType, SubroutineType,
-            TypeModifier, TypeModifierKind, Member, Parameter};
+            UnspecifiedType, TypeModifier, TypeModifierKind, Member, Parameter};
 
 struct DwarfFileState<'input, Endian>
     where Endian: gimli::Endianity
@@ -115,7 +115,10 @@ fn parse_unit<'input, Endian>(
                     }
                 }
                 gimli::DW_AT_producer |
-                gimli::DW_AT_entry_pc => {}
+                gimli::DW_AT_entry_pc |
+                gimli::DW_AT_APPLE_optimized |
+                gimli::DW_AT_macro_info |
+                gimli::DW_AT_sibling => {}
                 _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -139,7 +142,6 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     where Endian: gimli::Endianity
 {
     while let Some(child) = iter.next()? {
-        let offset = child.entry().unwrap().offset();
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_namespace => {
                 parse_namespace(unit, dwarf, dwarf_unit, namespace, child)?;
@@ -150,21 +152,16 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_variable => {
                 unit.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
             }
-            gimli::DW_TAG_base_type |
-            gimli::DW_TAG_structure_type |
-            gimli::DW_TAG_union_type |
-            gimli::DW_TAG_enumeration_type |
-            gimli::DW_TAG_array_type |
-            gimli::DW_TAG_subroutine_type |
-            gimli::DW_TAG_typedef |
-            gimli::DW_TAG_const_type |
-            gimli::DW_TAG_pointer_type |
-            gimli::DW_TAG_restrict_type => {
-                let ty = parse_type(unit, dwarf, dwarf_unit, namespace, child)?;
-                unit.types.insert(offset.0, ty);
-            }
+            gimli::DW_TAG_imported_declaration |
+            gimli::DW_TAG_imported_module |
+            gimli::DW_TAG_ptr_to_member_type => {}
             tag => {
-                debug!("unknown namespace child tag: {}", tag);
+                let offset = child.entry().unwrap().offset();
+                if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
+                    unit.types.insert(offset.0, ty);
+                } else {
+                    debug!("unknown namespace child tag: {}", tag);
+                }
             }
         }
     }
@@ -211,7 +208,7 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     namespace: &Rc<Namespace<'input>>,
     iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<Type<'input>>
+) -> Result<Option<Type<'input>>>
     where Endian: gimli::Endianity
 {
     let tag = iter.entry().unwrap().tag();
@@ -225,6 +222,8 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             TypeKind::Base(parse_base_type(dwarf, dwarf_unit, namespace, iter)?)
         }
         gimli::DW_TAG_typedef => TypeKind::Def(parse_typedef(dwarf, dwarf_unit, namespace, iter)?),
+        // TODO: distinguish between class and structure
+        gimli::DW_TAG_class_type |
         gimli::DW_TAG_structure_type => {
             TypeKind::Struct(parse_structure_type(unit, dwarf, dwarf_unit, namespace, iter)?)
         }
@@ -240,11 +239,8 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         gimli::DW_TAG_subroutine_type => {
             TypeKind::Subroutine(parse_subroutine_type(dwarf, dwarf_unit, namespace, iter)?)
         }
-        gimli::DW_TAG_const_type => {
-            TypeKind::Modifier(parse_type_modifier(dwarf,
-                                                   dwarf_unit,
-                                                   iter,
-                                                   TypeModifierKind::Const)?)
+        gimli::DW_TAG_unspecified_type => {
+            TypeKind::Unspecified(parse_unspecified_type(dwarf, dwarf_unit, namespace, iter)?)
         }
         gimli::DW_TAG_pointer_type => {
             TypeKind::Modifier(parse_type_modifier(dwarf,
@@ -252,15 +248,57 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                                    iter,
                                                    TypeModifierKind::Pointer)?)
         }
+        gimli::DW_TAG_reference_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::Reference)?)
+        }
+        gimli::DW_TAG_const_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::Const)?)
+        }
+        gimli::DW_TAG_packed_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::Packed)?)
+        }
+        gimli::DW_TAG_volatile_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::Volatile)?)
+        }
         gimli::DW_TAG_restrict_type => {
             TypeKind::Modifier(parse_type_modifier(dwarf,
                                                    dwarf_unit,
                                                    iter,
                                                    TypeModifierKind::Restrict)?)
         }
-        _ => return Err(format!("Unexpected type tag {:?}", tag).into()),
+        gimli::DW_TAG_shared_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::Shared)?)
+        }
+        gimli::DW_TAG_rvalue_reference_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::RvalueReference)?)
+        }
+        gimli::DW_TAG_atomic_type => {
+            TypeKind::Modifier(parse_type_modifier(dwarf,
+                                                   dwarf_unit,
+                                                   iter,
+                                                   TypeModifierKind::Atomic)?)
+        }
+        _ => return Ok(None),
     };
-    Ok(ty)
+    Ok(Some(ty))
 }
 
 fn parse_type_modifier<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
@@ -427,6 +465,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 }
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
+                gimli::DW_AT_containing_type |
                 gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown struct attribute: {} {:?}",
@@ -446,8 +485,17 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
             gimli::DW_TAG_member => {
                 ty.members.push(parse_member(dwarf, dwarf_unit, &namespace, child)?);
             }
+            gimli::DW_TAG_inheritance |
+            gimli::DW_TAG_template_type_parameter |
+            gimli::DW_TAG_template_value_parameter |
+            gimli::DW_TAG_GNU_template_parameter_pack => {}
             tag => {
-                debug!("unknown struct child tag: {}", tag);
+                let offset = child.entry().unwrap().offset();
+                if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
+                    unit.types.insert(offset.0, ty);
+                } else {
+                    debug!("unknown struct child tag: {}", tag);
+                }
             }
         }
     }
@@ -502,8 +550,14 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_member => {
                 ty.members.push(parse_member(dwarf, dwarf_unit, &namespace, child)?);
             }
+            gimli::DW_TAG_template_type_parameter => {}
             tag => {
-                debug!("unknown union child tag: {}", tag);
+                let offset = child.entry().unwrap().offset();
+                if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
+                    unit.types.insert(offset.0, ty);
+                } else {
+                    debug!("unknown union child tag: {}", tag);
+                }
             }
         }
     }
@@ -537,6 +591,13 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_data_member_location => {
                     match attr.value() {
                         gimli::AttributeValue::Udata(v) => member.bit_offset = v * 8,
+                        gimli::AttributeValue::Sdata(v) => {
+                            if v >= 0 {
+                                member.bit_offset = (v as u64) * 8;
+                            } else {
+                                debug!("DW_AT_data_member_location is negative: {}", v)
+                            }
+                        }
                         gimli::AttributeValue::Exprloc(expr) => {
                             match evaluate(dwarf_unit.header, expr) {
                                 Ok(gimli::Location::Address { address }) => {
@@ -549,6 +610,9 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     debug!("DW_AT_data_member_location evaluation failed: {}", e)
                                 }
                             }
+                        }
+                        gimli::AttributeValue::DebugLocRef(..) => {
+                            // TODO
                         }
                         _ => {
                             debug!("unknown DW_AT_data_member_location: {:?}", attr.value());
@@ -570,7 +634,13 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     member.bit_size = attr.udata_value();
                 }
                 gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line => {}
+                gimli::DW_AT_decl_line |
+                gimli::DW_AT_external |
+                gimli::DW_AT_declaration |
+                gimli::DW_AT_accessibility |
+                gimli::DW_AT_artificial |
+                gimli::DW_AT_const_value |
+                gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown member attribute: {} {:?}",
                            attr.name(),
@@ -742,6 +812,7 @@ fn parse_array_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         array.ty = Some(offset.into());
                     }
                 }
+                gimli::DW_AT_GNU_vector |
                 gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown array attribute: {} {:?}",
@@ -827,6 +898,44 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     Ok(subroutine)
 }
 
+fn parse_unspecified_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
+    (
+    dwarf: &DwarfFileState<'input, Endian>,
+     _dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
+     namespace: &Rc<Namespace<'input>>,
+     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+) -> Result<UnspecifiedType<'input>>
+    where Endian: gimli::Endianity
+{
+    let mut ty = UnspecifiedType::default();
+    ty.namespace = namespace.clone();
+
+    {
+        let mut attrs = iter.entry().unwrap().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_name => {
+                    ty.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
+                }
+                _ => {
+                    debug!("unknown unspecified type attribute: {} {:?}",
+                           attr.name(),
+                           attr.value())
+                }
+            }
+        }
+    }
+
+    while let Some(child) = iter.next()? {
+        match child.entry().unwrap().tag() {
+            tag => {
+                debug!("unknown unspecified type child tag: {}", tag);
+            }
+        }
+    }
+    Ok(ty)
+}
+
 fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
@@ -863,7 +972,8 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_name => {
                     subprogram.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
-                gimli::DW_AT_linkage_name => {
+                gimli::DW_AT_linkage_name |
+                gimli::DW_AT_MIPS_linkage_name => {
                     subprogram.linkage_name = attr.string_value(&dwarf.debug_str)
                         .map(ffi::CStr::to_bytes);
                 }
@@ -906,6 +1016,16 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_GNU_all_call_sites |
                 gimli::DW_AT_GNU_all_tail_call_sites |
                 gimli::DW_AT_prototyped |
+                gimli::DW_AT_accessibility |
+                gimli::DW_AT_explicit |
+                gimli::DW_AT_artificial |
+                gimli::DW_AT_specification |
+                gimli::DW_AT_object_pointer |
+                gimli::DW_AT_virtuality |
+                gimli::DW_AT_vtable_elem_location |
+                gimli::DW_AT_containing_type |
+                gimli::DW_AT_APPLE_optimized |
+                gimli::DW_AT_APPLE_omit_frame_ptr |
                 gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown subprogram attribute: {} {:?}",
@@ -946,10 +1066,19 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     namespace,
                                     child)?;
             }
+            gimli::DW_TAG_unspecified_parameters |
             gimli::DW_TAG_template_type_parameter |
+            gimli::DW_TAG_template_value_parameter |
+            gimli::DW_TAG_GNU_template_parameter_pack |
             gimli::DW_TAG_label |
+            gimli::DW_TAG_imported_declaration |
+            gimli::DW_TAG_imported_module |
+            // TODO: call parse_type() for these, but which namespace?
+            gimli::DW_TAG_typedef |
+            gimli::DW_TAG_class_type |
             gimli::DW_TAG_structure_type |
             gimli::DW_TAG_union_type |
+            gimli::DW_TAG_enumeration_type |
             gimli::DW_TAG_GNU_call_site => {}
             tag => {
                 debug!("unknown subprogram child tag: {}", tag);
@@ -987,7 +1116,10 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_location |
-                gimli::DW_AT_abstract_origin => {}
+                gimli::DW_AT_abstract_origin |
+                gimli::DW_AT_artificial |
+                gimli::DW_AT_const_value |
+                gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown parameter attribute: {} {:?}",
                            attr.name(),
@@ -1054,6 +1186,10 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     namespace,
                                     child)?;
             }
+            gimli::DW_TAG_formal_parameter |
+            gimli::DW_TAG_label |
+            gimli::DW_TAG_imported_declaration |
+            gimli::DW_TAG_imported_module => {}
             tag => {
                 debug!("unknown lexical_block child tag: {}", tag);
             }
@@ -1105,6 +1241,7 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 }
                 gimli::DW_AT_call_file |
                 gimli::DW_AT_call_line |
+                gimli::DW_AT_entry_pc |
                 gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown inlined_subroutine attribute: {} {:?}",
@@ -1139,6 +1276,9 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                                                                              dwarf_unit,
                                                                              namespace,
                                                                              child)?);
+            }
+            gimli::DW_TAG_variable => {
+                subroutine.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(&mut subroutine.inlined_subroutines,
@@ -1176,7 +1316,8 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_name => {
                     variable.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
-                gimli::DW_AT_linkage_name => {
+                gimli::DW_AT_linkage_name |
+                gimli::DW_AT_MIPS_linkage_name => {
                     variable.linkage_name = attr.string_value(&dwarf.debug_str)
                         .map(ffi::CStr::to_bytes);
                 }
@@ -1195,6 +1336,7 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_const_value |
                 gimli::DW_AT_location |
                 gimli::DW_AT_external |
+                gimli::DW_AT_specification |
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line => {}
                 _ => {
