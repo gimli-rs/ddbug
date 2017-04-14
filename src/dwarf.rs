@@ -1044,26 +1044,27 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
+    let namespace = Namespace::new(&subprogram.namespace, subprogram.name);
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_formal_parameter => {
-                subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, namespace, child)?);
+                subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, &namespace, child)?);
             }
             gimli::DW_TAG_inlined_subroutine => {
                 subprogram.inlined_subroutines.push(parse_inlined_subroutine(dwarf,
                                                                              dwarf_unit,
-                                                                             namespace,
+                                                                             &namespace,
                                                                              child)?);
             }
             gimli::DW_TAG_variable => {
-                subprogram.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
+                subprogram.variables.push(parse_variable(dwarf, dwarf_unit, &namespace, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(&mut subprogram.inlined_subroutines,
                                     &mut subprogram.variables,
                                     dwarf,
                                     dwarf_unit,
-                                    namespace,
+                                    &namespace,
                                     child)?;
             }
             gimli::DW_TAG_unspecified_parameters |
@@ -1073,15 +1074,14 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             gimli::DW_TAG_label |
             gimli::DW_TAG_imported_declaration |
             gimli::DW_TAG_imported_module |
-            // TODO: call parse_type() for these, but which namespace?
-            gimli::DW_TAG_typedef |
-            gimli::DW_TAG_class_type |
-            gimli::DW_TAG_structure_type |
-            gimli::DW_TAG_union_type |
-            gimli::DW_TAG_enumeration_type |
             gimli::DW_TAG_GNU_call_site => {}
             tag => {
-                debug!("unknown subprogram child tag: {}", tag);
+                let offset = child.entry().unwrap().offset();
+                if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
+                    unit.types.insert(offset.0, ty);
+                } else {
+                    debug!("unknown subprogram child tag: {}", tag);
+                }
             }
         }
     }
@@ -1198,6 +1198,7 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     Ok(())
 }
 
+// TOOD: should this use the namespace of the abstract_origin instead?
 fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     (
     dwarf: &DwarfFileState<'input, Endian>,
