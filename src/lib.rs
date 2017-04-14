@@ -1113,10 +1113,15 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: TypeOffset) -> Result<()> {
-        match Type::from_offset(unit, offset) {
-            Some(ty) => ty.print_ref(w, unit)?,
-            None => write!(w, "<invalid-type {}>", offset.0)?,
+    fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: Option<TypeOffset>) -> Result<()> {
+        match offset {
+            Some(offset) => {
+                match Type::from_offset(unit, offset) {
+                    Some(ty) => ty.print_ref(w, unit)?,
+                    None => write!(w, "<invalid-type {}>", offset.0)?,
+                }
+            }
+            None => write!(w, "void")?,
         }
         Ok(())
     }
@@ -1380,10 +1385,7 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Packed | TypeModifierKind::Shared |
                 TypeModifierKind::Atomic | TypeModifierKind::Other => {}
             }
-            match self.ty {
-                Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
-                None => write!(w, "<unknown-type>")?,
-            }
+            Type::print_ref_from_offset(w, unit, self.ty)?;
         }
         Ok(())
     }
@@ -1469,10 +1471,7 @@ impl<'input> TypeDef<'input> {
         write!(w, "type ")?;
         self.print_ref(w)?;
         write!(w, " = ")?;
-        match self.ty {
-            Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
-            None => write!(w, "<unknown-type>")?,
-        }
+        Type::print_ref_from_offset(w, unit, self.ty)?;
         Ok(())
     }
 
@@ -2104,10 +2103,7 @@ impl<'input> Member<'input> {
             None => write!(w, "\t<anon>")?,
         }
         write!(w, ": ")?;
-        match self.ty {
-            Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
-            None => write!(w, "<unknown-type>")?,
-        }
+        Type::print_ref_from_offset(w, unit, self.ty)?;
         Ok(())
     }
 
@@ -2368,10 +2364,7 @@ impl<'input> ArrayType<'input> {
 
     fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         write!(w, "[")?;
-        match self.ty {
-            Some(ty) => Type::print_ref_from_offset(w, unit, ty)?,
-            None => write!(w, "<unknown-type>")?,
-        }
+        Type::print_ref_from_offset(w, unit, self.ty)?;
         if let Some(count) = self.count(unit) {
             write!(w, "; {}", count)?;
         }
@@ -2743,7 +2736,7 @@ impl<'input> Subprogram<'input> {
                 None => write!(w, "[??]")?,
             }
             write!(w, "\t")?;
-            Type::print_ref_from_offset(w, unit, return_type)?;
+            Type::print_ref_from_offset(w, unit, self.return_type)?;
         }
         Ok(())
     }
@@ -3062,10 +3055,7 @@ impl<'input> Variable<'input> {
         write!(w, "var ")?;
         self.print_ref(w)?;
         write!(w, ": ")?;
-        match self.ty {
-            Some(offset) => Type::print_ref_from_offset(w, unit, offset)?,
-            None => write!(w, "<anon>")?,
-        }
+        Type::print_ref_from_offset(w, unit, self.ty)?;
         Ok(())
     }
 
