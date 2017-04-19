@@ -7,7 +7,7 @@ use xmas_elf;
 use super::Result;
 use super::{Unit, Namespace, Subprogram, InlinedSubroutine, Variable, Type, TypeKind, BaseType,
             TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType, SubroutineType,
-            UnspecifiedType, TypeModifier, TypeModifierKind, Member, Parameter};
+            UnspecifiedType, PointerToMemberType, TypeModifier, TypeModifierKind, Member, Parameter};
 
 struct DwarfFileState<'input, Endian>
     where Endian: gimli::Endianity
@@ -153,8 +153,7 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 unit.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
             }
             gimli::DW_TAG_imported_declaration |
-            gimli::DW_TAG_imported_module |
-            gimli::DW_TAG_ptr_to_member_type => {}
+            gimli::DW_TAG_imported_module => {}
             tag => {
                 let offset = child.entry().unwrap().offset();
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
@@ -241,6 +240,12 @@ fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
         gimli::DW_TAG_unspecified_type => {
             TypeKind::Unspecified(parse_unspecified_type(dwarf, dwarf_unit, namespace, iter)?)
+        }
+        gimli::DW_TAG_ptr_to_member_type => {
+            TypeKind::PointerToMember(parse_pointer_to_member_type(dwarf,
+                                                                   dwarf_unit,
+                                                                   namespace,
+                                                                   iter)?)
         }
         gimli::DW_TAG_pointer_type => {
             TypeKind::Modifier(parse_type_modifier(dwarf,
@@ -930,6 +935,53 @@ fn parse_unspecified_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         match child.entry().unwrap().tag() {
             tag => {
                 debug!("unknown unspecified type child tag: {}", tag);
+            }
+        }
+    }
+    Ok(ty)
+}
+
+fn parse_pointer_to_member_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
+    (
+    _dwarf: &DwarfFileState<'input, Endian>,
+     _dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
+     _namespace: &Rc<Namespace<'input>>,
+     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+) -> Result<PointerToMemberType>
+    where Endian: gimli::Endianity
+{
+    let mut ty = PointerToMemberType::default();
+
+    {
+        let mut attrs = iter.entry().unwrap().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_type => {
+                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                        ty.ty = Some(offset.into());
+                    }
+                }
+                gimli::DW_AT_containing_type => {
+                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                        ty.containing_ty = Some(offset.into());
+                    }
+                }
+                gimli::DW_AT_byte_size => {
+                    ty.byte_size = attr.udata_value();
+                }
+                _ => {
+                    debug!("unknown ptr_to_member type attribute: {} {:?}",
+                           attr.name(),
+                           attr.value())
+                }
+            }
+        }
+    }
+
+    while let Some(child) = iter.next()? {
+        match child.entry().unwrap().tag() {
+            tag => {
+                debug!("unknown ptr_to_member type child tag: {}", tag);
             }
         }
     }

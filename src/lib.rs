@@ -827,6 +827,7 @@ impl<'input> Unit<'input> {
                 TypeKind::Array(..) |
                 TypeKind::Subroutine(..) |
                 TypeKind::Unspecified(..) |
+                TypeKind::PointerToMember(..) |
                 TypeKind::Modifier(..) => return false,
             }
             // Filter out inline types.
@@ -995,6 +996,7 @@ enum TypeKind<'input> {
     Array(ArrayType<'input>),
     Subroutine(SubroutineType<'input>),
     Unspecified(UnspecifiedType<'input>),
+    PointerToMember(PointerToMemberType),
     Modifier(TypeModifier<'input>),
 }
 
@@ -1009,7 +1011,8 @@ impl<'input> TypeKind<'input> {
             TypeKind::Array(..) => 5,
             TypeKind::Subroutine(..) => 6,
             TypeKind::Unspecified(..) => 7,
-            TypeKind::Modifier(..) => 8,
+            TypeKind::PointerToMember(..) => 8,
+            TypeKind::Modifier(..) => 9,
         }
     }
 }
@@ -1053,6 +1056,7 @@ impl<'input> Type<'input> {
             TypeKind::Array(ref val) => val.byte_size(unit),
             TypeKind::Subroutine(ref val) => val.byte_size(unit),
             TypeKind::Unspecified(..) => None,
+            TypeKind::PointerToMember(ref val) => val.byte_size(unit),
             TypeKind::Modifier(ref val) => val.byte_size(unit),
         }
     }
@@ -1067,6 +1071,7 @@ impl<'input> Type<'input> {
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
             TypeKind::Unspecified(..) |
+            TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => {}
         }
     }
@@ -1081,6 +1086,7 @@ impl<'input> Type<'input> {
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
+            TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => flags.name.is_none(),
         }
     }
@@ -1095,6 +1101,7 @@ impl<'input> Type<'input> {
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
             TypeKind::Unspecified(..) |
+            TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
         }
     }
@@ -1109,6 +1116,7 @@ impl<'input> Type<'input> {
             TypeKind::Array(ref val) => val.print_ref(w, unit),
             TypeKind::Subroutine(ref val) => val.print_ref(w, unit),
             TypeKind::Unspecified(ref val) => val.print_ref(w),
+            TypeKind::PointerToMember(ref val) => val.print_ref(w, unit),
             TypeKind::Modifier(ref val) => val.print_ref(w, unit),
         }
     }
@@ -1136,7 +1144,33 @@ impl<'input> Type<'input> {
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
             TypeKind::Unspecified(..) |
+            TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => false,
+        }
+    }
+
+    fn is_subroutine(&self, unit: &Unit) -> bool {
+        match self.kind {
+            TypeKind::Subroutine(..) => true,
+            TypeKind::Def(ref val) => {
+                match val.ty(unit) {
+                    Some(ty) => ty.is_subroutine(unit),
+                    None => false,
+                }
+            }
+            TypeKind::Modifier(ref val) => {
+                match val.ty(unit) {
+                    Some(ty) => ty.is_subroutine(unit),
+                    None => false,
+                }
+            }
+            TypeKind::Struct(..) |
+            TypeKind::Union(..) |
+            TypeKind::Base(..) |
+            TypeKind::Enumeration(..) |
+            TypeKind::Array(..) |
+            TypeKind::Unspecified(..) |
+            TypeKind::PointerToMember(..) => false,
         }
     }
 
@@ -1157,6 +1191,9 @@ impl<'input> Type<'input> {
                 SubroutineType::cmp_id(unit_a, a, unit_b, b)
             }
             (&Unspecified(ref a), &Unspecified(ref b)) => UnspecifiedType::cmp_id(a, b),
+            (&PointerToMember(ref a), &PointerToMember(ref b)) => {
+                PointerToMemberType::cmp_id(unit_a, a, unit_b, b)
+            }
             (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(unit_a, a, unit_b, b),
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
@@ -2496,6 +2533,84 @@ impl<'input> UnspecifiedType<'input> {
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+}
+
+#[derive(Debug, Default)]
+struct PointerToMemberType {
+    ty: Option<TypeOffset>,
+    containing_ty: Option<TypeOffset>,
+    byte_size: Option<u64>,
+}
+
+impl PointerToMemberType {
+    fn ty<'a, 'input>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
+        self.ty.and_then(|v| Type::from_offset(unit, v))
+    }
+
+    fn containing_ty<'a, 'input>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
+        self.containing_ty.and_then(|v| Type::from_offset(unit, v))
+    }
+
+    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+        if self.byte_size.is_some() {
+            return self.byte_size;
+        }
+        // TODO: this probably depends on the ABI
+        self.ty(unit).and_then(|ty| if ty.is_subroutine(unit) {
+                                   unit.address_size.map(|v| v * 2)
+                               } else {
+                                   unit.address_size
+                               })
+    }
+
+    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        Type::print_ref_from_offset(w, unit, self.containing_ty)?;
+        write!(w, "::* ")?;
+        Type::print_ref_from_offset(w, unit, self.ty)?;
+        Ok(())
+    }
+
+    /// Compare the identifying information of two types.
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    fn cmp_id(
+        unit_a: &Unit,
+        a: &PointerToMemberType,
+        unit_b: &Unit,
+        b: &PointerToMemberType
+    ) -> cmp::Ordering {
+        match (a.containing_ty(unit_a), b.containing_ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+        match (a.ty(unit_a), b.ty(unit_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+        cmp::Ordering::Equal
     }
 }
 
