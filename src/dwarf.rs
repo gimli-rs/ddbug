@@ -1016,6 +1016,8 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         variables: Vec::new(),
     };
 
+    let mut specification = None;
+
     {
         let entry = iter.entry().unwrap();
         let mut attrs = entry.attrs();
@@ -1055,6 +1057,11 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         subprogram.return_type = Some(offset.into());
                     }
                 }
+                gimli::DW_AT_specification => {
+                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                        specification = Some(offset);
+                    }
+                }
                 gimli::DW_AT_declaration => {
                     if let gimli::AttributeValue::Flag(flag) = attr.value() {
                         subprogram.declaration = flag;
@@ -1071,7 +1078,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_accessibility |
                 gimli::DW_AT_explicit |
                 gimli::DW_AT_artificial |
-                gimli::DW_AT_specification |
                 gimli::DW_AT_object_pointer |
                 gimli::DW_AT_virtuality |
                 gimli::DW_AT_vtable_elem_location |
@@ -1083,6 +1089,39 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     debug!("unknown subprogram attribute: {} {:?}",
                            attr.name(),
                            attr.value())
+                }
+            }
+        }
+
+        if let Some(specification) = specification {
+            match unit.subprograms.get(&specification.0) {
+                Some(specification) => {
+                    subprogram.namespace = specification.namespace.clone();
+                    if subprogram.name.is_none() {
+                        subprogram.name = specification.name;
+                    }
+                    if subprogram.linkage_name.is_none() {
+                        subprogram.linkage_name = specification.linkage_name;
+                    }
+                    // TODO: will these ever be present in the specification?
+                    if subprogram.low_pc.is_none() {
+                        subprogram.low_pc = specification.low_pc;
+                    }
+                    if subprogram.high_pc.is_none() {
+                        subprogram.high_pc = specification.high_pc;
+                    }
+                    if subprogram.size.is_none() {
+                        subprogram.size = specification.size;
+                    }
+                    if subprogram.return_type.is_none() {
+                        subprogram.return_type = specification.return_type;
+                    }
+                    // TODO: inline?
+                    // TODO: parameters?
+                }
+                None => {
+                    // TODO: this may occur if specification comes later
+                    debug!("invalid subprogram offset: 0x{:x}", specification.0);
                 }
             }
         }
