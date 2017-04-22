@@ -488,7 +488,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 parse_subprogram(unit, dwarf, dwarf_unit, &namespace, child)?;
             }
             gimli::DW_TAG_member => {
-                ty.members.push(parse_member(dwarf, dwarf_unit, &namespace, child)?);
+                parse_member(&mut ty.members, unit, dwarf, dwarf_unit, &namespace, child)?;
             }
             gimli::DW_TAG_inheritance |
             gimli::DW_TAG_template_type_parameter |
@@ -553,7 +553,7 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 parse_subprogram(unit, dwarf, dwarf_unit, &namespace, child)?;
             }
             gimli::DW_TAG_member => {
-                ty.members.push(parse_member(dwarf, dwarf_unit, &namespace, child)?);
+                parse_member(&mut ty.members, unit, dwarf, dwarf_unit, &namespace, child)?;
             }
             gimli::DW_TAG_template_type_parameter => {}
             tag => {
@@ -570,16 +570,19 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 }
 
 fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    members: &mut Vec<Member<'input>>,
+    unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
-    _namespace: &Rc<Namespace<'input>>,
+    namespace: &Rc<Namespace<'input>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
-) -> Result<Member<'input>>
+) -> Result<()>
     where Endian: gimli::Endianity
 {
     let mut member = Member::default();
     let mut bit_offset = None;
     let mut byte_size = None;
+    let mut declaration = false;
 
     {
         let mut attrs = iter.entry().unwrap().attrs();
@@ -638,10 +641,12 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_bit_size => {
                     member.bit_size = attr.udata_value();
                 }
+                gimli::DW_AT_declaration => {
+                    declaration = true;
+                }
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_external |
-                gimli::DW_AT_declaration |
                 gimli::DW_AT_accessibility |
                 gimli::DW_AT_artificial |
                 gimli::DW_AT_const_value |
@@ -653,6 +658,14 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 }
             }
         }
+    }
+
+    if declaration {
+        // This is a C++ static data member. Parse it as a variable instead.
+        // Note: the DWARF 5 standard says static members should use DW_TAG_variable,
+        // but at least clang 3.7.1 uses DW_TAG_member.
+        unit.variables.push(parse_variable(dwarf, dwarf_unit, namespace, iter)?);
+        return Ok(());
     }
 
     if let (Some(bit_offset), Some(bit_size)) = (bit_offset, member.bit_size) {
@@ -693,7 +706,8 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             }
         }
     }
-    Ok(member)
+    members.push(member);
+    Ok(())
 }
 
 fn parse_enumeration_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
