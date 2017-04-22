@@ -150,7 +150,9 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 parse_subprogram(unit, dwarf, dwarf_unit, namespace, child)?;
             }
             gimli::DW_TAG_variable => {
-                unit.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
+                let offset = child.entry().unwrap().offset();
+                let variable = parse_variable(unit, dwarf, dwarf_unit, namespace, child)?;
+                unit.variables.insert(offset.0, variable);
             }
             gimli::DW_TAG_imported_declaration |
             gimli::DW_TAG_imported_module => {}
@@ -664,7 +666,9 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         // This is a C++ static data member. Parse it as a variable instead.
         // Note: the DWARF 5 standard says static members should use DW_TAG_variable,
         // but at least clang 3.7.1 uses DW_TAG_member.
-        unit.variables.push(parse_variable(dwarf, dwarf_unit, namespace, iter)?);
+        let offset = iter.entry().unwrap().offset();
+        let variable = parse_variable(unit, dwarf, dwarf_unit, namespace, iter)?;
+        unit.variables.insert(offset.0, variable);
         return Ok(());
     }
 
@@ -1156,17 +1160,23 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, &namespace, child)?);
             }
             gimli::DW_TAG_inlined_subroutine => {
-                subprogram.inlined_subroutines.push(parse_inlined_subroutine(dwarf,
+                subprogram.inlined_subroutines.push(parse_inlined_subroutine(unit,
+                                                                             dwarf,
                                                                              dwarf_unit,
                                                                              &namespace,
                                                                              child)?);
             }
             gimli::DW_TAG_variable => {
-                subprogram.variables.push(parse_variable(dwarf, dwarf_unit, &namespace, child)?);
+                subprogram.variables.push(parse_variable(unit,
+                                                         dwarf,
+                                                         dwarf_unit,
+                                                         &namespace,
+                                                         child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(&mut subprogram.inlined_subroutines,
                                     &mut subprogram.variables,
+                                    unit,
                                     dwarf,
                                     dwarf_unit,
                                     &namespace,
@@ -1247,6 +1257,7 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     inlined_subroutines: &mut Vec<InlinedSubroutine<'input>>,
     variables: &mut Vec<Variable<'input>>,
+    unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     namespace: &Rc<Namespace<'input>>,
@@ -1275,17 +1286,19 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                inlined_subroutines.push(parse_inlined_subroutine(dwarf,
+                inlined_subroutines.push(parse_inlined_subroutine(unit,
+                                                                  dwarf,
                                                                   dwarf_unit,
                                                                   namespace,
                                                                   child)?);
             }
             gimli::DW_TAG_variable => {
-                variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
+                variables.push(parse_variable(unit, dwarf, dwarf_unit, namespace, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(inlined_subroutines,
                                     variables,
+                                    unit,
                                     dwarf,
                                     dwarf_unit,
                                     namespace,
@@ -1306,7 +1319,8 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 // TOOD: should this use the namespace of the abstract_origin instead?
 fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     (
-    dwarf: &DwarfFileState<'input, Endian>,
+    unit: &mut Unit<'input>,
+     dwarf: &DwarfFileState<'input, Endian>,
      dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
      namespace: &Rc<Namespace<'input>>,
      mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
@@ -1378,17 +1392,23 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                subroutine.inlined_subroutines.push(parse_inlined_subroutine(dwarf,
+                subroutine.inlined_subroutines.push(parse_inlined_subroutine(unit,
+                                                                             dwarf,
                                                                              dwarf_unit,
                                                                              namespace,
                                                                              child)?);
             }
             gimli::DW_TAG_variable => {
-                subroutine.variables.push(parse_variable(dwarf, dwarf_unit, namespace, child)?);
+                subroutine.variables.push(parse_variable(unit,
+                                                         dwarf,
+                                                         dwarf_unit,
+                                                         namespace,
+                                                         child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(&mut subroutine.inlined_subroutines,
                                     &mut subroutine.variables,
+                                    unit,
                                     dwarf,
                                     dwarf_unit,
                                     namespace,
@@ -1404,8 +1424,9 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
 }
 
 fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
-    _unit: &mut DwarfUnitState<'state, 'input, Endian>,
+    _dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     namespace: &Rc<Namespace<'input>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<Variable<'input>>
@@ -1413,6 +1434,8 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 {
     let mut variable = Variable::default();
     variable.namespace = namespace.clone();
+
+    let mut specification = None;
 
     {
         let entry = iter.entry().unwrap();
@@ -1432,6 +1455,11 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         variable.ty = Some(offset.into());
                     }
                 }
+                gimli::DW_AT_specification => {
+                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                        specification = Some(offset);
+                    }
+                }
                 gimli::DW_AT_declaration => {
                     if let gimli::AttributeValue::Flag(flag) = attr.value() {
                         variable.declaration = flag;
@@ -1442,7 +1470,7 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_const_value |
                 gimli::DW_AT_location |
                 gimli::DW_AT_external |
-                gimli::DW_AT_specification |
+                gimli::DW_AT_accessibility |
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line => {}
                 _ => {
@@ -1450,6 +1478,27 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                            attr.name(),
                            attr.value())
                 }
+            }
+        }
+    }
+
+    if let Some(specification) = specification {
+        match unit.variables.get(&specification.0) {
+            Some(specification) => {
+                variable.namespace = specification.namespace.clone();
+                if variable.name.is_none() {
+                    variable.name = specification.name;
+                }
+                if variable.linkage_name.is_none() {
+                    variable.linkage_name = specification.linkage_name;
+                }
+                if variable.ty.is_none() {
+                    variable.ty = specification.ty;
+                }
+            }
+            None => {
+                // TODO: this may occur if specification comes later
+                debug!("invalid variable offset: 0x{:x}", specification.0);
             }
         }
     }

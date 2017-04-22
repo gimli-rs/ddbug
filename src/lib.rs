@@ -772,7 +772,7 @@ pub struct Unit<'input> {
     size: Option<u64>,
     types: BTreeMap<usize, Type<'input>>,
     subprograms: BTreeMap<usize, Subprogram<'input>>,
-    variables: Vec<Variable<'input>>,
+    variables: BTreeMap<usize, Variable<'input>>,
 }
 
 impl<'input> Unit<'input> {
@@ -860,7 +860,7 @@ impl<'input> Unit<'input> {
     /// Always sort when diffing.
     fn filter_variables(&self, flags: &Flags, diff: bool) -> Vec<&Variable> {
         let mut variables: Vec<_> = self.variables
-            .iter()
+            .values()
             .filter(|a| a.filter(flags))
             .collect();
         if diff || flags.sort {
