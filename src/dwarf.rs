@@ -128,11 +128,11 @@ fn parse_unit<'input, Endian>(
     };
 
     let namespace = Namespace::root();
-    parse_children(&mut unit, dwarf, &mut dwarf_unit, &namespace, iter)?;
+    parse_namespace_children(&mut unit, dwarf, &mut dwarf_unit, &namespace, iter)?;
     Ok(unit)
 }
 
-fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_namespace_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
@@ -151,7 +151,7 @@ fn parse_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             }
             gimli::DW_TAG_variable => {
                 let offset = child.entry().unwrap().offset();
-                let variable = parse_variable(unit, dwarf, dwarf_unit, namespace, child)?;
+                let variable = parse_variable(unit, dwarf, dwarf_unit, namespace.clone(), child)?;
                 unit.variables.insert(offset.0, variable);
             }
             gimli::DW_TAG_imported_declaration |
@@ -200,7 +200,7 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     }
 
     let namespace = Namespace::new(namespace, name);
-    parse_children(unit, dwarf, dwarf_unit, &namespace, iter)
+    parse_namespace_children(unit, dwarf, dwarf_unit, &namespace, iter)
 }
 
 fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
@@ -667,7 +667,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         // Note: the DWARF 5 standard says static members should use DW_TAG_variable,
         // but at least clang 3.7.1 uses DW_TAG_member.
         let offset = iter.entry().unwrap().offset();
-        let variable = parse_variable(unit, dwarf, dwarf_unit, namespace, iter)?;
+        let variable = parse_variable(unit, dwarf, dwarf_unit, namespace.clone(), iter)?;
         unit.variables.insert(offset.0, variable);
         return Ok(());
     }
@@ -881,7 +881,7 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     (
     dwarf: &DwarfFileState<'input, Endian>,
      dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
-     namespace: &Rc<Namespace<'input>>,
+     _namespace: &Rc<Namespace<'input>>,
      mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<SubroutineType<'input>>
     where Endian: gimli::Endianity
@@ -911,7 +911,7 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_formal_parameter => {
-                subroutine.parameters.push(parse_parameter(dwarf, dwarf_unit, namespace, child)?);
+                subroutine.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
             }
             tag => {
                 debug!("unknown subroutine child tag: {}", tag);
@@ -1157,20 +1157,19 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_formal_parameter => {
-                subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, &namespace, child)?);
+                subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_inlined_subroutine => {
                 subprogram.inlined_subroutines.push(parse_inlined_subroutine(unit,
                                                                              dwarf,
                                                                              dwarf_unit,
-                                                                             &namespace,
                                                                              child)?);
             }
             gimli::DW_TAG_variable => {
                 subprogram.variables.push(parse_variable(unit,
                                                          dwarf,
                                                          dwarf_unit,
-                                                         &namespace,
+                                                         Namespace::root(),
                                                          child)?);
             }
             gimli::DW_TAG_lexical_block => {
@@ -1179,7 +1178,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     unit,
                                     dwarf,
                                     dwarf_unit,
-                                    &namespace,
                                     child)?;
             }
             gimli::DW_TAG_unspecified_parameters |
@@ -1208,7 +1206,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     dwarf: &DwarfFileState<'input, Endian>,
     _unit: &mut DwarfUnitState<'state, 'input, Endian>,
-    _namespace: &Rc<Namespace<'input>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<Parameter<'input>>
     where Endian: gimli::Endianity
@@ -1260,7 +1257,6 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
-    namespace: &Rc<Namespace<'input>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<()>
     where Endian: gimli::Endianity
@@ -1286,14 +1282,10 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                inlined_subroutines.push(parse_inlined_subroutine(unit,
-                                                                  dwarf,
-                                                                  dwarf_unit,
-                                                                  namespace,
-                                                                  child)?);
+                inlined_subroutines.push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
-                variables.push(parse_variable(unit, dwarf, dwarf_unit, namespace, child)?);
+                variables.push(parse_variable(unit, dwarf, dwarf_unit, Namespace::root(), child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(inlined_subroutines,
@@ -1301,7 +1293,6 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     unit,
                                     dwarf,
                                     dwarf_unit,
-                                    namespace,
                                     child)?;
             }
             gimli::DW_TAG_formal_parameter |
@@ -1316,13 +1307,11 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     Ok(())
 }
 
-// TOOD: should this use the namespace of the abstract_origin instead?
 fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     (
     unit: &mut Unit<'input>,
      dwarf: &DwarfFileState<'input, Endian>,
      dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
-     namespace: &Rc<Namespace<'input>>,
      mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<InlinedSubroutine<'input>>
     where Endian: gimli::Endianity
@@ -1395,14 +1384,13 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 subroutine.inlined_subroutines.push(parse_inlined_subroutine(unit,
                                                                              dwarf,
                                                                              dwarf_unit,
-                                                                             namespace,
                                                                              child)?);
             }
             gimli::DW_TAG_variable => {
                 subroutine.variables.push(parse_variable(unit,
                                                          dwarf,
                                                          dwarf_unit,
-                                                         namespace,
+                                                         Namespace::root(),
                                                          child)?);
             }
             gimli::DW_TAG_lexical_block => {
@@ -1411,7 +1399,6 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                                     unit,
                                     dwarf,
                                     dwarf_unit,
-                                    namespace,
                                     child)?;
             }
             gimli::DW_TAG_formal_parameter => {}
@@ -1427,13 +1414,13 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     _dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
-    namespace: &Rc<Namespace<'input>>,
+    namespace: Rc<Namespace<'input>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<Variable<'input>>
     where Endian: gimli::Endianity
 {
     let mut variable = Variable::default();
-    variable.namespace = namespace.clone();
+    variable.namespace = namespace;
 
     let mut specification = None;
 
