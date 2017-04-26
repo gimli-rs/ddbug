@@ -114,8 +114,15 @@ impl<'a> Flags<'a> {
         }
     }
 
-    fn filter_namespace(&self, namespace: &Namespace) -> bool {
-        namespace.filter(&self.namespace)
+    fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {
+        if !self.namespace.is_empty() {
+            match namespace {
+                &Some(ref namespace) => namespace.filter(&self.namespace),
+                &None => false,
+            }
+        } else {
+            true
+        }
     }
 }
 
@@ -644,19 +651,13 @@ struct Namespace<'input> {
     name: Option<&'input [u8]>,
 }
 
-impl Namespace<'static> {
-    fn root() -> Rc<Namespace<'static>> {
-        Rc::new(Namespace {
-                    parent: None,
-                    name: None,
-                })
-    }
-}
-
 impl<'input> Namespace<'input> {
-    fn new(parent: &Rc<Namespace<'input>>, name: Option<&'input [u8]>) -> Rc<Namespace<'input>> {
+    fn new(
+        parent: &Option<Rc<Namespace<'input>>>,
+        name: Option<&'input [u8]>
+    ) -> Rc<Namespace<'input>> {
         Rc::new(Namespace {
-                    parent: Some(parent.clone()),
+                    parent: parent.clone(),
                     name: name,
                 })
     }
@@ -682,30 +683,29 @@ impl<'input> Namespace<'input> {
     fn print(&self, w: &mut Write) -> Result<()> {
         if let Some(ref parent) = self.parent {
             parent.print(w)?;
-            match self.name {
-                Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-                None => write!(w, "<anon>")?,
-            }
-            write!(w, "::")?;
         }
+        match self.name {
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            None => write!(w, "<anon>")?,
+        }
+        write!(w, "::")?;
         Ok(())
     }
 
     fn _filter(&self, namespace: &[&str]) -> (bool, usize) {
-        match self.parent {
-            Some(ref parent) => {
-                let (ret, offset) = parent._filter(namespace);
-                if ret {
-                    if offset < namespace.len() {
-                        (filter_name(self.name, namespace[offset]), offset + 1)
-                    } else {
-                        (true, offset)
-                    }
-                } else {
-                    (false, 0)
-                }
-            }
+        let (ret, offset) = match self.parent {
+            Some(ref parent) => parent._filter(namespace),
             None => (true, 0),
+        };
+
+        if ret {
+            if offset < namespace.len() {
+                (filter_name(self.name, namespace[offset]), offset + 1)
+            } else {
+                (true, offset)
+            }
+        } else {
+            (false, 0)
         }
     }
 
@@ -750,14 +750,21 @@ impl<'input> Namespace<'input> {
 }
 
 fn cmp_ns_and_name(
-    ns1: &Namespace,
+    ns1: &Option<Rc<Namespace>>,
     name1: Option<&[u8]>,
-    ns2: &Namespace,
+    ns2: &Option<Rc<Namespace>>,
     name2: Option<&[u8]>
 ) -> cmp::Ordering {
-    match Namespace::cmp(ns1, ns2) {
-        cmp::Ordering::Equal => name1.cmp(&name2),
-        o => o,
+    match (ns1, ns2) {
+        (&Some(ref ns1), &Some(ref ns2)) => {
+            match Namespace::cmp(ns1, ns2) {
+                cmp::Ordering::Equal => name1.cmp(&name2),
+                o => o,
+            }
+        }
+        (&Some(_), &None) => cmp::Ordering::Greater,
+        (&None, &Some(_)) => cmp::Ordering::Less,
+        (&None, &None) => cmp::Ordering::Equal,
     }
 }
 
@@ -1481,7 +1488,7 @@ impl<'input> BaseType<'input> {
 
 #[derive(Debug, Default)]
 struct TypeDef<'input> {
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     ty: Option<TypeOffset>,
 }
@@ -1496,7 +1503,9 @@ impl<'input> TypeDef<'input> {
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon-typedef>")?,
@@ -1520,7 +1529,7 @@ impl<'input> TypeDef<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -1569,7 +1578,7 @@ impl<'input> TypeDef<'input> {
 
 #[derive(Debug, Default)]
 struct StructType<'input> {
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     byte_size: Option<u64>,
     declaration: bool,
@@ -1588,7 +1597,7 @@ impl<'input> StructType<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -1778,7 +1787,9 @@ impl<'input> StructType<'input> {
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         write!(w, "struct ")?;
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -1800,7 +1811,7 @@ impl<'input> StructType<'input> {
 
 #[derive(Debug, Default)]
 struct UnionType<'input> {
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     byte_size: Option<u64>,
     declaration: bool,
@@ -1819,7 +1830,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -1998,7 +2009,9 @@ impl<'input> UnionType<'input> {
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         write!(w, "union ")?;
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -2163,7 +2176,7 @@ impl<'input> Member<'input> {
 
 #[derive(Debug, Default)]
 struct EnumerationType<'input> {
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     declaration: bool,
     ty: Option<TypeOffset>,
@@ -2185,7 +2198,7 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
@@ -2228,7 +2241,9 @@ impl<'input> EnumerationType<'input> {
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         write!(w, "enum ")?;
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -2510,17 +2525,19 @@ impl<'input> SubroutineType<'input> {
 
 #[derive(Debug, Default)]
 struct UnspecifiedType<'input> {
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
 }
 
 impl<'input> UnspecifiedType<'input> {
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<void>")?,
@@ -2626,7 +2643,7 @@ impl From<gimli::UnitOffset> for SubprogramOffset {
 #[derive(Debug)]
 struct Subprogram<'input> {
     offset: SubprogramOffset,
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     linkage_name: Option<&'input [u8]>,
     low_pc: Option<u64>,
@@ -2649,7 +2666,7 @@ impl<'input> Subprogram<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     fn calls(&self, file: &File) -> Vec<u64> {
@@ -2671,7 +2688,9 @@ impl<'input> Subprogram<'input> {
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -2786,7 +2805,9 @@ impl<'input> Subprogram<'input> {
 
     fn print_name(&self, w: &mut Write) -> Result<()> {
         write!(w, "fn ")?;
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -3096,7 +3117,7 @@ impl<'input> InlinedSubroutine<'input> {
 
 #[derive(Debug, Default)]
 struct Variable<'input> {
-    namespace: Rc<Namespace<'input>>,
+    namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     linkage_name: Option<&'input [u8]>,
     ty: Option<TypeOffset>,
@@ -3113,7 +3134,7 @@ impl<'input> Variable<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&*self.namespace)
+        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two variables.
@@ -3124,7 +3145,9 @@ impl<'input> Variable<'input> {
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
-        self.namespace.print(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,

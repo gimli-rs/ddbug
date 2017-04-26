@@ -22,7 +22,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     let mut bitfields = BTreeMap::new();
 
     let mut unit = Unit::default();
-    let namespace = Namespace::root();
+    let namespace = None;
 
     let mut types = type_information.iter();
     add_primitive_types(&mut unit.types);
@@ -283,7 +283,7 @@ fn add_primitive_type<'input>(
 fn parse_class<'input>(
     unit: &mut Unit<'input>,
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
-    namespace: &Rc<Namespace<'input>>,
+    namespace: &Option<Rc<Namespace<'input>>>,
     index: usize,
     properties: pdb::TypeProperties,
     fields: Option<TypeOffset>,
@@ -318,7 +318,7 @@ fn parse_class<'input>(
 fn parse_union<'input>(
     unit: &mut Unit<'input>,
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
-    namespace: &Rc<Namespace<'input>>,
+    namespace: &Option<Rc<Namespace<'input>>>,
     index: usize,
     properties: pdb::TypeProperties,
     fields: Option<TypeOffset>,
@@ -353,7 +353,7 @@ fn parse_union<'input>(
 fn parse_enumeration<'input>(
     unit: &mut Unit<'input>,
     enumerator_lists: &BTreeMap<usize, Vec<Enumerator<'input>>>,
-    namespace: &Rc<Namespace<'input>>,
+    namespace: &Option<Rc<Namespace<'input>>>,
     index: usize,
     properties: pdb::TypeProperties,
     underlying_type: Option<TypeOffset>,
