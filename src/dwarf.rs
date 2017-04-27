@@ -1281,7 +1281,9 @@ fn parse_subprogram_specification<'input>(
     if subprogram.return_type.is_none() {
         subprogram.return_type = specification.return_type;
     }
-    // TODO: inline?
+    if specification.inline {
+        subprogram.inline = true;
+    }
     // TODO: parameters?
 
     true
