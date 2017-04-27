@@ -1,5 +1,6 @@
 use std::ffi;
 use std::rc::Rc;
+use std::mem;
 
 use gimli;
 use xmas_elf;
@@ -23,10 +24,17 @@ struct DwarfUnitState<'state, 'input, Endian>
           'input: 'state
 {
     header: &'state gimli::CompilationUnitHeader<'input, Endian>,
-    _abbrev: &'state gimli::Abbreviations,
+    abbrev: &'state gimli::Abbreviations,
     line: Option<gimli::DebugLineOffset>,
     ranges: Option<gimli::DebugRangesOffset>,
+    subprograms: Vec<DwarfSubprogram<'input>>,
     variables: Vec<DwarfVariable<'input>>,
+}
+
+struct DwarfSubprogram<'input> {
+    subprogram: Subprogram<'input>,
+    offset: gimli::UnitOffset,
+    specification: gimli::UnitOffset,
 }
 
 struct DwarfVariable<'input> {
@@ -71,9 +79,10 @@ fn parse_unit<'input, Endian>(
     let abbrev = &unit_header.abbreviations(dwarf.debug_abbrev)?;
     let mut dwarf_unit = DwarfUnitState {
         header: unit_header,
-        _abbrev: abbrev,
+        abbrev: abbrev,
         line: None,
         ranges: None,
+        subprograms: Vec::new(),
         variables: Vec::new(),
     };
 
@@ -138,8 +147,60 @@ fn parse_unit<'input, Endian>(
     let namespace = None;
     parse_namespace_children(&mut unit, dwarf, &mut dwarf_unit, &namespace, iter)?;
 
+    fixup_subprogram_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
     fixup_variable_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
     Ok(unit)
+}
+
+fn fixup_subprogram_specifications<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    unit: &mut Unit<'input>,
+    dwarf: &DwarfFileState<'input, Endian>,
+    dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>
+) -> Result<()>
+    where Endian: gimli::Endianity
+{
+    let mut defer = Vec::new();
+
+    while !dwarf_unit.subprograms.is_empty() {
+        let mut progress = false;
+
+        mem::swap(&mut defer, &mut dwarf_unit.subprograms);
+        for mut subprogram in defer.drain(..) {
+            if parse_subprogram_specification(unit,
+                                              &mut subprogram.subprogram,
+                                              subprogram.specification) {
+                let mut tree = dwarf_unit.header
+                    .entries_tree(dwarf_unit.abbrev, Some(subprogram.offset))?;
+                parse_subprogram_children(unit,
+                                          dwarf,
+                                          dwarf_unit,
+                                          &mut subprogram.subprogram,
+                                          tree.iter())?;
+                unit.subprograms.insert(subprogram.subprogram.offset.0, subprogram.subprogram);
+                progress = true;
+            } else {
+                dwarf_unit.subprograms.push(subprogram);
+            }
+        }
+
+        if !progress {
+            debug!("invalid specification for {} subprograms",
+                   dwarf_unit.subprograms.len());
+            mem::swap(&mut defer, &mut dwarf_unit.subprograms);
+            for mut subprogram in defer.drain(..) {
+                let mut tree = dwarf_unit.header
+                    .entries_tree(dwarf_unit.abbrev, Some(subprogram.offset))?;
+                parse_subprogram_children(unit,
+                                          dwarf,
+                                          dwarf_unit,
+                                          &mut subprogram.subprogram,
+                                          tree.iter())?;
+                unit.subprograms.insert(subprogram.subprogram.offset.0, subprogram.subprogram);
+            }
+            return Ok(());
+        }
+    }
+    Ok(())
 }
 
 fn fixup_variable_specifications<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
@@ -1077,15 +1138,13 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     namespace: &Option<Rc<Namespace<'input>>>,
-    mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+    iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<()>
     where Endian: gimli::Endianity
 {
+    let offset = iter.entry().unwrap().offset();
     let mut subprogram = Subprogram {
-        offset: iter.entry()
-            .unwrap()
-            .offset()
-            .into(),
+        offset: offset.into(),
         namespace: namespace.clone(),
         name: None,
         linkage_name: None,
@@ -1141,7 +1200,8 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         subprogram.return_type = Some(offset.into());
                     }
                 }
-                gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
+                gimli::DW_AT_specification |
+                gimli::DW_AT_abstract_origin => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
                         specification = Some(offset);
                     }
@@ -1176,39 +1236,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             }
         }
 
-        if let Some(specification) = specification {
-            match unit.subprograms.get(&specification.0) {
-                Some(specification) => {
-                    subprogram.namespace = specification.namespace.clone();
-                    if subprogram.name.is_none() {
-                        subprogram.name = specification.name;
-                    }
-                    if subprogram.linkage_name.is_none() {
-                        subprogram.linkage_name = specification.linkage_name;
-                    }
-                    // TODO: will these ever be present in the specification?
-                    if subprogram.low_pc.is_none() {
-                        subprogram.low_pc = specification.low_pc;
-                    }
-                    if subprogram.high_pc.is_none() {
-                        subprogram.high_pc = specification.high_pc;
-                    }
-                    if subprogram.size.is_none() {
-                        subprogram.size = specification.size;
-                    }
-                    if subprogram.return_type.is_none() {
-                        subprogram.return_type = specification.return_type;
-                    }
-                    // TODO: inline?
-                    // TODO: parameters?
-                }
-                None => {
-                    // TODO: this may occur if specification comes later
-                    debug!("invalid subprogram offset: 0x{:x}", specification.0);
-                }
-            }
-        }
-
         if let Some(low_pc) = subprogram.low_pc {
             if let Some(high_pc) = subprogram.high_pc {
                 subprogram.size = high_pc.checked_sub(low_pc);
@@ -1218,6 +1245,57 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
+    if let Some(specification) = specification {
+        if !parse_subprogram_specification(unit, &mut subprogram, specification) {
+            dwarf_unit.subprograms.push(DwarfSubprogram {
+                                            subprogram: subprogram,
+                                            offset: offset,
+                                            specification: specification,
+                                        });
+            return Ok(());
+        }
+    }
+
+    parse_subprogram_children(unit, dwarf, dwarf_unit, &mut subprogram, iter)?;
+    unit.subprograms.insert(subprogram.offset.0, subprogram);
+    Ok(())
+}
+
+fn parse_subprogram_specification<'input>(
+    unit: &mut Unit<'input>,
+    subprogram: &mut Subprogram<'input>,
+    specification: gimli::UnitOffset
+) -> bool {
+    let specification = match unit.subprograms.get(&specification.0) {
+        Some(val) => val,
+        None => return false,
+    };
+
+    subprogram.namespace = specification.namespace.clone();
+    if subprogram.name.is_none() {
+        subprogram.name = specification.name;
+    }
+    if subprogram.linkage_name.is_none() {
+        subprogram.linkage_name = specification.linkage_name;
+    }
+    if subprogram.return_type.is_none() {
+        subprogram.return_type = specification.return_type;
+    }
+    // TODO: inline?
+    // TODO: parameters?
+
+    true
+}
+
+fn parse_subprogram_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    unit: &mut Unit<'input>,
+    dwarf: &DwarfFileState<'input, Endian>,
+    dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
+    subprogram: &mut Subprogram<'input>,
+    mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
+) -> Result<()>
+    where Endian: gimli::Endianity
+{
     let namespace = Some(Namespace::new(&subprogram.namespace, subprogram.name));
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
@@ -1264,8 +1342,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             }
         }
     }
-
-    unit.subprograms.insert(subprogram.offset.0, subprogram);
     Ok(())
 }
 
