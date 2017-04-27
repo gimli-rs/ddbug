@@ -1141,7 +1141,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         subprogram.return_type = Some(offset.into());
                     }
                 }
-                gimli::DW_AT_specification => {
+                gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
                         specification = Some(offset);
                     }
@@ -1155,7 +1155,6 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_frame_base |
                 gimli::DW_AT_external |
-                gimli::DW_AT_abstract_origin |
                 gimli::DW_AT_GNU_all_call_sites |
                 gimli::DW_AT_GNU_all_tail_call_sites |
                 gimli::DW_AT_prototyped |
