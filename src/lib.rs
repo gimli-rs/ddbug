@@ -645,20 +645,30 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
     Ok(())
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, PartialEq, Eq)]
+enum NamespaceKind {
+    Namespace,
+    Subprogram,
+    Type,
+}
+
+#[derive(Debug)]
 struct Namespace<'input> {
     parent: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
+    kind: NamespaceKind,
 }
 
 impl<'input> Namespace<'input> {
     fn new(
         parent: &Option<Rc<Namespace<'input>>>,
-        name: Option<&'input [u8]>
+        name: Option<&'input [u8]>,
+        kind: NamespaceKind
     ) -> Rc<Namespace<'input>> {
         Rc::new(Namespace {
                     parent: parent.clone(),
                     name: name,
+                    kind: kind,
                 })
     }
 
@@ -745,6 +755,16 @@ impl<'input> Namespace<'input> {
                     other => other,
                 }
             }
+        }
+    }
+
+    fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
+        match namespace {
+            &Some(ref namespace) => {
+                namespace.kind == NamespaceKind::Type &&
+                (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
+            }
+            &None => false,
         }
     }
 }
@@ -1798,7 +1818,7 @@ impl<'input> StructType<'input> {
     }
 
     fn is_anon(&self) -> bool {
-        self.name.is_none()
+        self.name.is_none() || Namespace::is_anon_type(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
@@ -2020,7 +2040,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn is_anon(&self) -> bool {
-        self.name.is_none()
+        self.name.is_none() || Namespace::is_anon_type(&self.namespace)
     }
 
     /// Compare the identifying information of two types.

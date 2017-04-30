@@ -6,9 +6,10 @@ use gimli;
 use xmas_elf;
 
 use super::Result;
-use super::{Unit, Namespace, Subprogram, InlinedSubroutine, Variable, Type, TypeKind, BaseType,
-            TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType, SubroutineType,
-            UnspecifiedType, PointerToMemberType, TypeModifier, TypeModifierKind, Member, Parameter};
+use super::{Unit, Namespace, NamespaceKind, Subprogram, InlinedSubroutine, Variable, Type, TypeKind,
+            BaseType, TypeDef, StructType, UnionType, EnumerationType, Enumerator, ArrayType,
+            SubroutineType, UnspecifiedType, PointerToMemberType, TypeModifier, TypeModifierKind,
+            Member, Parameter};
 
 struct DwarfFileState<'input, Endian>
     where Endian: gimli::Endianity
@@ -323,7 +324,7 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
-    let namespace = Some(Namespace::new(namespace, name));
+    let namespace = Some(Namespace::new(namespace, name, NamespaceKind::Namespace));
     parse_namespace_children(unit, dwarf, dwarf_unit, &namespace, iter)
 }
 
@@ -607,7 +608,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         }
     }
 
-    let namespace = Some(Namespace::new(&ty.namespace, ty.name));
+    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_subprogram => {
@@ -672,7 +673,7 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
-    let namespace = Some(Namespace::new(&ty.namespace, ty.name));
+    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_subprogram => {
@@ -883,7 +884,7 @@ fn parse_enumeration_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         }
     }
 
-    let namespace = Some(Namespace::new(&ty.namespace, ty.name));
+    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_enumerator => {
@@ -1298,7 +1299,9 @@ fn parse_subprogram_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 ) -> Result<()>
     where Endian: gimli::Endianity
 {
-    let namespace = Some(Namespace::new(&subprogram.namespace, subprogram.name));
+    let namespace = Some(Namespace::new(&subprogram.namespace,
+                                        subprogram.name,
+                                        NamespaceKind::Subprogram));
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_formal_parameter => {
