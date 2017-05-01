@@ -1326,6 +1326,7 @@ fn parse_subprogram_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     unit,
                                     dwarf,
                                     dwarf_unit,
+                                    &namespace,
                                     child)?;
             }
             gimli::DW_TAG_unspecified_parameters |
@@ -1403,6 +1404,7 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
+    namespace: &Option<Rc<Namespace<'input>>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<()>
     where Endian: gimli::Endianity
@@ -1444,14 +1446,21 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                                     unit,
                                     dwarf,
                                     dwarf_unit,
+                                    namespace,
                                     child)?;
             }
             gimli::DW_TAG_formal_parameter |
             gimli::DW_TAG_label |
             gimli::DW_TAG_imported_declaration |
-            gimli::DW_TAG_imported_module => {}
+            gimli::DW_TAG_imported_module |
+            gimli::DW_TAG_GNU_call_site => {}
             tag => {
-                debug!("unknown lexical_block child tag: {}", tag);
+                let offset = child.entry().unwrap().offset();
+                if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
+                    unit.types.insert(offset.0, ty);
+                } else {
+                    debug!("unknown lexical_block child tag: {}", tag);
+                }
             }
         }
     }
@@ -1529,6 +1538,10 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         debug!("unknown inlined_subroutine size");
     }
 
+    // TODO: get the namespace from the abstract origin.
+    // However, not sure if this if ever actually used in practice.
+    let namespace = None;
+
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
@@ -1547,9 +1560,11 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                                     unit,
                                     dwarf,
                                     dwarf_unit,
+                                    &namespace,
                                     child)?;
             }
-            gimli::DW_TAG_formal_parameter => {}
+            gimli::DW_TAG_formal_parameter |
+            gimli::DW_TAG_GNU_call_site => {}
             tag => {
                 debug!("unknown inlined_subroutine child tag: {}", tag);
             }
