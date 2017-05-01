@@ -30,6 +30,9 @@ fn main() {
     opts.optflag("",
                  "ignore-function-inline",
                  "don't display function differences due to inline changes");
+    opts.optflag("",
+                 "ignore-variable-address",
+                 "don't display variable differences due to address changes");
     opts.optopt("",
                 "inline-depth",
                 "depth of inlined subroutine calls (0 to disable)",
@@ -60,6 +63,7 @@ fn main() {
     let ignore_function_address = matches.opt_present("ignore-function-address");
     let ignore_function_size = matches.opt_present("ignore-function-size");
     let ignore_function_inline = matches.opt_present("ignore-function-inline");
+    let ignore_variable_address = matches.opt_present("ignore-variable-address");
     let inline_depth = if let Some(inline_depth) = matches.opt_str("inline-depth") {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
@@ -91,6 +95,7 @@ fn main() {
         ignore_function_address: ignore_function_address,
         ignore_function_size: ignore_function_size,
         ignore_function_inline: ignore_function_inline,
+        ignore_variable_address: ignore_variable_address,
         inline_depth: inline_depth,
         unit: unit,
         name: name,

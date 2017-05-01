@@ -81,6 +81,7 @@ pub struct Flags<'a> {
     pub ignore_function_address: bool,
     pub ignore_function_size: bool,
     pub ignore_function_inline: bool,
+    pub ignore_variable_address: bool,
     pub inline_depth: usize,
     pub unit: Option<&'a str>,
     pub name: Option<&'a str>,
@@ -3142,6 +3143,7 @@ struct Variable<'input> {
     linkage_name: Option<&'input [u8]>,
     ty: Option<TypeOffset>,
     declaration: bool,
+    address: Option<u64>,
 }
 
 impl<'input> Variable<'input> {
@@ -3178,11 +3180,12 @@ impl<'input> Variable<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_name(w, unit))?;
         state.indent(|state| {
-                         state.line_option(w, |w, _state| self.print_linkage_name(w))?;
-                         state.line_option(w, |w, _state| self.print_size(w, unit))?;
-                         state.line_option(w, |w, _state| self.print_declaration(w))
-                         // TODO: print anon type inline
-                     })
+            state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+            state.line_option(w, |w, _state| self.print_address(w))?;
+            state.line_option(w, |w, _state| self.print_size(w, unit))?;
+            state.line_option(w, |w, _state| self.print_declaration(w))
+            // TODO: print anon type inline
+        })
     }
 
     fn diff(
@@ -3200,6 +3203,12 @@ impl<'input> Variable<'input> {
             state.line_option(w,
                               |w, _state| a.print_linkage_name(w),
                               |w, _state| b.print_linkage_name(w))?;
+            let flag = state.flags.ignore_variable_address;
+            state.ignore_diff(flag, |state| {
+                    state.line_option(w,
+                                      |w, _state| a.print_address(w),
+                                      |w, _state| b.print_address(w))
+                })?;
             state.line_option(w,
                               |w, _state| a.print_size(w, unit_a),
                               |w, _state| b.print_size(w, unit_b))?;
@@ -3220,6 +3229,13 @@ impl<'input> Variable<'input> {
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
             write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
+        }
+        Ok(())
+    }
+
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        if let Some(address) = self.address {
+            write!(w, "address: 0x{:x}", address)?;
         }
         Ok(())
     }

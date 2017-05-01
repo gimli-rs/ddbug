@@ -865,6 +865,7 @@ fn test_variable_diff_size() {
                    "int main() {}\n"),
            concat!("- var V: [char; 1]\n",
                    "+ var V: [char; 2]\n",
+                   "[..]",
                    "- \tsize: 1\n",
                    "+ \tsize: 2\n",
                    "\n"),
@@ -878,6 +879,7 @@ fn test_variable_diff_decl() {
            concat!("extern char **environ;\n", //
                    "int main() { environ == 0; }\n"),
            concat!("  var environ: * * char\n",
+                   "[..]",
                    "  \tsize: 8\n",
                    "+ \tdeclaration: yes\n",
                    "\n"),

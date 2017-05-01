@@ -735,14 +735,13 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         }
                         gimli::AttributeValue::Exprloc(expr) => {
                             match evaluate(dwarf_unit.header, expr) {
-                                Ok(gimli::Location::Address { address }) => {
+                                Some(gimli::Location::Address { address }) => {
                                     member.bit_offset = address * 8;
                                 }
-                                Ok(loc) => {
+                                Some(gimli::Location::Register { .. }) |
+                                None => {}
+                                Some(loc) => {
                                     debug!("unknown DW_AT_data_member_location result: {:?}", loc)
-                                }
-                                Err(e) => {
-                                    debug!("DW_AT_data_member_location evaluation failed: {}", e)
                                 }
                             }
                         }
@@ -1562,7 +1561,7 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
 fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     _unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
-    _dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
+    dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     namespace: Option<Rc<Namespace<'input>>>,
     mut iter: gimli::EntriesTreeIter<'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<DwarfVariable<'input>>
@@ -1601,10 +1600,30 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         variable.declaration = flag;
                     }
                 }
+                gimli::DW_AT_location => {
+                    match attr.value() {
+                        gimli::AttributeValue::Exprloc(expr) => {
+                            match evaluate(dwarf_unit.header, expr) {
+                                Some(gimli::Location::Address { address }) => {
+                                    variable.address = Some(address);
+                                }
+                                Some(gimli::Location::Register { .. }) |
+                                Some(gimli::Location::Scalar { .. }) |
+                                None => {}
+                                Some(loc) => debug!("unknown DW_AT_location result: {:?}", loc),
+                            }
+                        }
+                        gimli::AttributeValue::DebugLocRef(..) => {
+                            // TODO
+                        }
+                        _ => {
+                            debug!("unknown DW_AT_location: {:?}", attr.value());
+                        }
+                    }
+                }
                 gimli::DW_AT_abstract_origin |
                 gimli::DW_AT_artificial |
                 gimli::DW_AT_const_value |
-                gimli::DW_AT_location |
                 gimli::DW_AT_external |
                 gimli::DW_AT_accessibility |
                 gimli::DW_AT_decl_file |
@@ -1637,22 +1656,30 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 fn evaluate<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<Endian>,
     bytecode: gimli::EndianBuf<'input, Endian>
-) -> Result<gimli::Location<'input>>
+) -> Option<gimli::Location<'input>>
     where Endian: gimli::Endianity + 'input
 {
     let mut evaluation =
         gimli::Evaluation::<Endian>::new(bytecode, unit.address_size(), unit.format());
     evaluation.set_initial_value(0);
-    let result = evaluation.evaluate()?;
+    let result = evaluation.evaluate();
     match result {
-        gimli::EvaluationResult::Complete => {
+        Ok(gimli::EvaluationResult::Complete) => {
             let pieces = evaluation.result();
-            if pieces.len() != 1 {
-                return Err(format!("unsupported number of evaluation pieces: {}", pieces.len())
-                               .into());
+            if pieces.len() == 1 {
+                Some(pieces[0].location)
+            } else {
+                debug!("unsupported number of evaluation pieces: {}", pieces.len());
+                None
             }
-            Ok(pieces[0].location)
         }
-        _ => Err("unsupported evaluation expression".into()),
+        Ok(_) => {
+            //debug!("incomplete evaluation");
+            None
+        }
+        Err(e) => {
+            debug!("evaluation failed: {}", e);
+            None
+        }
     }
 }
