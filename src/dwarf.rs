@@ -153,7 +153,7 @@ fn parse_unit<'input, Endian>(
     Ok(unit)
 }
 
-fn fixup_subprogram_specifications<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+fn fixup_subprogram_specifications<'state, 'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>
@@ -204,7 +204,7 @@ fn fixup_subprogram_specifications<'state, 'input, 'abbrev, 'unit, 'tree, Endian
     Ok(())
 }
 
-fn fixup_variable_specifications<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+fn fixup_variable_specifications<'state, 'input, Endian>(
     unit: &mut Unit<'input>,
     _dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>

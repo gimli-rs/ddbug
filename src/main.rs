@@ -151,7 +151,7 @@ fn diff_file(
 fn print_file(file: &mut ddbug::File, flags: &ddbug::Flags) -> ddbug::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    ddbug::print_file(&mut writer, file, &flags)
+    ddbug::print_file(&mut writer, file, flags)
 }
 
 fn print_usage(opts: &getopts::Options) -> ! {

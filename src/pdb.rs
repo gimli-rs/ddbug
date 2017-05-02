@@ -6,9 +6,9 @@ use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
 use super::Result;
-use super::{File, Unit, Namespace, SubprogramOffset, Subprogram, InlinedSubroutine, Variable,
-            TypeOffset, Type, TypeKind, BaseType, TypeDef, StructType, UnionType, EnumerationType,
-            Enumerator, ArrayType, SubroutineType, TypeModifier, TypeModifierKind, Member, Parameter};
+use super::{File, Unit, Namespace, SubprogramOffset, Subprogram, TypeOffset, Type, TypeKind,
+            BaseType, StructType, UnionType, EnumerationType, Enumerator, ArrayType, SubroutineType,
+            TypeModifier, TypeModifierKind, Member, Parameter};
 
 pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let mut cursor = io::Cursor::new(input);

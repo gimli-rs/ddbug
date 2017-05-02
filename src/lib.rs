@@ -117,9 +117,9 @@ impl<'a> Flags<'a> {
 
     fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {
         if !self.namespace.is_empty() {
-            match namespace {
-                &Some(ref namespace) => namespace.filter(&self.namespace),
-                &None => false,
+            match *namespace {
+                Some(ref namespace) => namespace.filter(&self.namespace),
+                None => false,
             }
         } else {
             true
@@ -361,7 +361,7 @@ impl<'a, 'input> PrintState<'a, 'input>
 
 pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
     let subprograms = file.subprograms();
-    for unit in file.filter_units(flags, false).iter() {
+    for unit in &file.filter_units(flags, false) {
         let mut state = PrintState::new(file, &subprograms, flags);
         if flags.unit.is_none() {
             state.line(w, |w, _state| {
@@ -729,7 +729,7 @@ impl<'input> Namespace<'input> {
     }
 
     fn _cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
-        debug_assert!(a.len() == b.len());
+        debug_assert_eq!(a.len(), b.len());
         match (a.parent.as_ref(), b.parent.as_ref()) {
             (Some(p1), Some(p2)) => {
                 match Self::_cmp(p1, p2) {
@@ -764,12 +764,12 @@ impl<'input> Namespace<'input> {
     }
 
     fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
-        match namespace {
-            &Some(ref namespace) => {
+        match *namespace {
+            Some(ref namespace) => {
                 namespace.kind == NamespaceKind::Type &&
                 (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
             }
-            &None => false,
+            None => false,
         }
     }
 }
@@ -1230,7 +1230,7 @@ impl<'input> Type<'input> {
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
                 let discr_b = type_b.kind.discriminant_value();
-                debug_assert!(discr_a != discr_b);
+                debug_assert_ne!(discr_a, discr_b);
                 discr_a.cmp(&discr_b)
             }
         }
@@ -2742,7 +2742,7 @@ impl<'input> Subprogram<'input> {
                 state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
             }
             if state.flags.calls {
-                let calls = self.calls(&state.file);
+                let calls = self.calls(state.file);
                 if !calls.is_empty() {
                     state.line(w, |w, _state| self.print_calls_label(w))?;
                     state.indent(|state| self.print_calls(w, state, &calls))?;
@@ -2807,8 +2807,8 @@ impl<'input> Subprogram<'input> {
             }
             // TODO
             if false && state.flags.calls {
-                let calls_a = a.calls(&state.a.file);
-                let calls_b = b.calls(&state.b.file);
+                let calls_a = a.calls(state.a.file);
+                let calls_b = b.calls(state.b.file);
                 state.line_option(w,
                                   |w, _state| {
                                       if !calls_a.is_empty() {
