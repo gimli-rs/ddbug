@@ -11,7 +11,7 @@ log = "0.3.6"
 memmap = "0.4.0"
 panopticon = { git = "https://github.com/philipc/panopticon", branch = "ddbug" }
 pdb = "0.1.1"
-xmas-elf = "0.3"
+xmas-elf = "0.5.0"
 
 [dev-dependencies]
 rand = "0.3.15"
