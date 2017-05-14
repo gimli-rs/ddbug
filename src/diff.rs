@@ -50,7 +50,7 @@ pub fn shortest_path<Item, F>(
     item1: &[Item],
     item2: &[Item],
     step_cost: usize,
-    diff_cost: F
+    diff_cost: F,
 ) -> Vec<Direction>
     where F: Fn(&Item, &Item) -> usize
 {
@@ -73,27 +73,24 @@ pub fn shortest_path<Item, F>(
         index1: usize,
         index2: usize,
         cost: usize,
-        from: Direction
+        from: Direction,
     ) {
         if cost < node.cost {
             node.cost = cost;
             node.from = from;
-            heap.push(State {
-                          cost: cost,
-                          index1: index1,
-                          index2: index2,
-                      });
+            heap.push(
+                State {
+                    cost: cost,
+                    index1: index1,
+                    index2: index2,
+                }
+            );
         }
     }
 
     // Start at the end.  This makes indexing and boundary conditions
     // simpler, and also means we can backtrack in order.
-    push(&mut node[len - 1],
-         &mut heap,
-         len1 - 1,
-         len2 - 1,
-         0,
-         Direction::None);
+    push(&mut node[len - 1], &mut heap, len1 - 1, len2 - 1, 0, Direction::None);
 
     while let Some(State { index1, index2, .. }) = heap.pop() {
         if (index1, index2) == (0, 0) {
@@ -133,12 +130,7 @@ pub fn shortest_path<Item, F>(
             let next = index - 1;
             if !node[next].done {
                 let cost = node[index].cost + step_cost;
-                push(&mut node[next],
-                     &mut heap,
-                     next1,
-                     index2,
-                     cost,
-                     Direction::Horizontal);
+                push(&mut node[next], &mut heap, next1, index2, cost, Direction::Horizontal);
             }
         }
         if index2 > 0 {
@@ -146,12 +138,7 @@ pub fn shortest_path<Item, F>(
             let next = index - len1;
             if !node[next].done {
                 let cost = node[index].cost + step_cost;
-                push(&mut node[next],
-                     &mut heap,
-                     index1,
-                     next2,
-                     cost,
-                     Direction::Vertical);
+                push(&mut node[next], &mut heap, index1, next2, cost, Direction::Vertical);
             }
         }
         if index1 > 0 && index2 > 0 {
@@ -160,12 +147,7 @@ pub fn shortest_path<Item, F>(
             let next = index - len1 - 1;
             if !node[next].done {
                 let cost = node[index].cost + diff_cost(&item1[next1], &item2[next2]);
-                push(&mut node[next],
-                     &mut heap,
-                     next1,
-                     next2,
-                     cost,
-                     Direction::Diagonal);
+                push(&mut node[next], &mut heap, next1, next2, cost, Direction::Diagonal);
             }
         }
     }

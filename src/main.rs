@@ -15,37 +15,40 @@ fn main() {
     opts.optflag("", "calls", "print subprogram calls");
     opts.optflag("", "diff", "print difference between two files");
     opts.optflag("", "sort", "sort entries by type and name");
-    opts.optflag("",
-                 "ignore-added",
-                 "don't display differences due to added functions/types/variables");
-    opts.optflag("",
-                 "ignore-deleted",
-                 "don't display differences due to deleted functions/types/variables");
-    opts.optflag("",
-                 "ignore-function-address",
-                 "don't display function differences due to address changes");
-    opts.optflag("",
-                 "ignore-function-size",
-                 "don't display function differences due to size changes");
-    opts.optflag("",
-                 "ignore-function-inline",
-                 "don't display function differences due to inline changes");
-    opts.optflag("",
-                 "ignore-variable-address",
-                 "don't display variable differences due to address changes");
-    opts.optopt("",
-                "inline-depth",
-                "depth of inlined subroutine calls (0 to disable)",
-                "DEPTH");
-    opts.optopt("",
-                "unit",
-                "print only entries within the given unit",
-                "UNIT");
+    opts.optflag(
+        "",
+        "ignore-added",
+        "don't display differences due to added functions/types/variables",
+    );
+    opts.optflag(
+        "",
+        "ignore-deleted",
+        "don't display differences due to deleted functions/types/variables",
+    );
+    opts.optflag(
+        "",
+        "ignore-function-address",
+        "don't display function differences due to address changes",
+    );
+    opts.optflag(
+        "",
+        "ignore-function-size",
+        "don't display function differences due to size changes",
+    );
+    opts.optflag(
+        "",
+        "ignore-function-inline",
+        "don't display function differences due to inline changes",
+    );
+    opts.optflag(
+        "",
+        "ignore-variable-address",
+        "don't display variable differences due to address changes",
+    );
+    opts.optopt("", "inline-depth", "depth of inlined subroutine calls (0 to disable)", "DEPTH");
+    opts.optopt("", "unit", "print only entries within the given unit", "UNIT");
     opts.optopt("", "name", "print only entries with the given name", "NAME");
-    opts.optopt("",
-                "namespace",
-                "print only entries within the given namespace",
-                "NAMESPACE");
+    opts.optopt("", "namespace", "print only entries within the given namespace", "NAMESPACE");
 
     let matches = match opts.parse(env::args().skip(1)) {
         Ok(m) => m,
@@ -68,9 +71,7 @@ fn main() {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
             Err(e) => {
-                error!("Invalid argument '{}' to option 'inline-depth': {}",
-                       inline_depth,
-                       e);
+                error!("Invalid argument '{}' to option 'inline-depth': {}", inline_depth, e);
                 print_usage(&opts);
             }
         }
@@ -104,27 +105,35 @@ fn main() {
 
     if diff {
         if matches.free.len() != 2 {
-            error!("Invalid filename arguments (expected 2 filenames, found {})",
-                   matches.free.len());
+            error!(
+                "Invalid filename arguments (expected 2 filenames, found {})",
+                matches.free.len()
+            );
             print_usage(&opts);
         }
         let path_a = &matches.free[0];
         let path_b = &matches.free[1];
 
-        if let Err(e) = ddbug::parse_file(path_a,
-                                          &mut |file_a| {
-            if let Err(e) = ddbug::parse_file(path_b,
-                                              &mut |file_b| diff_file(file_a, file_b, &flags)) {
-                error!("{}: {}", path_b, e);
-            }
-            Ok(())
-        }) {
+        if let Err(e) = ddbug::parse_file(
+            path_a,
+            &mut |file_a| {
+                if let Err(e) = ddbug::parse_file(
+                    path_b,
+                    &mut |file_b| diff_file(file_a, file_b, &flags),
+                ) {
+                    error!("{}: {}", path_b, e);
+                }
+                Ok(())
+            },
+        ) {
             error!("{}: {}", path_a, e);
         }
     } else {
         if matches.free.len() != 1 {
-            error!("Invalid filename arguments (expected 1 filename, found {})",
-                   matches.free.len());
+            error!(
+                "Invalid filename arguments (expected 1 filename, found {})",
+                matches.free.len()
+            );
             print_usage(&opts);
         }
         let path = &matches.free[0];
@@ -138,7 +147,7 @@ fn main() {
 fn diff_file(
     file_a: &mut ddbug::File,
     file_b: &mut ddbug::File,
-    flags: &ddbug::Flags
+    flags: &ddbug::Flags,
 ) -> ddbug::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();

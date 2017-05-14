@@ -171,10 +171,7 @@ impl<'input> File<'input> {
     }
 
     fn filter_units(&self, flags: &Flags, diff: bool) -> Vec<&Unit> {
-        let mut units: Vec<_> = self.units
-            .iter()
-            .filter(|a| a.filter(flags))
-            .collect();
+        let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
             units.sort_by(|a, b| Unit::cmp_id(a, b));
         }
@@ -209,10 +206,7 @@ pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result
 
 pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let elf = xmas_elf::ElfFile::new(input);
-    let machine = elf.header
-        .pt2?
-        .machine()
-        .as_machine();
+    let machine = elf.header.pt2?.machine().as_machine();
     let mut region = match machine {
         xmas_elf::header::Machine::X86_64 => {
             panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF)
@@ -241,10 +235,7 @@ pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Resul
         }
     }
 
-    let units = match elf.header
-              .pt1
-              .data
-              .as_data() {
+    let units = match elf.header.pt1.data.as_data() {
         xmas_elf::header::Data::LittleEndian => dwarf::parse::<gimli::LittleEndian>(&elf)?,
         xmas_elf::header::Data::BigEndian => dwarf::parse::<gimli::BigEndian>(&elf)?,
         _ => {
@@ -253,10 +244,12 @@ pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Resul
     };
 
     let mut file = File {
-        code: Some(CodeRegion {
-                       machine: machine,
-                       region: region,
-                   }),
+        code: Some(
+            CodeRegion {
+                machine: machine,
+                region: region,
+            }
+        ),
         units: units,
     };
 
@@ -292,7 +285,7 @@ impl<'a, 'input> PrintState<'a, 'input>
     fn new(
         file: &'a File<'input>,
         subprograms: &'a HashMap<u64, &'a Subprogram<'input>>,
-        flags: &'a Flags<'a>
+        flags: &'a Flags<'a>,
     ) -> Self {
         PrintState {
             indent: 0,
@@ -364,10 +357,13 @@ pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
     for unit in &file.filter_units(flags, false) {
         let mut state = PrintState::new(file, &subprograms, flags);
         if flags.unit.is_none() {
-            state.line(w, |w, _state| {
-                    write!(w, "Unit: ")?;
-                    unit.print_ref(w)
-                })?;
+            state
+                .line(
+                    w, |w, _state| {
+                        write!(w, "Unit: ")?;
+                        unit.print_ref(w)
+                    }
+                )?;
         }
         unit.print(w, &mut state, flags)?;
     }
@@ -465,7 +461,7 @@ impl<'a, 'input> DiffState<'a, 'input>
         subprograms_a: &'a HashMap<u64, &'a Subprogram<'input>>,
         file_b: &'a File<'input>,
         subprograms_b: &'a HashMap<u64, &'a Subprogram<'input>>,
-        flags: &'a Flags<'a>
+        flags: &'a Flags<'a>,
     ) -> Self {
         DiffState {
             a: PrintState::new(file_a, subprograms_a, flags),
@@ -482,7 +478,7 @@ impl<'a, 'input> DiffState<'a, 'input>
         cmp: FCmp,
         mut equal: FEqual,
         less: FLess,
-        greater: FGreater
+        greater: FGreater,
     ) -> Result<()>
         where T: Copy,
               I: Iterator<Item = T>,
@@ -589,22 +585,26 @@ impl<'a, 'input> DiffState<'a, 'input>
         f_b(&mut b, &mut state)?;
 
         if a == b {
-            self.prefix_equal(|state| {
-                if !a.is_empty() {
-                    state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
+            self.prefix_equal(
+                |state| {
+                    if !a.is_empty() {
+                        state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
+                    }
+                    Ok(())
                 }
-                Ok(())
-            })
+            )
         } else {
-            self.prefix_diff(|state| {
-                if !a.is_empty() {
-                    state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
+            self.prefix_diff(
+                |state| {
+                    if !a.is_empty() {
+                        state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
+                    }
+                    if !b.is_empty() {
+                        state.b.line(w, |w, _state| w.write_all(&*b).map_err(From::from))?;
+                    }
+                    Ok(())
                 }
-                if !b.is_empty() {
-                    state.b.line(w, |w, _state| w.write_all(&*b).map_err(From::from))?;
-                }
-                Ok(())
-            })
+            )
         }
     }
 
@@ -621,32 +621,42 @@ pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Fl
     let subprograms_a = file_a.subprograms();
     let subprograms_b = file_b.subprograms();
     let mut state = DiffState::new(file_a, &subprograms_a, file_b, &subprograms_b, flags);
-    state.merge(w,
-                &mut file_a.filter_units(flags, true).iter(),
-                &mut file_b.filter_units(flags, true).iter(),
-                |a, b| Unit::cmp_id(a, b),
-                |w, state, a, b| {
-            if flags.unit.is_none() {
-                state.a
-                    .line(w, |w, _state| {
+    state
+        .merge(
+            w,
+            &mut file_a.filter_units(flags, true).iter(),
+            &mut file_b.filter_units(flags, true).iter(),
+            |a, b| Unit::cmp_id(a, b),
+            |w, state, a, b| {
+                if flags.unit.is_none() {
+                    state
+                        .a
+                        .line(
+                            w, |w, _state| {
+                                write!(w, "Unit: ")?;
+                                a.print_ref(w)
+                            }
+                        )?;
+                }
+                Unit::diff(a, b, w, state, flags)
+            },
+            |w, state, a| {
+                state.line(
+                    w, |w, _state| {
                         write!(w, "Unit: ")?;
                         a.print_ref(w)
-                    })?;
-            }
-            Unit::diff(a, b, w, state, flags)
-        },
-                |w, state, a| {
-                    state.line(w, |w, _state| {
-                write!(w, "Unit: ")?;
-                a.print_ref(w)
-            })
-                },
-                |w, state, b| {
-                    state.line(w, |w, _state| {
-                write!(w, "Unit: ")?;
-                b.print_ref(w)
-            })
-                })?;
+                    }
+                )
+            },
+            |w, state, b| {
+                state.line(
+                    w, |w, _state| {
+                        write!(w, "Unit: ")?;
+                        b.print_ref(w)
+                    }
+                )
+            },
+        )?;
     Ok(())
 }
 
@@ -668,13 +678,15 @@ impl<'input> Namespace<'input> {
     fn new(
         parent: &Option<Rc<Namespace<'input>>>,
         name: Option<&'input [u8]>,
-        kind: NamespaceKind
+        kind: NamespaceKind,
     ) -> Rc<Namespace<'input>> {
-        Rc::new(Namespace {
-                    parent: parent.clone(),
-                    name: name,
-                    kind: kind,
-                })
+        Rc::new(
+            Namespace {
+                parent: parent.clone(),
+                name: name,
+                kind: kind,
+            }
+        )
     }
 
     fn len(&self) -> usize {
@@ -778,7 +790,7 @@ fn cmp_ns_and_name(
     ns1: &Option<Rc<Namespace>>,
     name1: Option<&[u8]>,
     ns2: &Option<Rc<Namespace>>,
-    name2: Option<&[u8]>
+    name2: Option<&[u8]>,
 ) -> cmp::Ordering {
     match (ns1, ns2) {
         (&Some(ref ns1), &Some(ref ns2)) => {
@@ -825,11 +837,13 @@ impl<'input> Unit<'input> {
             }
 
             // Find all inline members.
-            ty.visit_members(&mut |t| if t.is_inline(self) {
-                                      if let Some(offset) = t.ty {
-                                          inline_types.insert(offset.0);
-                                      }
-                                  });
+            ty.visit_members(
+                &mut |t| if t.is_inline(self) {
+                         if let Some(offset) = t.ty {
+                             inline_types.insert(offset.0);
+                         }
+                     }
+            );
         }
         inline_types
     }
@@ -865,10 +879,7 @@ impl<'input> Unit<'input> {
             // Filter out inline types.
             !inline_types.contains(&t.offset.0)
         };
-        let mut types: Vec<_> = self.types
-            .values()
-            .filter(|a| filter_type(a))
-            .collect();
+        let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
         if diff || flags.sort {
             types.sort_by(|a, b| Type::cmp_id(self, a, self, b));
         }
@@ -878,10 +889,8 @@ impl<'input> Unit<'input> {
     /// Filter and sort the list of subprograms using the options in the flags.
     /// Always sort when diffing.
     fn filter_subprograms(&self, flags: &Flags, diff: bool) -> Vec<&Subprogram> {
-        let mut subprograms: Vec<_> = self.subprograms
-            .values()
-            .filter(|a| a.filter(flags))
-            .collect();
+        let mut subprograms: Vec<_> =
+            self.subprograms.values().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
             subprograms.sort_by(|a, b| Subprogram::cmp_id(a, b));
         }
@@ -891,10 +900,7 @@ impl<'input> Unit<'input> {
     /// Filter and sort the list of variables using the options in the flags.
     /// Always sort when diffing.
     fn filter_variables(&self, flags: &Flags, diff: bool) -> Vec<&Variable> {
-        let mut variables: Vec<_> = self.variables
-            .values()
-            .filter(|a| a.filter(flags))
-            .collect();
+        let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
             variables.sort_by(|a, b| Variable::cmp_id(a, b));
         }
@@ -937,83 +943,98 @@ impl<'input> Unit<'input> {
         unit_b: &Unit,
         w: &mut Write,
         state: &mut DiffState,
-        flags: &Flags
+        flags: &Flags,
     ) -> Result<()> {
-        state.merge(w,
-                    &mut unit_a.filter_types(flags, true).iter(),
-                    &mut unit_b.filter_types(flags, true).iter(),
-                    |a, b| Type::cmp_id(unit_a, a, unit_b, b),
-                    |w, state, a, b| {
-                state.diff(w, |w, state| {
-                    Type::diff(w, state, unit_a, a, unit_b, b)?;
-                    writeln!(w, "")?;
+        state
+            .merge(
+                w,
+                &mut unit_a.filter_types(flags, true).iter(),
+                &mut unit_b.filter_types(flags, true).iter(),
+                |a, b| Type::cmp_id(unit_a, a, unit_b, b),
+                |w, state, a, b| {
+                    state.diff(
+                        w, |w, state| {
+                            Type::diff(w, state, unit_a, a, unit_b, b)?;
+                            writeln!(w, "")?;
+                            Ok(())
+                        }
+                    )
+                },
+                |w, state, a| {
+                    if !flags.ignore_deleted {
+                        a.print(w, state, unit_a)?;
+                        writeln!(w, "")?;
+                    }
                     Ok(())
-                })
-            },
-                    |w, state, a| {
-                if !flags.ignore_deleted {
-                    a.print(w, state, unit_a)?;
-                    writeln!(w, "")?;
-                }
-                Ok(())
-            },
-                    |w, state, b| {
-                if !flags.ignore_added {
-                    b.print(w, state, unit_b)?;
-                    writeln!(w, "")?;
-                }
-                Ok(())
-            })?;
-        state.merge(w,
-                    &mut unit_a.filter_subprograms(flags, true).iter(),
-                    &mut unit_b.filter_subprograms(flags, true).iter(),
-                    |a, b| Subprogram::cmp_id(a, b),
-                    |w, state, a, b| {
-                state.diff(w, |w, state| {
-                    Subprogram::diff(w, state, unit_a, a, unit_b, b)?;
-                    writeln!(w, "")?;
+                },
+                |w, state, b| {
+                    if !flags.ignore_added {
+                        b.print(w, state, unit_b)?;
+                        writeln!(w, "")?;
+                    }
                     Ok(())
-                })
-            },
-                    |w, state, a| {
-                if !flags.ignore_deleted {
-                    a.print(w, state, unit_a)?;
-                    writeln!(w, "")?;
-                }
-                Ok(())
-            },
-                    |w, state, b| {
-                if !flags.ignore_added {
-                    b.print(w, state, unit_b)?;
-                    writeln!(w, "")?;
-                }
-                Ok(())
-            })?;
-        state.merge(w,
-                    &mut unit_a.filter_variables(flags, true).iter(),
-                    &mut unit_b.filter_variables(flags, true).iter(),
-                    |a, b| Variable::cmp_id(a, b),
-                    |w, state, a, b| {
-                state.diff(w, |w, state| {
-                    Variable::diff(w, state, unit_a, a, unit_b, b)?;
-                    writeln!(w, "")?;
+                },
+            )?;
+        state
+            .merge(
+                w,
+                &mut unit_a.filter_subprograms(flags, true).iter(),
+                &mut unit_b.filter_subprograms(flags, true).iter(),
+                |a, b| Subprogram::cmp_id(a, b),
+                |w, state, a, b| {
+                    state.diff(
+                        w, |w, state| {
+                            Subprogram::diff(w, state, unit_a, a, unit_b, b)?;
+                            writeln!(w, "")?;
+                            Ok(())
+                        }
+                    )
+                },
+                |w, state, a| {
+                    if !flags.ignore_deleted {
+                        a.print(w, state, unit_a)?;
+                        writeln!(w, "")?;
+                    }
                     Ok(())
-                })
-            },
-                    |w, state, a| {
-                if !flags.ignore_deleted {
-                    a.print(w, state, unit_a)?;
-                    writeln!(w, "")?;
-                }
-                Ok(())
-            },
-                    |w, state, b| {
-                if !flags.ignore_added {
-                    b.print(w, state, unit_b)?;
-                    writeln!(w, "")?;
-                }
-                Ok(())
-            })?;
+                },
+                |w, state, b| {
+                    if !flags.ignore_added {
+                        b.print(w, state, unit_b)?;
+                        writeln!(w, "")?;
+                    }
+                    Ok(())
+                },
+            )?;
+        state
+            .merge(
+                w,
+                &mut unit_a.filter_variables(flags, true).iter(),
+                &mut unit_b.filter_variables(flags, true).iter(),
+                |a, b| Variable::cmp_id(a, b),
+                |w, state, a, b| {
+                    state.diff(
+                        w, |w, state| {
+                            Variable::diff(w, state, unit_a, a, unit_b, b)?;
+                            writeln!(w, "")?;
+                            Ok(())
+                        }
+                    )
+                },
+                |w, state, a| {
+                    if !flags.ignore_deleted {
+                        a.print(w, state, unit_a)?;
+                        writeln!(w, "")?;
+                    }
+                    Ok(())
+                },
+                |w, state, b| {
+                    if !flags.ignore_added {
+                        b.print(w, state, unit_b)?;
+                        writeln!(w, "")?;
+                    }
+                    Ok(())
+                },
+            )?;
         Ok(())
     }
 }
@@ -1242,7 +1263,7 @@ impl<'input> Type<'input> {
         unit_a: &Unit,
         type_a: &Type,
         unit_b: &Unit,
-        type_b: &Type
+        type_b: &Type,
     ) -> Result<()> {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
@@ -1262,7 +1283,7 @@ impl<'input> Type<'input> {
         state: &mut PrintState,
         unit: &Unit,
         ty: Option<&Type>,
-        offset: Option<u64>
+        offset: Option<u64>,
     ) -> Result<()> {
         if let Some(ty) = ty {
             match ty.kind {
@@ -1282,38 +1303,44 @@ impl<'input> Type<'input> {
         offset_a: Option<u64>,
         unit_b: &Unit,
         type_b: Option<&Type>,
-        offset_b: Option<u64>
+        offset_b: Option<u64>,
     ) -> Result<()> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
                 (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
-                    return StructType::diff_members(w,
-                                                    state,
-                                                    unit_a,
-                                                    a,
-                                                    offset_a,
-                                                    unit_b,
-                                                    b,
-                                                    offset_b);
+                    return StructType::diff_members(
+                        w,
+                        state,
+                        unit_a,
+                        a,
+                        offset_a,
+                        unit_b,
+                        b,
+                        offset_b,
+                    );
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
-                    return UnionType::diff_members(w,
-                                                   state,
-                                                   unit_a,
-                                                   a,
-                                                   offset_a,
-                                                   unit_b,
-                                                   b,
-                                                   offset_b);
+                    return UnionType::diff_members(
+                        w,
+                        state,
+                        unit_a,
+                        a,
+                        offset_a,
+                        unit_b,
+                        b,
+                        offset_b,
+                    );
                 }
                 _ => {}
             }
         }
 
-        state.prefix_diff(|state| {
-                              Type::print_members(w, &mut state.a, unit_a, type_a, offset_a)?;
-                              Type::print_members(w, &mut state.b, unit_b, type_b, offset_b)
-                          })
+        state.prefix_diff(
+            |state| {
+                Type::print_members(w, &mut state.a, unit_a, type_a, offset_a)?;
+                Type::print_members(w, &mut state.b, unit_b, type_b, offset_b)
+            }
+        )
     }
 
     fn print_members_entries(
@@ -1321,7 +1348,7 @@ impl<'input> Type<'input> {
         state: &mut PrintState,
         unit: &Unit,
         ty: Option<&Type>,
-        offset: Option<u64>
+        offset: Option<u64>,
     ) -> Result<()> {
         if let Some(ty) = ty {
             match ty.kind {
@@ -1341,38 +1368,44 @@ impl<'input> Type<'input> {
         offset_a: Option<u64>,
         unit_b: &Unit,
         type_b: Option<&Type>,
-        offset_b: Option<u64>
+        offset_b: Option<u64>,
     ) -> Result<()> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
                 (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
-                    return StructType::diff_members_entries(w,
-                                                            state,
-                                                            unit_a,
-                                                            a,
-                                                            offset_a,
-                                                            unit_b,
-                                                            b,
-                                                            offset_b);
+                    return StructType::diff_members_entries(
+                        w,
+                        state,
+                        unit_a,
+                        a,
+                        offset_a,
+                        unit_b,
+                        b,
+                        offset_b,
+                    );
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
-                    return UnionType::diff_members_entries(w,
-                                                           state,
-                                                           unit_a,
-                                                           a,
-                                                           offset_a,
-                                                           unit_b,
-                                                           b,
-                                                           offset_b);
+                    return UnionType::diff_members_entries(
+                        w,
+                        state,
+                        unit_a,
+                        a,
+                        offset_a,
+                        unit_b,
+                        b,
+                        offset_b,
+                    );
                 }
                 _ => {}
             }
         }
 
-        state.prefix_diff(|state| {
-            Type::print_members_entries(w, &mut state.a, unit_a, type_a, offset_a)?;
-            Type::print_members_entries(w, &mut state.b, unit_b, type_b, offset_b)
-        })
+        state.prefix_diff(
+            |state| {
+                Type::print_members_entries(w, &mut state.a, unit_a, type_a, offset_a)?;
+                Type::print_members_entries(w, &mut state.b, unit_b, type_b, offset_b)
+            }
+        )
     }
 }
 
@@ -1560,15 +1593,18 @@ impl<'input> TypeDef<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let ty = self.ty(unit);
         state.line(w, |w, state| self.print_name(w, state, unit))?;
-        state.indent(|state| {
-                state.line(w, |w, state| self.print_byte_size(w, state, unit))?;
-                if let Some(ty) = ty {
-                    if ty.is_anon() {
-                        Type::print_members(w, state, unit, Some(ty), Some(0))?;
+        state
+            .indent(
+                |state| {
+                    state.line(w, |w, state| self.print_byte_size(w, state, unit))?;
+                    if let Some(ty) = ty {
+                        if ty.is_anon() {
+                            Type::print_members(w, state, unit, Some(ty), Some(0))?;
+                        }
                     }
+                    Ok(())
                 }
-                Ok(())
-            })?;
+            )?;
         Ok(())
     }
 
@@ -1585,19 +1621,27 @@ impl<'input> TypeDef<'input> {
         unit_a: &Unit,
         a: &TypeDef,
         unit_b: &Unit,
-        b: &TypeDef
+        b: &TypeDef,
     ) -> Result<()> {
-        state.line(w,
-                   |w, state| a.print_name(w, state, unit_a),
-                   |w, state| b.print_name(w, state, unit_b))?;
-        state.indent(|state| {
-            state.line_option(w,
-                              |w, state| a.print_byte_size(w, state, unit_a),
-                              |w, state| b.print_byte_size(w, state, unit_b))?;
-            let ty_a = filter_option(a.ty(unit_a), Type::is_anon);
-            let ty_b = filter_option(b.ty(unit_b), Type::is_anon);
-            Type::diff_members(w, state, unit_a, ty_a, Some(0), unit_b, ty_b, Some(0))
-        })
+        state
+            .line(
+                w,
+                |w, state| a.print_name(w, state, unit_a),
+                |w, state| b.print_name(w, state, unit_b),
+            )?;
+        state.indent(
+            |state| {
+                state
+                    .line_option(
+                        w,
+                        |w, state| a.print_byte_size(w, state, unit_a),
+                        |w, state| b.print_byte_size(w, state, unit_b),
+                    )?;
+                let ty_a = filter_option(a.ty(unit_a), Type::is_anon);
+                let ty_b = filter_option(b.ty(unit_b), Type::is_anon);
+                Type::diff_members(w, state, unit_a, ty_a, Some(0), unit_b, ty_b, Some(0))
+            }
+        )
     }
 }
 
@@ -1627,11 +1671,13 @@ impl<'input> StructType<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
-        state.indent(|state| {
-                         state.line_option(w, |w, state| self.print_declaration(w, state))?;
-                         state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-                         self.print_members(w, state, unit, Some(0))
-                     })
+        state.indent(
+            |state| {
+                state.line_option(w, |w, state| self.print_declaration(w, state))?;
+                state.line_option(w, |w, state| self.print_byte_size(w, state))?;
+                self.print_members(w, state, unit, Some(0))
+            }
+        )
     }
 
     fn diff(
@@ -1640,19 +1686,28 @@ impl<'input> StructType<'input> {
         unit_a: &Unit,
         a: &StructType,
         unit_b: &Unit,
-        b: &StructType
+        b: &StructType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
-        state.indent(|state| {
-                state.line_option(w,
-                                  |w, state| a.print_declaration(w, state),
-                                  |w, state| b.print_declaration(w, state))?;
-                state.line_option(w,
-                                  |w, state| a.print_byte_size(w, state),
-                                  |w, state| b.print_byte_size(w, state))?;
-                Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
-            })?;
+        state
+            .indent(
+                |state| {
+                    state
+                        .line_option(
+                            w,
+                            |w, state| a.print_declaration(w, state),
+                            |w, state| b.print_declaration(w, state),
+                        )?;
+                    state
+                        .line_option(
+                            w,
+                            |w, state| a.print_byte_size(w, state),
+                            |w, state| b.print_byte_size(w, state),
+                        )?;
+                    Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
+                }
+            )?;
 
         Ok(())
     }
@@ -1662,7 +1717,7 @@ impl<'input> StructType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        bit_offset: Option<u64>
+        bit_offset: Option<u64>,
     ) -> Result<()> {
         state.line_option(w, |w, state| self.print_members_label(w, state))?;
         state.indent(|state| self.print_members_entries(w, state, unit, bit_offset))
@@ -1676,14 +1731,28 @@ impl<'input> StructType<'input> {
         bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &StructType,
-        bit_offset_b: Option<u64>
+        bit_offset_b: Option<u64>,
     ) -> Result<()> {
-        state.line_option(w,
-                          |w, state| a.print_members_label(w, state),
-                          |w, state| b.print_members_label(w, state))?;
-        state.indent(|state| {
-            Self::diff_members_entries(w, state, unit_a, a, bit_offset_a, unit_b, b, bit_offset_b)
-        })
+        state
+            .line_option(
+                w,
+                |w, state| a.print_members_label(w, state),
+                |w, state| b.print_members_label(w, state),
+            )?;
+        state.indent(
+            |state| {
+                Self::diff_members_entries(
+                    w,
+                    state,
+                    unit_a,
+                    a,
+                    bit_offset_a,
+                    unit_b,
+                    b,
+                    bit_offset_b,
+                )
+            }
+        )
     }
 
     fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
@@ -1714,15 +1783,13 @@ impl<'input> StructType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        mut bit_offset: Option<u64>
+        mut bit_offset: Option<u64>,
     ) -> Result<()> {
         for member in &self.members {
-            state.line_option(w,
-                              |w, _state| Member::print_padding(w, member.padding(bit_offset)))?;
+            state.line_option(w, |w, _state| Member::print_padding(w, member.padding(bit_offset)))?;
             member.print(w, state, unit, &mut bit_offset)?;
         }
-        state.line_option(w,
-                          |w, _state| Member::print_padding(w, self.padding(bit_offset)))?;
+        state.line_option(w, |w, _state| Member::print_padding(w, self.padding(bit_offset)))?;
         Ok(())
     }
 
@@ -1734,26 +1801,28 @@ impl<'input> StructType<'input> {
         mut bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &StructType,
-        mut bit_offset_b: Option<u64>
+        mut bit_offset_b: Option<u64>,
     ) -> Result<()> {
-        let path = diff::shortest_path(&a.members, &b.members, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(unit_a), b.ty(unit_b)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+        let path = diff::shortest_path(
+            &a.members, &b.members, 1, |a, b| {
+                let mut cost = 0;
+                if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+                match (a.ty(unit_a), b.ty(unit_b)) {
+                    (Some(ty_a), Some(ty_b)) => {
+                        if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                            cost += 1;
+                        }
+                    }
+                    (None, None) => {}
+                    _ => {
                         cost += 1;
                     }
                 }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
+                cost
             }
-            cost
-        });
+        );
 
         let mut iter_a = a.members.iter();
         let mut iter_b = b.members.iter();
@@ -1762,23 +1831,27 @@ impl<'input> StructType<'input> {
                 diff::Direction::None => break,
                 diff::Direction::Diagonal => {
                     if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        state.line_option(w,
-                                          |w, _state| {
-                                              Member::print_padding(w, a.padding(bit_offset_a))
-                                          },
-                                          |w, _state| {
-                                              Member::print_padding(w, b.padding(bit_offset_b))
-                                          })?;
-                        state.prefix_diff(|state| {
-                                Member::diff(w,
-                                             state,
-                                             unit_a,
-                                             a,
-                                             &mut bit_offset_a,
-                                             unit_b,
-                                             b,
-                                             &mut bit_offset_b)
-                            })?;
+                        state
+                            .line_option(
+                                w,
+                                |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
+                                |w, _state| Member::print_padding(w, b.padding(bit_offset_b)),
+                            )?;
+                        state
+                            .prefix_diff(
+                                |state| {
+                                    Member::diff(
+                                        w,
+                                        state,
+                                        unit_a,
+                                        a,
+                                        &mut bit_offset_a,
+                                        unit_b,
+                                        b,
+                                        &mut bit_offset_b,
+                                    )
+                                }
+                            )?;
                     }
                 }
                 diff::Direction::Horizontal => {
@@ -1794,9 +1867,12 @@ impl<'input> StructType<'input> {
             }
         }
 
-        state.line_option(w,
-                          |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
-                          |w, _state| Member::print_padding(w, b.padding(bit_offset_b)))?;
+        state
+            .line_option(
+                w,
+                |w, _state| Member::print_padding(w, a.padding(bit_offset_a)),
+                |w, _state| Member::print_padding(w, b.padding(bit_offset_b)),
+            )?;
         Ok(())
     }
 
@@ -1860,11 +1936,13 @@ impl<'input> UnionType<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
-        state.indent(|state| {
-                         state.line_option(w, |w, state| self.print_declaration(w, state))?;
-                         state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-                         self.print_members(w, state, unit, Some(0))
-                     })
+        state.indent(
+            |state| {
+                state.line_option(w, |w, state| self.print_declaration(w, state))?;
+                state.line_option(w, |w, state| self.print_byte_size(w, state))?;
+                self.print_members(w, state, unit, Some(0))
+            }
+        )
     }
 
     fn diff(
@@ -1873,19 +1951,28 @@ impl<'input> UnionType<'input> {
         unit_a: &Unit,
         a: &UnionType,
         unit_b: &Unit,
-        b: &UnionType
+        b: &UnionType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
-        state.indent(|state| {
-                state.line_option(w,
-                                  |w, state| a.print_declaration(w, state),
-                                  |w, state| b.print_declaration(w, state))?;
-                state.line_option(w,
-                                  |w, state| a.print_byte_size(w, state),
-                                  |w, state| b.print_byte_size(w, state))?;
-                Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
-            })?;
+        state
+            .indent(
+                |state| {
+                    state
+                        .line_option(
+                            w,
+                            |w, state| a.print_declaration(w, state),
+                            |w, state| b.print_declaration(w, state),
+                        )?;
+                    state
+                        .line_option(
+                            w,
+                            |w, state| a.print_byte_size(w, state),
+                            |w, state| b.print_byte_size(w, state),
+                        )?;
+                    Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
+                }
+            )?;
 
         Ok(())
     }
@@ -1895,7 +1982,7 @@ impl<'input> UnionType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        bit_offset: Option<u64>
+        bit_offset: Option<u64>,
     ) -> Result<()> {
         state.line_option(w, |w, state| self.print_members_label(w, state))?;
         state.indent(|state| self.print_members_entries(w, state, unit, bit_offset))
@@ -1909,14 +1996,28 @@ impl<'input> UnionType<'input> {
         bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &UnionType,
-        bit_offset_b: Option<u64>
+        bit_offset_b: Option<u64>,
     ) -> Result<()> {
-        state.line_option(w,
-                          |w, state| a.print_members_label(w, state),
-                          |w, state| b.print_members_label(w, state))?;
-        state.indent(|state| {
-            Self::diff_members_entries(w, state, unit_a, a, bit_offset_a, unit_b, b, bit_offset_b)
-        })
+        state
+            .line_option(
+                w,
+                |w, state| a.print_members_label(w, state),
+                |w, state| b.print_members_label(w, state),
+            )?;
+        state.indent(
+            |state| {
+                Self::diff_members_entries(
+                    w,
+                    state,
+                    unit_a,
+                    a,
+                    bit_offset_a,
+                    unit_b,
+                    b,
+                    bit_offset_b,
+                )
+            }
+        )
     }
 
     fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
@@ -1947,7 +2048,7 @@ impl<'input> UnionType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        bit_offset: Option<u64>
+        bit_offset: Option<u64>,
     ) -> Result<()> {
         for member in &self.members {
             let mut bit_offset = bit_offset;
@@ -1966,27 +2067,29 @@ impl<'input> UnionType<'input> {
         bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &UnionType,
-        bit_offset_b: Option<u64>
+        bit_offset_b: Option<u64>,
     ) -> Result<()> {
         // TODO: handle reordering better
-        let path = diff::shortest_path(&a.members, &b.members, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(unit_a), b.ty(unit_b)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+        let path = diff::shortest_path(
+            &a.members, &b.members, 1, |a, b| {
+                let mut cost = 0;
+                if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+                match (a.ty(unit_a), b.ty(unit_b)) {
+                    (Some(ty_a), Some(ty_b)) => {
+                        if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                            cost += 1;
+                        }
+                    }
+                    (None, None) => {}
+                    _ => {
                         cost += 1;
                     }
                 }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
+                cost
             }
-            cost
-        });
+        );
 
         let mut iter_a = a.members.iter();
         let mut iter_b = b.members.iter();
@@ -1996,33 +2099,37 @@ impl<'input> UnionType<'input> {
                 diff::Direction::Diagonal => {
                     if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
                         // TODO: padding?
-                        state.prefix_diff(|state| {
-                                Member::diff(w,
-                                             state,
-                                             unit_a,
-                                             a,
-                                             &mut bit_offset_a.clone(),
-                                             unit_b,
-                                             b,
-                                             &mut bit_offset_b.clone())
-                            })?;
+                        state
+                            .prefix_diff(
+                                |state| {
+                                    Member::diff(
+                                        w,
+                                        state,
+                                        unit_a,
+                                        a,
+                                        &mut bit_offset_a.clone(),
+                                        unit_b,
+                                        b,
+                                        &mut bit_offset_b.clone(),
+                                    )
+                                }
+                            )?;
                     }
                 }
                 diff::Direction::Horizontal => {
                     if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| {
-                                              a.print(w, state, unit_a, &mut bit_offset_a.clone())
-                                          })?;
+                        state
+                            .prefix_less(
+                                |state| a.print(w, state, unit_a, &mut bit_offset_a.clone()),
+                            )?;
                     }
                 }
                 diff::Direction::Vertical => {
                     if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| {
-                                                 b.print(w,
-                                                         state,
-                                                         unit_b,
-                                                         &mut bit_offset_b.clone())
-                                             })?;
+                        state
+                            .prefix_greater(
+                                |state| b.print(w, state, unit_b, &mut bit_offset_b.clone()),
+                            )?;
                     }
                 }
             }
@@ -2084,18 +2191,19 @@ impl<'input> Member<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        end_bit_offset: &mut Option<u64>
+        end_bit_offset: &mut Option<u64>,
     ) -> Result<()> {
-        state.line(w,
-                   |w, state| self.print_name(w, state, unit, end_bit_offset))?;
-        state.indent(|state| {
-            let ty = if self.is_inline(unit) {
-                self.ty(unit)
-            } else {
-                None
-            };
-            Type::print_members_entries(w, state, unit, ty, Some(self.bit_offset))
-        })
+        state.line(w, |w, state| self.print_name(w, state, unit, end_bit_offset))?;
+        state.indent(
+            |state| {
+                let ty = if self.is_inline(unit) {
+                    self.ty(unit)
+                } else {
+                    None
+                };
+                Type::print_members_entries(w, state, unit, ty, Some(self.bit_offset))
+            }
+        )
     }
 
     fn diff(
@@ -2106,31 +2214,38 @@ impl<'input> Member<'input> {
         end_bit_offset_a: &mut Option<u64>,
         unit_b: &Unit,
         b: &Member,
-        end_bit_offset_b: &mut Option<u64>
+        end_bit_offset_b: &mut Option<u64>,
     ) -> Result<()> {
-        state.line(w,
-                   |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
-                   |w, state| b.print_name(w, state, unit_b, end_bit_offset_b))?;
-        state.indent(|state| {
-            let ty_a = if a.is_inline(unit_a) {
-                a.ty(unit_a)
-            } else {
-                None
-            };
-            let ty_b = if b.is_inline(unit_b) {
-                b.ty(unit_b)
-            } else {
-                None
-            };
-            Type::diff_members_entries(w,
-                                       state,
-                                       unit_a,
-                                       ty_a,
-                                       Some(a.bit_offset),
-                                       unit_b,
-                                       ty_b,
-                                       Some(b.bit_offset))
-        })
+        state
+            .line(
+                w,
+                |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
+                |w, state| b.print_name(w, state, unit_b, end_bit_offset_b),
+            )?;
+        state.indent(
+            |state| {
+                let ty_a = if a.is_inline(unit_a) {
+                    a.ty(unit_a)
+                } else {
+                    None
+                };
+                let ty_b = if b.is_inline(unit_b) {
+                    b.ty(unit_b)
+                } else {
+                    None
+                };
+                Type::diff_members_entries(
+                    w,
+                    state,
+                    unit_a,
+                    ty_a,
+                    Some(a.bit_offset),
+                    unit_b,
+                    ty_b,
+                    Some(b.bit_offset),
+                )
+            }
+        )
     }
 
     // Returns (offset, size) of padding.
@@ -2145,10 +2260,12 @@ impl<'input> Member<'input> {
 
     fn print_padding(w: &mut Write, padding: Option<(u64, u64)>) -> Result<()> {
         if let Some((padding_bit_offset, padding_bit_size)) = padding {
-            write!(w,
-                   "{}[{}]\t<padding>",
-                   format_bit(padding_bit_offset),
-                   format_bit(padding_bit_size))?;
+            write!(
+                w,
+                "{}[{}]\t<padding>",
+                format_bit(padding_bit_offset),
+                format_bit(padding_bit_size)
+            )?;
         }
         Ok(())
     }
@@ -2158,7 +2275,7 @@ impl<'input> Member<'input> {
         w: &mut Write,
         _state: &mut PrintState,
         unit: &Unit,
-        end_bit_offset: &mut Option<u64>
+        end_bit_offset: &mut Option<u64>,
     ) -> Result<()> {
         write!(w, "{}", format_bit(self.bit_offset))?;
         match self.bit_size(unit) {
@@ -2235,11 +2352,13 @@ impl<'input> EnumerationType<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
-        state.indent(|state| {
-                         state.line_option(w, |w, _state| self.print_declaration(w))?;
-                         state.line_option(w, |w, state| self.print_byte_size(w, state, unit))?;
-                         self.print_enumerators(w, state)
-                     })
+        state.indent(
+            |state| {
+                state.line_option(w, |w, _state| self.print_declaration(w))?;
+                state.line_option(w, |w, state| self.print_byte_size(w, state, unit))?;
+                self.print_enumerators(w, state)
+            }
+        )
     }
 
     fn diff(
@@ -2248,19 +2367,28 @@ impl<'input> EnumerationType<'input> {
         unit_a: &Unit,
         a: &EnumerationType,
         unit_b: &Unit,
-        b: &EnumerationType
+        b: &EnumerationType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.line(w, |w, _state| a.print_ref(w), |w, _state| b.print_ref(w))?;
-        state.indent(|state| {
-                state.line_option(w,
-                                  |w, _state| a.print_declaration(w),
-                                  |w, _state| b.print_declaration(w))?;
-                state.line_option(w,
-                                  |w, state| a.print_byte_size(w, state, unit_a),
-                                  |w, state| b.print_byte_size(w, state, unit_b))?;
-                Self::diff_enumerators(w, state, a, b)
-            })?;
+        state
+            .indent(
+                |state| {
+                    state
+                        .line_option(
+                            w,
+                            |w, _state| a.print_declaration(w),
+                            |w, _state| b.print_declaration(w),
+                        )?;
+                    state
+                        .line_option(
+                            w,
+                            |w, state| a.print_byte_size(w, state, unit_a),
+                            |w, state| b.print_byte_size(w, state, unit_b),
+                        )?;
+                    Self::diff_enumerators(w, state, a, b)
+                }
+            )?;
         Ok(())
     }
 
@@ -2301,11 +2429,14 @@ impl<'input> EnumerationType<'input> {
         w: &mut Write,
         state: &mut DiffState,
         a: &EnumerationType,
-        b: &EnumerationType
+        b: &EnumerationType,
     ) -> Result<()> {
-        state.line_option(w,
-                          |w, state| a.print_enumerators_label(w, state),
-                          |w, state| b.print_enumerators_label(w, state))?;
+        state
+            .line_option(
+                w,
+                |w, state| a.print_enumerators_label(w, state),
+                |w, state| b.print_enumerators_label(w, state),
+            )?;
         state.indent(|state| Self::diff_enumerators_entries(w, state, a, b))
     }
 
@@ -2329,22 +2460,24 @@ impl<'input> EnumerationType<'input> {
         w: &mut Write,
         state: &mut DiffState,
         a: &EnumerationType,
-        b: &EnumerationType
+        b: &EnumerationType,
     ) -> Result<()> {
         // TODO: handle reordering better
 
         // A difference in name is usually more significant than a difference in value,
         // such as for enums where the value is assigned by the compiler.
-        let path = diff::shortest_path(&a.enumerators, &b.enumerators, 3, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 4;
+        let path = diff::shortest_path(
+            &a.enumerators, &b.enumerators, 3, |a, b| {
+                let mut cost = 0;
+                if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                    cost += 4;
+                }
+                if a.value.cmp(&b.value) != cmp::Ordering::Equal {
+                    cost += 2;
+                }
+                cost
             }
-            if a.value.cmp(&b.value) != cmp::Ordering::Equal {
-                cost += 2;
-            }
-            cost
-        });
+        );
 
         let mut iter_a = a.enumerators.iter();
         let mut iter_b = b.enumerators.iter();
@@ -2392,9 +2525,7 @@ impl<'input> Enumerator<'input> {
     }
 
     fn diff(w: &mut Write, state: &mut DiffState, a: &Enumerator, b: &Enumerator) -> Result<()> {
-        state.line(w,
-                   |w, _state| a.print_name_value(w),
-                   |w, _state| b.print_name_value(w))
+        state.line(w, |w, _state| a.print_name_value(w), |w, _state| b.print_name_value(w))
     }
 
     fn print_name_value(&self, w: &mut Write) -> Result<()> {
@@ -2514,7 +2645,7 @@ impl<'input> SubroutineType<'input> {
         unit_a: &Unit,
         a: &SubroutineType,
         unit_b: &Unit,
-        b: &SubroutineType
+        b: &SubroutineType,
     ) -> cmp::Ordering {
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
             let ord = Parameter::cmp_id(unit_a, parameter_a, unit_b, parameter_b);
@@ -2599,11 +2730,14 @@ impl PointerToMemberType {
             return self.byte_size;
         }
         // TODO: this probably depends on the ABI
-        self.ty(unit).and_then(|ty| if ty.is_subroutine(unit) {
-                                   unit.address_size.map(|v| v * 2)
-                               } else {
-                                   unit.address_size
-                               })
+        self.ty(unit)
+            .and_then(
+                |ty| if ty.is_subroutine(unit) {
+                    unit.address_size.map(|v| v * 2)
+                } else {
+                    unit.address_size
+                }
+            )
     }
 
     fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
@@ -2620,7 +2754,7 @@ impl PointerToMemberType {
         unit_a: &Unit,
         a: &PointerToMemberType,
         unit_b: &Unit,
-        b: &PointerToMemberType
+        b: &PointerToMemberType,
     ) -> cmp::Ordering {
         match (a.containing_ty(unit_a), b.containing_ty(unit_b)) {
             (Some(ty_a), Some(ty_b)) => {
@@ -2685,7 +2819,7 @@ struct Subprogram<'input> {
 impl<'input> Subprogram<'input> {
     fn from_offset<'a>(
         unit: &'a Unit<'input>,
-        offset: SubprogramOffset
+        offset: SubprogramOffset,
     ) -> Option<&'a Subprogram<'input>> {
         unit.subprograms.get(&offset.0)
     }
@@ -2725,31 +2859,34 @@ impl<'input> Subprogram<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_name(w))?;
-        state.indent(|state| {
-            state.line_option(w, |w, _state| self.print_linkage_name(w))?;
-            state.line_option(w, |w, _state| self.print_address(w))?;
-            state.line_option(w, |w, _state| self.print_size(w))?;
-            state.line_option(w, |w, _state| self.print_inline(w))?;
-            state.line_option(w, |w, _state| self.print_declaration(w))?;
-            state.line_option(w, |w, _state| self.print_return_type_label(w))?;
-            state.indent(|state| {
-                state.line_option(w, |w, _state| self.print_return_type(w, unit))
-            })?;
-            state.line_option(w, |w, _state| self.print_parameters_label(w))?;
-            state.indent(|state| self.print_parameters(w, state, unit))?;
-            if state.flags.inline_depth > 0 {
-                state.line_option(w, |w, _state| self.print_inlined_subroutines_label(w))?;
-                state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
-            }
-            if state.flags.calls {
-                let calls = self.calls(state.file);
-                if !calls.is_empty() {
-                    state.line(w, |w, _state| self.print_calls_label(w))?;
-                    state.indent(|state| self.print_calls(w, state, &calls))?;
+        state.indent(
+            |state| {
+                state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+                state.line_option(w, |w, _state| self.print_address(w))?;
+                state.line_option(w, |w, _state| self.print_size(w))?;
+                state.line_option(w, |w, _state| self.print_inline(w))?;
+                state.line_option(w, |w, _state| self.print_declaration(w))?;
+                state.line_option(w, |w, _state| self.print_return_type_label(w))?;
+                state
+                    .indent(
+                        |state| state.line_option(w, |w, _state| self.print_return_type(w, unit)),
+                    )?;
+                state.line_option(w, |w, _state| self.print_parameters_label(w))?;
+                state.indent(|state| self.print_parameters(w, state, unit))?;
+                if state.flags.inline_depth > 0 {
+                    state.line_option(w, |w, _state| self.print_inlined_subroutines_label(w))?;
+                    state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
                 }
+                if state.flags.calls {
+                    let calls = self.calls(state.file);
+                    if !calls.is_empty() {
+                        state.line(w, |w, _state| self.print_calls_label(w))?;
+                        state.indent(|state| self.print_calls(w, state, &calls))?;
+                    }
+                }
+                Ok(())
             }
-            Ok(())
-        })
+        )
     }
 
     fn diff(
@@ -2758,74 +2895,119 @@ impl<'input> Subprogram<'input> {
         unit_a: &Unit,
         a: &Subprogram,
         unit_b: &Unit,
-        b: &Subprogram
+        b: &Subprogram,
     ) -> Result<()> {
         state.line(w, |w, _state| a.print_name(w), |w, _state| b.print_name(w))?;
-        state.indent(|state| {
-            state.line_option(w,
-                              |w, _state| a.print_linkage_name(w),
-                              |w, _state| b.print_linkage_name(w))?;
-            let flag = state.flags.ignore_function_address;
-            state.ignore_diff(flag, |state| {
-                    state.line_option(w,
-                                      |w, _state| a.print_address(w),
-                                      |w, _state| b.print_address(w))
-                })?;
-            let flag = state.flags.ignore_function_size;
-            state.ignore_diff(flag, |state| {
-                    state.line_option(w, |w, _state| a.print_size(w), |w, _state| b.print_size(w))
-                })?;
-            let flag = state.flags.ignore_function_inline;
-            state.ignore_diff(flag, |state| {
-                    state.line_option(w,
-                                      |w, _state| a.print_inline(w),
-                                      |w, _state| b.print_inline(w))
-                })?;
-            state.line_option(w,
-                              |w, _state| a.print_declaration(w),
-                              |w, _state| b.print_declaration(w))?;
-            state.line_option(w,
-                              |w, _state| a.print_return_type_label(w),
-                              |w, _state| b.print_return_type_label(w))?;
-            state.indent(|state| {
-                             state.line_option(w,
-                                               |w, _state| a.print_return_type(w, unit_a),
-                                               |w, _state| b.print_return_type(w, unit_b))
-                         })?;
-            state.line_option(w,
-                              |w, _state| a.print_parameters_label(w),
-                              |w, _state| b.print_parameters_label(w))?;
-            state.indent(|state| Subprogram::diff_parameters(w, state, unit_a, a, unit_b, b))?;
-            // TODO
-            if false && state.flags.inline_depth > 0 {
-                state.line_option(w,
-                                  |w, _state| a.print_inlined_subroutines_label(w),
-                                  |w, _state| b.print_inlined_subroutines_label(w))?;
-                state.indent(|state| {
-                        Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b)
-                    })?;
+        state.indent(
+            |state| {
+                state
+                    .line_option(
+                        w,
+                        |w, _state| a.print_linkage_name(w),
+                        |w, _state| b.print_linkage_name(w),
+                    )?;
+                let flag = state.flags.ignore_function_address;
+                state
+                    .ignore_diff(
+                        flag, |state| {
+                            state.line_option(
+                                w,
+                                |w, _state| a.print_address(w),
+                                |w, _state| b.print_address(w),
+                            )
+                        }
+                    )?;
+                let flag = state.flags.ignore_function_size;
+                state
+                    .ignore_diff(
+                        flag, |state| {
+                            state.line_option(
+                                w,
+                                |w, _state| a.print_size(w),
+                                |w, _state| b.print_size(w),
+                            )
+                        }
+                    )?;
+                let flag = state.flags.ignore_function_inline;
+                state
+                    .ignore_diff(
+                        flag, |state| {
+                            state.line_option(
+                                w,
+                                |w, _state| a.print_inline(w),
+                                |w, _state| b.print_inline(w),
+                            )
+                        }
+                    )?;
+                state
+                    .line_option(
+                        w,
+                        |w, _state| a.print_declaration(w),
+                        |w, _state| b.print_declaration(w),
+                    )?;
+                state
+                    .line_option(
+                        w,
+                        |w, _state| a.print_return_type_label(w),
+                        |w, _state| b.print_return_type_label(w),
+                    )?;
+                state
+                    .indent(
+                        |state| {
+                            state.line_option(
+                                w,
+                                |w, _state| a.print_return_type(w, unit_a),
+                                |w, _state| b.print_return_type(w, unit_b),
+                            )
+                        }
+                    )?;
+                state
+                    .line_option(
+                        w,
+                        |w, _state| a.print_parameters_label(w),
+                        |w, _state| b.print_parameters_label(w),
+                    )?;
+                state.indent(|state| Subprogram::diff_parameters(w, state, unit_a, a, unit_b, b))?;
+                // TODO
+                if false && state.flags.inline_depth > 0 {
+                    state
+                        .line_option(
+                            w,
+                            |w, _state| a.print_inlined_subroutines_label(w),
+                            |w, _state| b.print_inlined_subroutines_label(w),
+                        )?;
+                    state
+                        .indent(
+                            |state| {
+                                Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b)
+                            }
+                        )?;
+                }
+                // TODO
+                if false && state.flags.calls {
+                    let calls_a = a.calls(state.a.file);
+                    let calls_b = b.calls(state.b.file);
+                    state
+                        .line_option(
+                            w,
+                            |w, _state| {
+                                if !calls_a.is_empty() {
+                                    a.print_calls_label(w)?;
+                                }
+                                Ok(())
+                            },
+                            |w, _state| {
+                                if !calls_b.is_empty() {
+                                    b.print_calls_label(w)?;
+                                }
+                                Ok(())
+                            },
+                        )?;
+                    state.indent(|state| Subprogram::diff_calls(w, state, &calls_a, &calls_b))?;
+                }
+                Ok(())
             }
-            // TODO
-            if false && state.flags.calls {
-                let calls_a = a.calls(state.a.file);
-                let calls_b = b.calls(state.b.file);
-                state.line_option(w,
-                                  |w, _state| {
-                                      if !calls_a.is_empty() {
-                                          a.print_calls_label(w)?;
-                                      }
-                                      Ok(())
-                                  },
-                                  |w, _state| {
-                                      if !calls_b.is_empty() {
-                                          b.print_calls_label(w)?;
-                                      }
-                                      Ok(())
-                                  })?;
-                state.indent(|state| Subprogram::diff_calls(w, state, &calls_a, &calls_b))?;
-            }
-            Ok(())
-        })
+        )
     }
 
     fn print_name(&self, w: &mut Write) -> Result<()> {
@@ -2922,26 +3104,28 @@ impl<'input> Subprogram<'input> {
         unit_a: &Unit,
         a: &Subprogram,
         unit_b: &Unit,
-        b: &Subprogram
+        b: &Subprogram,
     ) -> Result<()> {
-        let path = diff::shortest_path(&a.parameters, &b.parameters, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(unit_a), b.ty(unit_b)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+        let path = diff::shortest_path(
+            &a.parameters, &b.parameters, 1, |a, b| {
+                let mut cost = 0;
+                if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+                match (a.ty(unit_a), b.ty(unit_b)) {
+                    (Some(ty_a), Some(ty_b)) => {
+                        if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                            cost += 1;
+                        }
+                    }
+                    (None, None) => {}
+                    _ => {
                         cost += 1;
                     }
                 }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
+                cost
             }
-            cost
-        });
+        );
 
         let mut iter_a = a.parameters.iter();
         let mut iter_b = b.parameters.iter();
@@ -2950,27 +3134,32 @@ impl<'input> Subprogram<'input> {
                 diff::Direction::None => break,
                 diff::Direction::Diagonal => {
                     if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        state.line(w,
-                                   |w, _state| Self::print_parameter(w, unit_a, a),
-                                   |w, _state| Self::print_parameter(w, unit_b, b))?;
+                        state
+                            .line(
+                                w,
+                                |w, _state| Self::print_parameter(w, unit_a, a),
+                                |w, _state| Self::print_parameter(w, unit_b, b),
+                            )?;
                     }
                 }
                 diff::Direction::Horizontal => {
                     if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| {
-                                              state.line(w, |w, _state| {
-                                    Self::print_parameter(w, unit_a, a)
-                                })
-                                          })?;
+                        state
+                            .prefix_less(
+                                |state| {
+                                    state.line(w, |w, _state| Self::print_parameter(w, unit_a, a))
+                                }
+                            )?;
                     }
                 }
                 diff::Direction::Vertical => {
                     if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| {
-                                                 state.line(w, |w, _state| {
-                                    Self::print_parameter(w, unit_b, b)
-                                })
-                                             })?;
+                        state
+                            .prefix_greater(
+                                |state| {
+                                    state.line(w, |w, _state| Self::print_parameter(w, unit_b, b))
+                                }
+                            )?;
                     }
                 }
             }
@@ -2998,7 +3187,7 @@ impl<'input> Subprogram<'input> {
         &self,
         w: &mut Write,
         state: &mut PrintState,
-        unit: &Unit
+        unit: &Unit,
     ) -> Result<()> {
         for subroutine in &self.inlined_subroutines {
             subroutine.print(w, state, unit, 1)?;
@@ -3012,7 +3201,7 @@ impl<'input> Subprogram<'input> {
         _unit_a: &Unit,
         _a: &Subprogram,
         _unit_b: &Unit,
-        _b: &Subprogram
+        _b: &Subprogram,
     ) -> Result<()> {
         // TODO
         Ok(())
@@ -3027,14 +3216,17 @@ impl<'input> Subprogram<'input> {
 
     fn print_calls(&self, w: &mut Write, state: &mut PrintState, calls: &[u64]) -> Result<()> {
         for call in calls {
-            state.line(w, |w, state| {
-                    write!(w, "0x{:x}", call)?;
-                    if let Some(subprogram) = state.all_subprograms.get(call) {
-                        write!(w, " ")?;
-                        subprogram.print_ref(w)?;
+            state
+                .line(
+                    w, |w, state| {
+                        write!(w, "0x{:x}", call)?;
+                        if let Some(subprogram) = state.all_subprograms.get(call) {
+                            write!(w, " ")?;
+                            subprogram.print_ref(w)?;
+                        }
+                        Ok(())
                     }
-                    Ok(())
-                })?;
+                )?;
         }
         Ok(())
     }
@@ -3043,7 +3235,7 @@ impl<'input> Subprogram<'input> {
         _w: &mut Write,
         _state: &mut DiffState,
         _calls_a: &[u64],
-        _calls_b: &[u64]
+        _calls_b: &[u64],
     ) -> Result<()> {
         // TODO
         Ok(())
@@ -3113,28 +3305,34 @@ impl<'input> InlinedSubroutine<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        depth: usize
+        depth: usize,
     ) -> Result<()> {
-        state.line(w, |w, _state| {
-                match self.size {
-                    Some(size) => write!(w, "[{}]", size)?,
-                    None => write!(w, "[??]")?,
+        state
+            .line(
+                w, |w, _state| {
+                    match self.size {
+                        Some(size) => write!(w, "[{}]", size)?,
+                        None => write!(w, "[??]")?,
+                    }
+                    write!(w, "\t")?;
+                    match self.abstract_origin.and_then(|v| Subprogram::from_offset(unit, v)) {
+                        Some(subprogram) => subprogram.print_ref(w)?,
+                        None => write!(w, "<anon>")?,
+                    }
+                    Ok(())
                 }
-                write!(w, "\t")?;
-                match self.abstract_origin.and_then(|v| Subprogram::from_offset(unit, v)) {
-                    Some(subprogram) => subprogram.print_ref(w)?,
-                    None => write!(w, "<anon>")?,
-                }
-                Ok(())
-            })?;
+            )?;
 
         if state.flags.inline_depth > depth {
-            state.indent(|state| {
-                             for subroutine in &self.inlined_subroutines {
-                                 subroutine.print(w, state, unit, depth + 1)?;
-                             }
-                             Ok(())
-                         })?;
+            state
+                .indent(
+                    |state| {
+                        for subroutine in &self.inlined_subroutines {
+                            subroutine.print(w, state, unit, depth + 1)?;
+                        }
+                        Ok(())
+                    }
+                )?;
         }
         Ok(())
     }
@@ -3183,13 +3381,15 @@ impl<'input> Variable<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_name(w, unit))?;
-        state.indent(|state| {
-            state.line_option(w, |w, _state| self.print_linkage_name(w))?;
-            state.line_option(w, |w, _state| self.print_address(w))?;
-            state.line_option(w, |w, _state| self.print_size(w, unit))?;
-            state.line_option(w, |w, _state| self.print_declaration(w))
-            // TODO: print anon type inline
-        })
+        state.indent(
+            |state| {
+                state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+                state.line_option(w, |w, _state| self.print_address(w))?;
+                state.line_option(w, |w, _state| self.print_size(w, unit))?;
+                state.line_option(w, |w, _state| self.print_declaration(w))
+                // TODO: print anon type inline
+            }
+        )
     }
 
     fn diff(
@@ -3198,28 +3398,41 @@ impl<'input> Variable<'input> {
         unit_a: &Unit,
         a: &Variable,
         unit_b: &Unit,
-        b: &Variable
+        b: &Variable,
     ) -> Result<()> {
-        state.line(w,
-                   |w, _state| a.print_name(w, unit_a),
-                   |w, _state| b.print_name(w, unit_b))?;
-        state.indent(|state| {
-            state.line_option(w,
-                              |w, _state| a.print_linkage_name(w),
-                              |w, _state| b.print_linkage_name(w))?;
-            let flag = state.flags.ignore_variable_address;
-            state.ignore_diff(flag, |state| {
-                    state.line_option(w,
-                                      |w, _state| a.print_address(w),
-                                      |w, _state| b.print_address(w))
-                })?;
-            state.line_option(w,
-                              |w, _state| a.print_size(w, unit_a),
-                              |w, _state| b.print_size(w, unit_b))?;
-            state.line_option(w,
-                              |w, _state| a.print_declaration(w),
-                              |w, _state| b.print_declaration(w))
-        })
+        state.line(w, |w, _state| a.print_name(w, unit_a), |w, _state| b.print_name(w, unit_b))?;
+        state.indent(
+            |state| {
+                state
+                    .line_option(
+                        w,
+                        |w, _state| a.print_linkage_name(w),
+                        |w, _state| b.print_linkage_name(w),
+                    )?;
+                let flag = state.flags.ignore_variable_address;
+                state
+                    .ignore_diff(
+                        flag, |state| {
+                            state.line_option(
+                                w,
+                                |w, _state| a.print_address(w),
+                                |w, _state| b.print_address(w),
+                            )
+                        }
+                    )?;
+                state
+                    .line_option(
+                        w,
+                        |w, _state| a.print_size(w, unit_a),
+                        |w, _state| b.print_size(w, unit_b),
+                    )?;
+                state.line_option(
+                    w,
+                    |w, _state| a.print_declaration(w),
+                    |w, _state| b.print_declaration(w),
+                )
+            }
+        )
     }
 
     fn print_name(&self, w: &mut Write, unit: &Unit) -> Result<()> {
@@ -3274,7 +3487,7 @@ fn disassemble_arch<A>(
     region: &panopticon::Region,
     low_pc: u64,
     high_pc: u64,
-    cfg: A::Configuration
+    cfg: A::Configuration,
 ) -> Vec<u64>
     where A: panopticon::Architecture + Debug,
           A::Configuration: Debug

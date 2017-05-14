@@ -1,2 +1,7 @@
 write_mode = "Overwrite"
 fn_args_layout = "Block"
+fn_call_style = "Block"
+closure_block_indent_threshold = 1
+array_width = 100
+chain_one_line_max = 100
+fn_call_width = 100
