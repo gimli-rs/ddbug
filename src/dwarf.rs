@@ -461,6 +461,7 @@ fn parse_type_modifier<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         ty: None,
         name: None,
         byte_size: None,
+        address_size: Some(dwarf_unit.header.address_size() as u64),
     };
 
     {

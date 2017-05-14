@@ -247,11 +247,16 @@ struct FileHash<'a, 'input>
 {
     // All subprograms by address.
     subprograms: HashMap<u64, &'a Subprogram<'input>>,
+    // All types by offset.
+    types: HashMap<TypeOffset, &'a Type<'input>>,
 }
 
 impl<'a, 'input> FileHash<'a, 'input> {
     fn new(file: &'a File<'input>) -> Self {
-        FileHash { subprograms: Self::subprograms(file) }
+        FileHash {
+            subprograms: Self::subprograms(file),
+            types: Self::types(file),
+        }
     }
 
     /// Returns a map from address to subprogram for all subprograms in the file.
@@ -267,6 +272,17 @@ impl<'a, 'input> FileHash<'a, 'input> {
             }
         }
         subprograms
+    }
+
+    /// Returns a map from offset to type for all types in the file.
+    fn types(file: &'a File<'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
+        let mut types = HashMap::new();
+        for unit in &file.units {
+            for (offset, ty) in unit.types.iter() {
+                types.insert(*offset, ty);
+            }
+        }
+        types
     }
 }
 
@@ -479,24 +495,30 @@ impl<'a, 'input> DiffState<'a, 'input>
         }
     }
 
-    fn merge<T, I, FCmp, FEqual, FLess, FGreater>(
+    fn merge<T, I, FIterA, FIterB, FCmp, FEqual, FLess, FGreater>(
         &mut self,
         w: &mut Write,
-        iter_a: I,
-        iter_b: I,
+        iter_a: FIterA,
+        iter_b: FIterB,
         cmp: FCmp,
         mut equal: FEqual,
         less: FLess,
         greater: FGreater,
     ) -> Result<()>
         where T: Copy,
-              I: Iterator<Item = T>,
-              FCmp: Fn(T, T) -> cmp::Ordering,
+              I: IntoIterator<Item = T>,
+              FIterA: Fn(&PrintState<'a, 'input>) -> I,
+              FIterB: Fn(&PrintState<'a, 'input>) -> I,
+              FCmp: Fn(&FileHash, T, &FileHash, T) -> cmp::Ordering,
               FEqual: FnMut(&mut Write, &mut DiffState<'a, 'input>, T, T) -> Result<()>,
               FLess: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
               FGreater: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>
     {
-        for m in MergeIterator::new(iter_a, iter_b, cmp) {
+        let iter_a = &mut iter_a(&self.a).into_iter();
+        let iter_b = &mut iter_b(&self.b).into_iter();
+        let hash_a = self.a.hash;
+        let hash_b = self.b.hash;
+        for m in MergeIterator::new(iter_a, iter_b, |a, b| cmp(hash_a, a, hash_b, b)) {
             match m {
                 MergeResult::Both(l, r) => self.prefix_equal(|state| equal(w, state, l, r))?,
                 MergeResult::Left(l) => self.prefix_less(|state| less(w, state, l))?,
@@ -633,9 +655,9 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> 
     state
         .merge(
             w,
-            &mut file_a.filter_units(flags, true).iter(),
-            &mut file_b.filter_units(flags, true).iter(),
-            |a, b| Unit::cmp_id(a, b),
+            |_state| file_a.filter_units(flags, true),
+            |_state| file_b.filter_units(flags, true),
+            |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b),
             |w, state, a, b| {
                 if flags.unit.is_none() {
                     state
@@ -835,7 +857,7 @@ impl<'input> Unit<'input> {
     }
 
     /// The offsets of types that should be printed inline.
-    fn inline_types(&self) -> HashSet<usize> {
+    fn inline_types(&self, state: &PrintState) -> HashSet<usize> {
         let mut inline_types = HashSet::new();
         for ty in self.types.values() {
             // Assume all anonymous types are inline. We don't actually check
@@ -847,7 +869,7 @@ impl<'input> Unit<'input> {
 
             // Find all inline members.
             ty.visit_members(
-                &mut |t| if t.is_inline(self) {
+                &mut |t| if t.is_inline(state.hash) {
                          if let Some(offset) = t.ty {
                              inline_types.insert(offset.0);
                          }
@@ -859,8 +881,8 @@ impl<'input> Unit<'input> {
 
     /// Filter and sort the list of types using the options in the flags.
     /// Perform additional filtering and always sort when diffing.
-    fn filter_types(&self, flags: &Flags, diff: bool) -> Vec<&Type> {
-        let inline_types = self.inline_types();
+    fn filter_types(&self, state: &PrintState, flags: &Flags, diff: bool) -> Vec<&Type> {
+        let inline_types = self.inline_types(state);
         let filter_type = |t: &Type| {
             // Filter by user options.
             if !t.filter(flags) {
@@ -890,7 +912,7 @@ impl<'input> Unit<'input> {
         };
         let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
         if diff || flags.sort {
-            types.sort_by(|a, b| Type::cmp_id(self, a, self, b));
+            types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b));
         }
         types
     }
@@ -925,7 +947,7 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
-        for ty in &self.filter_types(flags, false) {
+        for ty in &self.filter_types(state, flags, false) {
             ty.print(w, state, self)?;
             writeln!(w, "")?;
         }
@@ -934,7 +956,7 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
         for variable in &self.filter_variables(flags, false) {
-            variable.print(w, state, self)?;
+            variable.print(w, state)?;
             writeln!(w, "")?;
         }
         Ok(())
@@ -957,9 +979,9 @@ impl<'input> Unit<'input> {
         state
             .merge(
                 w,
-                &mut unit_a.filter_types(flags, true).iter(),
-                &mut unit_b.filter_types(flags, true).iter(),
-                |a, b| Type::cmp_id(unit_a, a, unit_b, b),
+                |state| unit_a.filter_types(state, flags, true),
+                |state| unit_b.filter_types(state, flags, true),
+                |hash_a, a, hash_b, b| Type::cmp_id(hash_a, a, hash_b, b),
                 |w, state, a, b| {
                     state.diff(
                         w, |w, state| {
@@ -987,9 +1009,9 @@ impl<'input> Unit<'input> {
         state
             .merge(
                 w,
-                &mut unit_a.filter_subprograms(flags, true).iter(),
-                &mut unit_b.filter_subprograms(flags, true).iter(),
-                |a, b| Subprogram::cmp_id(a, b),
+                |_state| unit_a.filter_subprograms(flags, true),
+                |_state| unit_b.filter_subprograms(flags, true),
+                |_hash_a, a, _hash_b, b| Subprogram::cmp_id(a, b),
                 |w, state, a, b| {
                     state.diff(
                         w, |w, state| {
@@ -1017,13 +1039,13 @@ impl<'input> Unit<'input> {
         state
             .merge(
                 w,
-                &mut unit_a.filter_variables(flags, true).iter(),
-                &mut unit_b.filter_variables(flags, true).iter(),
-                |a, b| Variable::cmp_id(a, b),
+                |_state| unit_a.filter_variables(flags, true),
+                |_state| unit_b.filter_variables(flags, true),
+                |_hash_a, a, _hash_b, b| Variable::cmp_id(a, b),
                 |w, state, a, b| {
                     state.diff(
                         w, |w, state| {
-                            Variable::diff(w, state, unit_a, a, unit_b, b)?;
+                            Variable::diff(w, state, a, b)?;
                             writeln!(w, "")?;
                             Ok(())
                         }
@@ -1031,14 +1053,14 @@ impl<'input> Unit<'input> {
                 },
                 |w, state, a| {
                     if !flags.ignore_deleted {
-                        a.print(w, state, unit_a)?;
+                        a.print(w, state)?;
                         writeln!(w, "")?;
                     }
                     Ok(())
                 },
                 |w, state, b| {
                     if !flags.ignore_added {
-                        b.print(w, state, unit_b)?;
+                        b.print(w, state)?;
                         writeln!(w, "")?;
                     }
                     Ok(())
@@ -1079,7 +1101,7 @@ impl<'input> TypeKind<'input> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct TypeOffset(usize);
 
 impl From<gimli::DebugInfoOffset> for TypeOffset {
@@ -1104,22 +1126,27 @@ impl<'input> Default for Type<'input> {
 }
 
 impl<'input> Type<'input> {
-    fn from_offset<'a>(unit: &'a Unit<'input>, offset: TypeOffset) -> Option<&'a Type<'input>> {
-        unit.types.get(&offset)
+    fn from_offset<'a>(
+        hash: &'a FileHash<'a, 'input>,
+        offset: TypeOffset,
+    ) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        hash.types.get(&offset).map(|ty| *ty)
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         match self.kind {
-            TypeKind::Base(ref val) => val.byte_size(unit),
-            TypeKind::Def(ref val) => val.byte_size(unit),
-            TypeKind::Struct(ref val) => val.byte_size(unit),
-            TypeKind::Union(ref val) => val.byte_size(unit),
-            TypeKind::Enumeration(ref val) => val.byte_size(unit),
-            TypeKind::Array(ref val) => val.byte_size(unit),
-            TypeKind::Subroutine(ref val) => val.byte_size(unit),
+            TypeKind::Base(ref val) => val.byte_size(),
+            TypeKind::Def(ref val) => val.byte_size(hash),
+            TypeKind::Struct(ref val) => val.byte_size(),
+            TypeKind::Union(ref val) => val.byte_size(),
+            TypeKind::Enumeration(ref val) => val.byte_size(hash),
+            TypeKind::Array(ref val) => val.byte_size(hash),
+            TypeKind::Subroutine(ref val) => val.byte_size(),
             TypeKind::Unspecified(..) => None,
-            TypeKind::PointerToMember(ref val) => val.byte_size(unit),
-            TypeKind::Modifier(ref val) => val.byte_size(unit),
+            TypeKind::PointerToMember(ref val) => val.byte_size(hash),
+            TypeKind::Modifier(ref val) => val.byte_size(hash),
         }
     }
 
@@ -1158,7 +1185,7 @@ impl<'input> Type<'input> {
             TypeKind::Def(ref val) => val.print(w, state, unit),
             TypeKind::Struct(ref val) => val.print(w, state, unit),
             TypeKind::Union(ref val) => val.print(w, state, unit),
-            TypeKind::Enumeration(ref val) => val.print(w, state, unit),
+            TypeKind::Enumeration(ref val) => val.print(w, state),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Subroutine(..) |
@@ -1168,26 +1195,30 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         match self.kind {
             TypeKind::Base(ref val) => val.print_ref(w),
             TypeKind::Def(ref val) => val.print_ref(w),
             TypeKind::Struct(ref val) => val.print_ref(w),
             TypeKind::Union(ref val) => val.print_ref(w),
             TypeKind::Enumeration(ref val) => val.print_ref(w),
-            TypeKind::Array(ref val) => val.print_ref(w, unit),
-            TypeKind::Subroutine(ref val) => val.print_ref(w, unit),
+            TypeKind::Array(ref val) => val.print_ref(w, state),
+            TypeKind::Subroutine(ref val) => val.print_ref(w, state),
             TypeKind::Unspecified(ref val) => val.print_ref(w),
-            TypeKind::PointerToMember(ref val) => val.print_ref(w, unit),
-            TypeKind::Modifier(ref val) => val.print_ref(w, unit),
+            TypeKind::PointerToMember(ref val) => val.print_ref(w, state),
+            TypeKind::Modifier(ref val) => val.print_ref(w, state),
         }
     }
 
-    fn print_ref_from_offset(w: &mut Write, unit: &Unit, offset: Option<TypeOffset>) -> Result<()> {
+    fn print_ref_from_offset(
+        w: &mut Write,
+        state: &PrintState,
+        offset: Option<TypeOffset>,
+    ) -> Result<()> {
         match offset {
             Some(offset) => {
-                match Type::from_offset(unit, offset) {
-                    Some(ty) => ty.print_ref(w, unit)?,
+                match Type::from_offset(state.hash, offset) {
+                    Some(ty) => ty.print_ref(w, state)?,
                     None => write!(w, "<invalid-type {}>", offset.0)?,
                 }
             }
@@ -1211,18 +1242,18 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn is_subroutine(&self, unit: &Unit) -> bool {
+    fn is_subroutine(&self, hash: &FileHash) -> bool {
         match self.kind {
             TypeKind::Subroutine(..) => true,
             TypeKind::Def(ref val) => {
-                match val.ty(unit) {
-                    Some(ty) => ty.is_subroutine(unit),
+                match val.ty(hash) {
+                    Some(ty) => ty.is_subroutine(hash),
                     None => false,
                 }
             }
             TypeKind::Modifier(ref val) => {
-                match val.ty(unit) {
-                    Some(ty) => ty.is_subroutine(unit),
+                match val.ty(hash) {
+                    Some(ty) => ty.is_subroutine(hash),
                     None => false,
                 }
             }
@@ -1240,7 +1271,7 @@ impl<'input> Type<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     /// This must only be called for types that have identifiers.
-    fn cmp_id(unit_a: &Unit, type_a: &Type, unit_b: &Unit, type_b: &Type) -> cmp::Ordering {
+    fn cmp_id(hash_a: &FileHash, type_a: &Type, hash_b: &FileHash, type_b: &Type) -> cmp::Ordering {
         use TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
             (&Base(ref a), &Base(ref b)) => BaseType::cmp_id(a, b),
@@ -1248,15 +1279,15 @@ impl<'input> Type<'input> {
             (&Struct(ref a), &Struct(ref b)) => StructType::cmp_id(a, b),
             (&Union(ref a), &Union(ref b)) => UnionType::cmp_id(a, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_id(a, b),
-            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(unit_a, a, unit_b, b),
+            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(hash_a, a, hash_b, b),
             (&Subroutine(ref a), &Subroutine(ref b)) => {
-                SubroutineType::cmp_id(unit_a, a, unit_b, b)
+                SubroutineType::cmp_id(hash_a, a, hash_b, b)
             }
             (&Unspecified(ref a), &Unspecified(ref b)) => UnspecifiedType::cmp_id(a, b),
             (&PointerToMember(ref a), &PointerToMember(ref b)) => {
-                PointerToMemberType::cmp_id(unit_a, a, unit_b, b)
+                PointerToMemberType::cmp_id(hash_a, a, hash_b, b)
             }
-            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(unit_a, a, unit_b, b),
+            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(hash_a, a, hash_b, b),
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
                 let discr_b = type_b.kind.discriminant_value();
@@ -1279,9 +1310,7 @@ impl<'input> Type<'input> {
             (&Def(ref a), &Def(ref b)) => TypeDef::diff(w, state, unit_a, a, unit_b, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::diff(w, state, unit_a, a, unit_b, b),
             (&Union(ref a), &Union(ref b)) => UnionType::diff(w, state, unit_a, a, unit_b, b),
-            (&Enumeration(ref a), &Enumeration(ref b)) => {
-                EnumerationType::diff(w, state, unit_a, a, unit_b, b)
-            }
+            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::diff(w, state, a, b),
             _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
         }?;
         Ok(())
@@ -1424,6 +1453,8 @@ struct TypeModifier<'input> {
     ty: Option<TypeOffset>,
     name: Option<&'input [u8]>,
     byte_size: Option<u64>,
+    // TODO: hack
+    address_size: Option<u64>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -1460,11 +1491,13 @@ impl TypeModifierKind {
 }
 
 impl<'input> TypeModifier<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|v| Type::from_offset(unit, v))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             return self.byte_size;
         }
@@ -1475,14 +1508,14 @@ impl<'input> TypeModifier<'input> {
             TypeModifierKind::Restrict |
             TypeModifierKind::Shared |
             TypeModifierKind::Atomic |
-            TypeModifierKind::Other => self.ty(unit).and_then(|v| v.byte_size(unit)),
+            TypeModifierKind::Other => self.ty(hash).and_then(|v| v.byte_size(hash)),
             TypeModifierKind::Pointer |
             TypeModifierKind::Reference |
-            TypeModifierKind::RvalueReference => unit.address_size,
+            TypeModifierKind::RvalueReference => self.address_size,
         }
     }
 
-    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}", String::from_utf8_lossy(name))?;
         } else {
@@ -1496,7 +1529,7 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Packed | TypeModifierKind::Shared |
                 TypeModifierKind::Atomic | TypeModifierKind::Other => {}
             }
-            Type::print_ref_from_offset(w, unit, self.ty)?;
+            Type::print_ref_from_offset(w, state, self.ty)?;
         }
         Ok(())
     }
@@ -1504,10 +1537,15 @@ impl<'input> TypeModifier<'input> {
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(unit_a: &Unit, a: &TypeModifier, unit_b: &Unit, b: &TypeModifier) -> cmp::Ordering {
-        match (a.ty(unit_a), b.ty(unit_b)) {
+    fn cmp_id(
+        hash_a: &FileHash,
+        a: &TypeModifier,
+        hash_b: &FileHash,
+        b: &TypeModifier,
+    ) -> cmp::Ordering {
+        match (a.ty(hash_a), b.ty(hash_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
                 }
@@ -1533,7 +1571,7 @@ struct BaseType<'input> {
 }
 
 impl<'input> BaseType<'input> {
-    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+    fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
 
@@ -1561,12 +1599,14 @@ struct TypeDef<'input> {
 }
 
 impl<'input> TypeDef<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|t| Type::from_offset(unit, t))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
-        self.ty(unit).and_then(|v| v.byte_size(unit))
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+        self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -1580,16 +1620,16 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print_name(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         write!(w, "type ")?;
         self.print_ref(w)?;
         write!(w, " = ")?;
-        Type::print_ref_from_offset(w, unit, self.ty)?;
+        Type::print_ref_from_offset(w, state, self.ty)?;
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(unit) {
+    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if let Some(byte_size) = self.byte_size(state.hash) {
             write!(w, "size: {}", byte_size)?;
         }
         Ok(())
@@ -1600,12 +1640,12 @@ impl<'input> TypeDef<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        let ty = self.ty(unit);
-        state.line(w, |w, state| self.print_name(w, state, unit))?;
+        let ty = self.ty(state.hash);
+        state.line(w, |w, state| self.print_name(w, state))?;
         state
             .indent(
                 |state| {
-                    state.line(w, |w, state| self.print_byte_size(w, state, unit))?;
+                    state.line(w, |w, state| self.print_byte_size(w, state))?;
                     if let Some(ty) = ty {
                         if ty.is_anon() {
                             Type::print_members(w, state, unit, Some(ty), Some(0))?;
@@ -1632,22 +1672,17 @@ impl<'input> TypeDef<'input> {
         unit_b: &Unit,
         b: &TypeDef,
     ) -> Result<()> {
-        state
-            .line(
-                w,
-                |w, state| a.print_name(w, state, unit_a),
-                |w, state| b.print_name(w, state, unit_b),
-            )?;
+        state.line(w, |w, state| a.print_name(w, state), |w, state| b.print_name(w, state))?;
         state.indent(
             |state| {
                 state
                     .line_option(
                         w,
-                        |w, state| a.print_byte_size(w, state, unit_a),
-                        |w, state| b.print_byte_size(w, state, unit_b),
+                        |w, state| a.print_byte_size(w, state),
+                        |w, state| b.print_byte_size(w, state),
                     )?;
-                let ty_a = filter_option(a.ty(unit_a), Type::is_anon);
-                let ty_b = filter_option(b.ty(unit_b), Type::is_anon);
+                let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
+                let ty_b = filter_option(b.ty(state.b.hash), Type::is_anon);
                 Type::diff_members(w, state, unit_a, ty_a, Some(0), unit_b, ty_b, Some(0))
             }
         )
@@ -1664,7 +1699,7 @@ struct StructType<'input> {
 }
 
 impl<'input> StructType<'input> {
-    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+    fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
 
@@ -1818,9 +1853,10 @@ impl<'input> StructType<'input> {
                 if a.name.cmp(&b.name) != cmp::Ordering::Equal {
                     cost += 1;
                 }
-                match (a.ty(unit_a), b.ty(unit_b)) {
+                match (a.ty(state.a.hash), b.ty(state.b.hash)) {
                     (Some(ty_a), Some(ty_b)) => {
-                        if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                        if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
+                           cmp::Ordering::Equal {
                             cost += 1;
                         }
                     }
@@ -1929,7 +1965,7 @@ struct UnionType<'input> {
 }
 
 impl<'input> UnionType<'input> {
-    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+    fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
 
@@ -2085,9 +2121,10 @@ impl<'input> UnionType<'input> {
                 if a.name.cmp(&b.name) != cmp::Ordering::Equal {
                     cost += 1;
                 }
-                match (a.ty(unit_a), b.ty(unit_b)) {
+                match (a.ty(state.a.hash), b.ty(state.b.hash)) {
                     (Some(ty_a), Some(ty_b)) => {
-                        if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                        if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
+                           cmp::Ordering::Equal {
                             cost += 1;
                         }
                     }
@@ -2183,15 +2220,17 @@ struct Member<'input> {
 }
 
 impl<'input> Member<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|t| Type::from_offset(unit, t))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
-    fn bit_size(&self, unit: &Unit) -> Option<u64> {
+    fn bit_size(&self, hash: &FileHash) -> Option<u64> {
         if self.bit_size.is_some() {
             self.bit_size
         } else {
-            self.ty(unit).and_then(|v| v.byte_size(unit).map(|v| v * 8))
+            self.ty(hash).and_then(|v| v.byte_size(hash).map(|v| v * 8))
         }
     }
 
@@ -2202,11 +2241,11 @@ impl<'input> Member<'input> {
         unit: &Unit,
         end_bit_offset: &mut Option<u64>,
     ) -> Result<()> {
-        state.line(w, |w, state| self.print_name(w, state, unit, end_bit_offset))?;
+        state.line(w, |w, state| self.print_name(w, state, end_bit_offset))?;
         state.indent(
             |state| {
-                let ty = if self.is_inline(unit) {
-                    self.ty(unit)
+                let ty = if self.is_inline(state.hash) {
+                    self.ty(state.hash)
                 } else {
                     None
                 };
@@ -2228,18 +2267,18 @@ impl<'input> Member<'input> {
         state
             .line(
                 w,
-                |w, state| a.print_name(w, state, unit_a, end_bit_offset_a),
-                |w, state| b.print_name(w, state, unit_b, end_bit_offset_b),
+                |w, state| a.print_name(w, state, end_bit_offset_a),
+                |w, state| b.print_name(w, state, end_bit_offset_b),
             )?;
         state.indent(
             |state| {
-                let ty_a = if a.is_inline(unit_a) {
-                    a.ty(unit_a)
+                let ty_a = if a.is_inline(state.a.hash) {
+                    a.ty(state.a.hash)
                 } else {
                     None
                 };
-                let ty_b = if b.is_inline(unit_b) {
-                    b.ty(unit_b)
+                let ty_b = if b.is_inline(state.b.hash) {
+                    b.ty(state.b.hash)
                 } else {
                     None
                 };
@@ -2282,12 +2321,11 @@ impl<'input> Member<'input> {
     fn print_name(
         &self,
         w: &mut Write,
-        _state: &mut PrintState,
-        unit: &Unit,
+        state: &mut PrintState,
         end_bit_offset: &mut Option<u64>,
     ) -> Result<()> {
         write!(w, "{}", format_bit(self.bit_offset))?;
-        match self.bit_size(unit) {
+        match self.bit_size(state.hash) {
             Some(bit_size) => {
                 write!(w, "[{}]", format_bit(bit_size))?;
                 *end_bit_offset = self.bit_offset.checked_add(bit_size);
@@ -2304,11 +2342,11 @@ impl<'input> Member<'input> {
             None => write!(w, "\t<anon>")?,
         }
         write!(w, ": ")?;
-        Type::print_ref_from_offset(w, unit, self.ty)?;
+        Type::print_ref_from_offset(w, state, self.ty)?;
         Ok(())
     }
 
-    fn is_inline(&self, unit: &Unit) -> bool {
+    fn is_inline(&self, hash: &FileHash) -> bool {
         match self.name {
             Some(s) => {
                 if s.starts_with(b"RUST$ENCODED$ENUM$") {
@@ -2317,7 +2355,7 @@ impl<'input> Member<'input> {
             }
             None => return true,
         };
-        if let Some(ty) = self.ty(unit) {
+        if let Some(ty) = self.ty(hash) {
             ty.is_anon()
         } else {
             false
@@ -2336,15 +2374,17 @@ struct EnumerationType<'input> {
 }
 
 impl<'input> EnumerationType<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|t| Type::from_offset(unit, t))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size
         } else {
-            self.ty(unit).and_then(|v| v.byte_size(unit))
+            self.ty(hash).and_then(|v| v.byte_size(hash))
         }
     }
 
@@ -2359,12 +2399,12 @@ impl<'input> EnumerationType<'input> {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(
             |state| {
                 state.line_option(w, |w, _state| self.print_declaration(w))?;
-                state.line_option(w, |w, state| self.print_byte_size(w, state, unit))?;
+                state.line_option(w, |w, state| self.print_byte_size(w, state))?;
                 self.print_enumerators(w, state)
             }
         )
@@ -2373,9 +2413,7 @@ impl<'input> EnumerationType<'input> {
     fn diff(
         w: &mut Write,
         state: &mut DiffState,
-        unit_a: &Unit,
         a: &EnumerationType,
-        unit_b: &Unit,
         b: &EnumerationType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
@@ -2392,8 +2430,8 @@ impl<'input> EnumerationType<'input> {
                     state
                         .line_option(
                             w,
-                            |w, state| a.print_byte_size(w, state, unit_a),
-                            |w, state| b.print_byte_size(w, state, unit_b),
+                            |w, state| a.print_byte_size(w, state),
+                            |w, state| b.print_byte_size(w, state),
                         )?;
                     Self::diff_enumerators(w, state, a, b)
                 }
@@ -2420,8 +2458,8 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState, unit: &Unit) -> Result<()> {
-        if let Some(size) = self.byte_size(unit) {
+    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if let Some(size) = self.byte_size(state.hash) {
             write!(w, "size: {}", size)?;
         } else {
             debug!("enum with no size");
@@ -2555,34 +2593,36 @@ struct ArrayType<'input> {
 }
 
 impl<'input> ArrayType<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|v| Type::from_offset(unit, v))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size
-        } else if let (Some(ty), Some(count)) = (self.ty(unit), self.count) {
-            ty.byte_size(unit).map(|v| v * count)
+        } else if let (Some(ty), Some(count)) = (self.ty(hash), self.count) {
+            ty.byte_size(hash).map(|v| v * count)
         } else {
             None
         }
     }
 
-    fn count(&self, unit: &Unit) -> Option<u64> {
+    fn count(&self, hash: &FileHash) -> Option<u64> {
         if self.count.is_some() {
             self.count
-        } else if let (Some(ty), Some(byte_size)) = (self.ty(unit), self.byte_size) {
-            ty.byte_size(unit).map(|v| byte_size / v)
+        } else if let (Some(ty), Some(byte_size)) = (self.ty(hash), self.byte_size) {
+            ty.byte_size(hash).map(|v| byte_size / v)
         } else {
             None
         }
     }
 
-    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         write!(w, "[")?;
-        Type::print_ref_from_offset(w, unit, self.ty)?;
-        if let Some(count) = self.count(unit) {
+        Type::print_ref_from_offset(w, state, self.ty)?;
+        if let Some(count) = self.count(state.hash) {
             write!(w, "; {}", count)?;
         }
         write!(w, "]")?;
@@ -2592,10 +2632,10 @@ impl<'input> ArrayType<'input> {
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(unit_a: &Unit, a: &ArrayType, unit_b: &Unit, b: &ArrayType) -> cmp::Ordering {
-        match (a.ty(unit_a), b.ty(unit_b)) {
+    fn cmp_id(hash_a: &FileHash, a: &ArrayType, hash_b: &FileHash, b: &ArrayType) -> cmp::Ordering {
+        match (a.ty(hash_a), b.ty(hash_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
                 }
@@ -2619,15 +2659,17 @@ struct SubroutineType<'input> {
 }
 
 impl<'input> SubroutineType<'input> {
-    fn byte_size(&self, _unit: &Unit) -> Option<u64> {
+    fn byte_size(&self) -> Option<u64> {
         None
     }
 
-    fn return_type<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.return_type.and_then(|v| Type::from_offset(unit, v))
+    fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         let mut first = true;
         write!(w, "(")?;
         for parameter in &self.parameters {
@@ -2636,13 +2678,13 @@ impl<'input> SubroutineType<'input> {
             } else {
                 write!(w, ", ")?;
             }
-            parameter.print(w, unit)?;
+            parameter.print(w, state)?;
         }
         write!(w, ")")?;
 
-        if let Some(return_type) = self.return_type(unit) {
+        if let Some(return_type) = self.return_type(state.hash) {
             write!(w, " -> ")?;
-            return_type.print_ref(w, unit)?;
+            return_type.print_ref(w, state)?;
         }
         Ok(())
     }
@@ -2651,13 +2693,13 @@ impl<'input> SubroutineType<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(
-        unit_a: &Unit,
+        hash_a: &FileHash,
         a: &SubroutineType,
-        unit_b: &Unit,
+        hash_b: &FileHash,
         b: &SubroutineType,
     ) -> cmp::Ordering {
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_id(unit_a, parameter_a, unit_b, parameter_b);
+            let ord = Parameter::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -2668,9 +2710,9 @@ impl<'input> SubroutineType<'input> {
             return ord;
         }
 
-        match (a.return_type(unit_a), b.return_type(unit_b)) {
+        match (a.return_type(hash_a), b.return_type(hash_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
                 }
@@ -2723,36 +2765,42 @@ struct PointerToMemberType {
     ty: Option<TypeOffset>,
     containing_ty: Option<TypeOffset>,
     byte_size: Option<u64>,
+    // TODO: hack
+    address_size: Option<u64>,
 }
 
 impl PointerToMemberType {
-    fn ty<'a, 'input>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|v| Type::from_offset(unit, v))
+    fn ty<'a, 'input>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn containing_ty<'a, 'input>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.containing_ty.and_then(|v| Type::from_offset(unit, v))
+    fn containing_ty<'a, 'input>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.containing_ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             return self.byte_size;
         }
         // TODO: this probably depends on the ABI
-        self.ty(unit)
+        self.ty(hash)
             .and_then(
-                |ty| if ty.is_subroutine(unit) {
-                    unit.address_size.map(|v| v * 2)
+                |ty| if ty.is_subroutine(hash) {
+                    self.address_size.map(|v| v * 2)
                 } else {
-                    unit.address_size
+                    self.address_size
                 }
             )
     }
 
-    fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
-        Type::print_ref_from_offset(w, unit, self.containing_ty)?;
+    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        Type::print_ref_from_offset(w, state, self.containing_ty)?;
         write!(w, "::* ")?;
-        Type::print_ref_from_offset(w, unit, self.ty)?;
+        Type::print_ref_from_offset(w, state, self.ty)?;
         Ok(())
     }
 
@@ -2760,14 +2808,14 @@ impl PointerToMemberType {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(
-        unit_a: &Unit,
+        hash_a: &FileHash,
         a: &PointerToMemberType,
-        unit_b: &Unit,
+        hash_b: &FileHash,
         b: &PointerToMemberType,
     ) -> cmp::Ordering {
-        match (a.containing_ty(unit_a), b.containing_ty(unit_b)) {
+        match (a.containing_ty(hash_a), b.containing_ty(hash_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
                 }
@@ -2780,9 +2828,9 @@ impl PointerToMemberType {
             }
             (None, None) => {}
         }
-        match (a.ty(unit_a), b.ty(unit_b)) {
+        match (a.ty(hash_a), b.ty(hash_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
                 }
@@ -2877,10 +2925,10 @@ impl<'input> Subprogram<'input> {
                 state.line_option(w, |w, _state| self.print_return_type_label(w))?;
                 state
                     .indent(
-                        |state| state.line_option(w, |w, _state| self.print_return_type(w, unit)),
+                        |state| state.line_option(w, |w, state| self.print_return_type(w, state)),
                     )?;
                 state.line_option(w, |w, _state| self.print_parameters_label(w))?;
-                state.indent(|state| self.print_parameters(w, state, unit))?;
+                state.indent(|state| self.print_parameters(w, state))?;
                 if state.flags.inline_depth > 0 {
                     state.line_option(w, |w, _state| self.print_inlined_subroutines_label(w))?;
                     state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
@@ -2964,8 +3012,8 @@ impl<'input> Subprogram<'input> {
                         |state| {
                             state.line_option(
                                 w,
-                                |w, _state| a.print_return_type(w, unit_a),
-                                |w, _state| b.print_return_type(w, unit_b),
+                                |w, state| a.print_return_type(w, state),
+                                |w, state| b.print_return_type(w, state),
                             )
                         }
                     )?;
@@ -2975,7 +3023,7 @@ impl<'input> Subprogram<'input> {
                         |w, _state| a.print_parameters_label(w),
                         |w, _state| b.print_parameters_label(w),
                     )?;
-                state.indent(|state| Subprogram::diff_parameters(w, state, unit_a, a, unit_b, b))?;
+                state.indent(|state| Subprogram::diff_parameters(w, state, a, b))?;
                 // TODO
                 if false && state.flags.inline_depth > 0 {
                     state
@@ -3080,14 +3128,14 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    fn print_return_type(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_return_type(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if let Some(return_type) = self.return_type {
-            match Type::from_offset(unit, return_type).and_then(|t| t.byte_size(unit)) {
+            match Type::from_offset(state.hash, return_type).and_then(|t| t.byte_size(state.hash)) {
                 Some(byte_size) => write!(w, "[{}]", byte_size)?,
                 None => write!(w, "[??]")?,
             }
             write!(w, "\t")?;
-            Type::print_ref_from_offset(w, unit, self.return_type)?;
+            Type::print_ref_from_offset(w, state, self.return_type)?;
         }
         Ok(())
     }
@@ -3099,9 +3147,9 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    fn print_parameters(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print_parameters(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         for parameter in &self.parameters {
-            state.line(w, |w, _state| Self::print_parameter(w, unit, parameter))?;
+            state.line(w, |w, state| Self::print_parameter(w, state, parameter))?;
         }
         Ok(())
     }
@@ -3109,9 +3157,7 @@ impl<'input> Subprogram<'input> {
     fn diff_parameters(
         w: &mut Write,
         state: &mut DiffState,
-        unit_a: &Unit,
         a: &Subprogram,
-        unit_b: &Unit,
         b: &Subprogram,
     ) -> Result<()> {
         let path = diff::shortest_path(
@@ -3120,9 +3166,10 @@ impl<'input> Subprogram<'input> {
                 if a.name.cmp(&b.name) != cmp::Ordering::Equal {
                     cost += 1;
                 }
-                match (a.ty(unit_a), b.ty(unit_b)) {
+                match (a.ty(state.a.hash), b.ty(state.b.hash)) {
                     (Some(ty_a), Some(ty_b)) => {
-                        if Type::cmp_id(unit_a, ty_a, unit_b, ty_b) != cmp::Ordering::Equal {
+                        if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
+                           cmp::Ordering::Equal {
                             cost += 1;
                         }
                     }
@@ -3145,8 +3192,8 @@ impl<'input> Subprogram<'input> {
                         state
                             .line(
                                 w,
-                                |w, _state| Self::print_parameter(w, unit_a, a),
-                                |w, _state| Self::print_parameter(w, unit_b, b),
+                                |w, state| Self::print_parameter(w, state, a),
+                                |w, state| Self::print_parameter(w, state, b),
                             )?;
                     }
                 }
@@ -3155,7 +3202,7 @@ impl<'input> Subprogram<'input> {
                         state
                             .prefix_less(
                                 |state| {
-                                    state.line(w, |w, _state| Self::print_parameter(w, unit_a, a))
+                                    state.line(w, |w, state| Self::print_parameter(w, state, a))
                                 }
                             )?;
                     }
@@ -3165,7 +3212,7 @@ impl<'input> Subprogram<'input> {
                         state
                             .prefix_greater(
                                 |state| {
-                                    state.line(w, |w, _state| Self::print_parameter(w, unit_b, b))
+                                    state.line(w, |w, state| Self::print_parameter(w, state, b))
                                 }
                             )?;
                     }
@@ -3175,13 +3222,13 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    fn print_parameter(w: &mut Write, unit: &Unit, parameter: &Parameter) -> Result<()> {
-        match parameter.byte_size(unit) {
+    fn print_parameter(w: &mut Write, state: &PrintState, parameter: &Parameter) -> Result<()> {
+        match parameter.byte_size(state.hash) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        parameter.print(w, unit)
+        parameter.print(w, state)
     }
 
     fn print_inlined_subroutines_label(&self, w: &mut Write) -> Result<()> {
@@ -3257,20 +3304,22 @@ struct Parameter<'input> {
 }
 
 impl<'input> Parameter<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|v| Type::from_offset(unit, v))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
-        self.ty(unit).and_then(|v| v.byte_size(unit))
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+        self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
-    fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}: ", String::from_utf8_lossy(name))?;
         }
-        match self.ty(unit) {
-            Some(ty) => ty.print_ref(w, unit)?,
+        match self.ty(state.hash) {
+            Some(ty) => ty.print_ref(w, state)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -3279,10 +3328,10 @@ impl<'input> Parameter<'input> {
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(unit_a: &Unit, a: &Parameter, unit_b: &Unit, b: &Parameter) -> cmp::Ordering {
-        match (a.ty(unit_a), b.ty(unit_b)) {
+    fn cmp_id(hash_a: &FileHash, a: &Parameter, hash_b: &FileHash, b: &Parameter) -> cmp::Ordering {
+        match (a.ty(hash_a), b.ty(hash_b)) {
             (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(unit_a, ty_a, unit_b, ty_b);
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
                 }
@@ -3366,12 +3415,14 @@ struct Variable<'input> {
 }
 
 impl<'input> Variable<'input> {
-    fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|v| Type::from_offset(unit, v))
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+        where 'input: 'a
+    {
+        self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn byte_size(&self, unit: &Unit) -> Option<u64> {
-        self.ty(unit).and_then(|t| t.byte_size(unit))
+    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+        self.ty(hash).and_then(|t| t.byte_size(hash))
     }
 
     fn filter(&self, flags: &Flags) -> bool {
@@ -3396,28 +3447,21 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(w, |w, _state| self.print_name(w, unit))?;
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(
             |state| {
                 state.line_option(w, |w, _state| self.print_linkage_name(w))?;
                 state.line_option(w, |w, _state| self.print_address(w))?;
-                state.line_option(w, |w, _state| self.print_size(w, unit))?;
+                state.line_option(w, |w, state| self.print_size(w, state))?;
                 state.line_option(w, |w, _state| self.print_declaration(w))
                 // TODO: print anon type inline
             }
         )
     }
 
-    fn diff(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Variable,
-        unit_b: &Unit,
-        b: &Variable,
-    ) -> Result<()> {
-        state.line(w, |w, _state| a.print_name(w, unit_a), |w, _state| b.print_name(w, unit_b))?;
+    fn diff(w: &mut Write, state: &mut DiffState, a: &Variable, b: &Variable) -> Result<()> {
+        state.line(w, |w, state| a.print_name(w, state), |w, state| b.print_name(w, state))?;
         state.indent(
             |state| {
                 state
@@ -3440,8 +3484,8 @@ impl<'input> Variable<'input> {
                 state
                     .line_option(
                         w,
-                        |w, _state| a.print_size(w, unit_a),
-                        |w, _state| b.print_size(w, unit_b),
+                        |w, state| a.print_size(w, state),
+                        |w, state| b.print_size(w, state),
                     )?;
                 state.line_option(
                     w,
@@ -3452,11 +3496,11 @@ impl<'input> Variable<'input> {
         )
     }
 
-    fn print_name(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         write!(w, "var ")?;
         self.print_ref(w)?;
         write!(w, ": ")?;
-        Type::print_ref_from_offset(w, unit, self.ty)?;
+        Type::print_ref_from_offset(w, state, self.ty)?;
         Ok(())
     }
 
@@ -3474,8 +3518,8 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_size(&self, w: &mut Write, unit: &Unit) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(unit) {
+    fn print_size(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        if let Some(byte_size) = self.byte_size(state.hash) {
             write!(w, "size: {}", byte_size)?;
         } else if !self.declaration {
             debug!("variable with no size");

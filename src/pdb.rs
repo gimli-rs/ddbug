@@ -155,6 +155,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                     ty: underlying_type,
                                     name: None,
                                     byte_size: byte_size,
+                                    address_size: None,
                                 }
                             ),
                         },
@@ -183,6 +184,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                                     ty: underlying_type,
                                     name: None,
                                     byte_size: None,
+                                    address_size: None,
                                 }
                             ),
                         },
@@ -331,6 +333,7 @@ fn add_primitive_type<'input>(
                     ty: Some(TypeOffset(index)),
                     name: None,
                     byte_size: Some(4),
+                    address_size: None,
                 }
             ),
         },
@@ -346,6 +349,7 @@ fn add_primitive_type<'input>(
                     ty: Some(TypeOffset(index)),
                     name: None,
                     byte_size: Some(8),
+                    address_size: None,
                 }
             ),
         },
