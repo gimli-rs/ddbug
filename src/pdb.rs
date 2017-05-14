@@ -244,7 +244,6 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                         .insert(
                             SubprogramOffset(symbol_index),
                             Subprogram {
-                                offset: SubprogramOffset(symbol_index),
                                 namespace: namespace.clone(),
                                 name: Some(symbol.name()?.as_bytes()),
                                 linkage_name: None,

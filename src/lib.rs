@@ -1082,8 +1082,8 @@ impl<'input> TypeKind<'input> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TypeOffset(usize);
 
-impl From<gimli::UnitOffset> for TypeOffset {
-    fn from(o: gimli::UnitOffset) -> TypeOffset {
+impl From<gimli::DebugInfoOffset> for TypeOffset {
+    fn from(o: gimli::DebugInfoOffset) -> TypeOffset {
         TypeOffset(o.0)
     }
 }
@@ -2802,15 +2802,14 @@ impl PointerToMemberType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct SubprogramOffset(usize);
 
-impl From<gimli::UnitOffset> for SubprogramOffset {
-    fn from(o: gimli::UnitOffset) -> SubprogramOffset {
+impl From<gimli::DebugInfoOffset> for SubprogramOffset {
+    fn from(o: gimli::DebugInfoOffset) -> SubprogramOffset {
         SubprogramOffset(o.0)
     }
 }
 
 #[derive(Debug)]
 struct Subprogram<'input> {
-    offset: SubprogramOffset,
     namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     linkage_name: Option<&'input [u8]>,
@@ -3350,8 +3349,8 @@ impl<'input> InlinedSubroutine<'input> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct VariableOffset(usize);
 
-impl From<gimli::UnitOffset> for VariableOffset {
-    fn from(o: gimli::UnitOffset) -> VariableOffset {
+impl From<gimli::DebugInfoOffset> for VariableOffset {
+    fn from(o: gimli::DebugInfoOffset) -> VariableOffset {
         VariableOffset(o.0)
     }
 }
