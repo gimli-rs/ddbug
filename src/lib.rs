@@ -155,21 +155,6 @@ pub struct File<'input> {
 }
 
 impl<'input> File<'input> {
-    /// Returns a map from address to subprogram for all subprograms in the file.
-    fn subprograms(&self) -> HashMap<u64, &Subprogram<'input>> {
-        let mut all_subprograms = HashMap::new();
-        // TODO: insert symbol table names too
-        for unit in &self.units {
-            for subprogram in unit.subprograms.values() {
-                if let Some(low_pc) = subprogram.low_pc {
-                    // TODO: handle duplicate addresses
-                    all_subprograms.insert(low_pc, subprogram);
-                }
-            }
-        }
-        all_subprograms
-    }
-
     fn filter_units(&self, flags: &Flags, diff: bool) -> Vec<&Unit> {
         let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(flags)).collect();
         if diff || flags.sort {
@@ -256,7 +241,36 @@ pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Resul
     cb(&mut file)
 }
 
-#[derive(Debug, Clone, Copy,)]
+#[derive(Debug)]
+struct FileHash<'a, 'input>
+    where 'input: 'a
+{
+    // All subprograms by address.
+    subprograms: HashMap<u64, &'a Subprogram<'input>>,
+}
+
+impl<'a, 'input> FileHash<'a, 'input> {
+    fn new(file: &'a File<'input>) -> Self {
+        FileHash { subprograms: Self::subprograms(file) }
+    }
+
+    /// Returns a map from address to subprogram for all subprograms in the file.
+    fn subprograms(file: &'a File<'input>) -> HashMap<u64, &'a Subprogram<'input>> {
+        let mut subprograms = HashMap::new();
+        // TODO: insert symbol table names too
+        for unit in &file.units {
+            for subprogram in unit.subprograms.values() {
+                if let Some(low_pc) = subprogram.low_pc {
+                    // TODO: handle duplicate addresses
+                    subprograms.insert(low_pc, subprogram);
+                }
+            }
+        }
+        subprograms
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 enum DiffPrefix {
     None,
     Equal,
@@ -274,25 +288,20 @@ struct PrintState<'a, 'input>
 
     // The remaining fields contain information that is commonly needed in print methods.
     file: &'a File<'input>,
-    // All subprograms by address.
-    all_subprograms: &'a HashMap<u64, &'a Subprogram<'input>>,
+    hash: &'a FileHash<'a, 'input>,
     flags: &'a Flags<'a>,
 }
 
 impl<'a, 'input> PrintState<'a, 'input>
     where 'input: 'a
 {
-    fn new(
-        file: &'a File<'input>,
-        subprograms: &'a HashMap<u64, &'a Subprogram<'input>>,
-        flags: &'a Flags<'a>,
-    ) -> Self {
+    fn new(file: &'a File<'input>, hash: &'a FileHash<'a, 'input>, flags: &'a Flags<'a>) -> Self {
         PrintState {
             indent: 0,
             prefix: DiffPrefix::None,
             diff: false,
             file: file,
-            all_subprograms: subprograms,
+            hash: hash,
             flags: flags,
         }
     }
@@ -343,7 +352,7 @@ impl<'a, 'input> PrintState<'a, 'input>
         where F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
     {
         let mut buf = Vec::new();
-        let mut state = PrintState::new(self.file, self.all_subprograms, self.flags);
+        let mut state = PrintState::new(self.file, self.hash, self.flags);
         f(&mut buf, &mut state)?;
         if !buf.is_empty() {
             self.line(w, |w, _state| w.write_all(&*buf).map_err(From::from))?;
@@ -352,10 +361,10 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 }
 
-pub fn print_file(w: &mut Write, file: &mut File, flags: &Flags) -> Result<()> {
-    let subprograms = file.subprograms();
+pub fn print_file(w: &mut Write, file: &File, flags: &Flags) -> Result<()> {
+    let hash = FileHash::new(file);
     for unit in &file.filter_units(flags, false) {
-        let mut state = PrintState::new(file, &subprograms, flags);
+        let mut state = PrintState::new(file, &hash, flags);
         if flags.unit.is_none() {
             state
                 .line(
@@ -458,14 +467,14 @@ impl<'a, 'input> DiffState<'a, 'input>
 {
     fn new(
         file_a: &'a File<'input>,
-        subprograms_a: &'a HashMap<u64, &'a Subprogram<'input>>,
+        hash_a: &'a FileHash<'a, 'input>,
         file_b: &'a File<'input>,
-        subprograms_b: &'a HashMap<u64, &'a Subprogram<'input>>,
+        hash_b: &'a FileHash<'a, 'input>,
         flags: &'a Flags<'a>,
     ) -> Self {
         DiffState {
-            a: PrintState::new(file_a, subprograms_a, flags),
-            b: PrintState::new(file_b, subprograms_b, flags),
+            a: PrintState::new(file_a, hash_a, flags),
+            b: PrintState::new(file_b, hash_b, flags),
             flags: flags,
         }
     }
@@ -577,11 +586,11 @@ impl<'a, 'input> DiffState<'a, 'input>
               B: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
     {
         let mut a = Vec::new();
-        let mut state = PrintState::new(self.a.file, self.a.all_subprograms, self.a.flags);
+        let mut state = PrintState::new(self.a.file, self.a.hash, self.a.flags);
         f_a(&mut a, &mut state)?;
 
         let mut b = Vec::new();
-        let mut state = PrintState::new(self.b.file, self.b.all_subprograms, self.b.flags);
+        let mut state = PrintState::new(self.b.file, self.b.hash, self.b.flags);
         f_b(&mut b, &mut state)?;
 
         if a == b {
@@ -617,10 +626,10 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 }
 
-pub fn diff_file(w: &mut Write, file_a: &mut File, file_b: &mut File, flags: &Flags) -> Result<()> {
-    let subprograms_a = file_a.subprograms();
-    let subprograms_b = file_b.subprograms();
-    let mut state = DiffState::new(file_a, &subprograms_a, file_b, &subprograms_b, flags);
+pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> Result<()> {
+    let hash_a = FileHash::new(file_a);
+    let hash_b = FileHash::new(file_b);
+    let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, flags);
     state
         .merge(
             w,
@@ -3220,7 +3229,7 @@ impl<'input> Subprogram<'input> {
                 .line(
                     w, |w, state| {
                         write!(w, "0x{:x}", call)?;
-                        if let Some(subprogram) = state.all_subprograms.get(call) {
+                        if let Some(subprogram) = state.hash.subprograms.get(call) {
                             write!(w, " ")?;
                             subprogram.print_ref(w)?;
                         }
