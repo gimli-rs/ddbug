@@ -181,7 +181,7 @@ fn fixup_subprogram_specifications<'state, 'input, Endian>(
                     &mut subprogram.subprogram,
                     tree.iter(),
                 )?;
-                unit.subprograms.insert(subprogram.subprogram.offset.0, subprogram.subprogram);
+                unit.subprograms.insert(subprogram.subprogram.offset.into(), subprogram.subprogram);
                 progress = true;
             } else {
                 dwarf_unit.subprograms.push(subprogram);
@@ -201,7 +201,7 @@ fn fixup_subprogram_specifications<'state, 'input, Endian>(
                     &mut subprogram.subprogram,
                     tree.iter(),
                 )?;
-                unit.subprograms.insert(subprogram.subprogram.offset.0, subprogram.subprogram);
+                unit.subprograms.insert(subprogram.subprogram.offset.into(), subprogram.subprogram);
             }
             return Ok(());
         }
@@ -221,7 +221,7 @@ fn fixup_variable_specifications<'state, 'input, Endian>(
         let mut defer = Vec::new();
 
         for mut variable in dwarf_unit.variables.drain(..) {
-            match variable.specification.and_then(|v| unit.variables.get(&v.0)) {
+            match variable.specification.and_then(|v| unit.variables.get(&v.into())) {
                 Some(specification) => {
                     let variable = &mut variable.variable;
                     variable.namespace = specification.namespace.clone();
@@ -240,7 +240,7 @@ fn fixup_variable_specifications<'state, 'input, Endian>(
                     continue;
                 }
             }
-            unit.variables.insert(variable.offset.0, variable.variable);
+            unit.variables.insert(variable.offset.into(), variable.variable);
             progress = true;
         }
 
@@ -250,7 +250,7 @@ fn fixup_variable_specifications<'state, 'input, Endian>(
         if !progress {
             debug!("invalid specification for {} variables", defer.len());
             for variable in dwarf_unit.variables.drain(..) {
-                unit.variables.insert(variable.offset.0, variable.variable);
+                unit.variables.insert(variable.offset.into(), variable.variable);
             }
             return Ok(());
         }
@@ -281,7 +281,7 @@ fn parse_namespace_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     // Delay handling specication in case it comes later.
                     dwarf_unit.variables.push(variable);
                 } else {
-                    unit.variables.insert(variable.offset.0, variable.variable);
+                    unit.variables.insert(variable.offset.into(), variable.variable);
                 }
             }
             gimli::DW_TAG_imported_declaration |
@@ -289,7 +289,7 @@ fn parse_namespace_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             tag => {
                 let offset = child.entry().unwrap().offset();
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
-                    unit.types.insert(offset.0, ty);
+                    unit.types.insert(offset.into(), ty);
                 } else {
                     debug!("unknown namespace child tag: {}", tag);
                 }
@@ -608,7 +608,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
             tag => {
                 let offset = child.entry().unwrap().offset();
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
-                    unit.types.insert(offset.0, ty);
+                    unit.types.insert(offset.into(), ty);
                 } else {
                     debug!("unknown struct child tag: {}", tag);
                 }
@@ -666,7 +666,7 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             tag => {
                 let offset = child.entry().unwrap().offset();
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
-                    unit.types.insert(offset.0, ty);
+                    unit.types.insert(offset.into(), ty);
                 } else {
                     debug!("unknown union child tag: {}", tag);
                 }
@@ -772,7 +772,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         if variable.specification.is_some() {
             debug!("specification on variable declaration at offset 0x{:x}", variable.offset.0);
         }
-        unit.variables.insert(variable.offset.0, variable.variable);
+        unit.variables.insert(variable.offset.into(), variable.variable);
         return Ok(());
     }
 
@@ -1222,7 +1222,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     }
 
     parse_subprogram_children(unit, dwarf, dwarf_unit, &mut subprogram, iter)?;
-    unit.subprograms.insert(subprogram.offset.0, subprogram);
+    unit.subprograms.insert(subprogram.offset.into(), subprogram);
     Ok(())
 }
 
@@ -1231,7 +1231,7 @@ fn parse_subprogram_specification<'input>(
     subprogram: &mut Subprogram<'input>,
     specification: gimli::UnitOffset,
 ) -> bool {
-    let specification = match unit.subprograms.get(&specification.0) {
+    let specification = match unit.subprograms.get(&specification.into()) {
         Some(val) => val,
         None => return false,
     };
@@ -1312,7 +1312,7 @@ fn parse_subprogram_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             tag => {
                 let offset = child.entry().unwrap().offset();
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
-                    unit.types.insert(offset.0, ty);
+                    unit.types.insert(offset.into(), ty);
                 } else {
                     debug!("unknown subprogram child tag: {}", tag);
                 }
@@ -1425,7 +1425,7 @@ fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
             tag => {
                 let offset = child.entry().unwrap().offset();
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
-                    unit.types.insert(offset.0, ty);
+                    unit.types.insert(offset.into(), ty);
                 } else {
                     debug!("unknown lexical_block child tag: {}", tag);
                 }

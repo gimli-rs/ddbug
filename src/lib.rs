@@ -823,9 +823,9 @@ pub struct Unit<'input> {
     low_pc: Option<u64>,
     high_pc: Option<u64>,
     size: Option<u64>,
-    types: BTreeMap<usize, Type<'input>>,
-    subprograms: BTreeMap<usize, Subprogram<'input>>,
-    variables: BTreeMap<usize, Variable<'input>>,
+    types: BTreeMap<TypeOffset, Type<'input>>,
+    subprograms: BTreeMap<SubprogramOffset, Subprogram<'input>>,
+    variables: BTreeMap<VariableOffset, Variable<'input>>,
 }
 
 impl<'input> Unit<'input> {
@@ -1079,7 +1079,7 @@ impl<'input> TypeKind<'input> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct TypeOffset(usize);
 
 impl From<gimli::UnitOffset> for TypeOffset {
@@ -1105,7 +1105,7 @@ impl<'input> Default for Type<'input> {
 
 impl<'input> Type<'input> {
     fn from_offset<'a>(unit: &'a Unit<'input>, offset: TypeOffset) -> Option<&'a Type<'input>> {
-        unit.types.get(&offset.0)
+        unit.types.get(&offset)
     }
 
     fn byte_size(&self, unit: &Unit) -> Option<u64> {
@@ -2556,7 +2556,7 @@ struct ArrayType<'input> {
 
 impl<'input> ArrayType<'input> {
     fn ty<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.ty.and_then(|v| unit.types.get(&v.0))
+        self.ty.and_then(|v| Type::from_offset(unit, v))
     }
 
     fn byte_size(&self, unit: &Unit) -> Option<u64> {
@@ -2624,7 +2624,7 @@ impl<'input> SubroutineType<'input> {
     }
 
     fn return_type<'a>(&self, unit: &'a Unit<'input>) -> Option<&'a Type<'input>> {
-        self.return_type.and_then(|v| unit.types.get(&v.0))
+        self.return_type.and_then(|v| Type::from_offset(unit, v))
     }
 
     fn print_ref(&self, w: &mut Write, unit: &Unit) -> Result<()> {
@@ -2799,7 +2799,7 @@ impl PointerToMemberType {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct SubprogramOffset(usize);
 
 impl From<gimli::UnitOffset> for SubprogramOffset {
@@ -2830,7 +2830,7 @@ impl<'input> Subprogram<'input> {
         unit: &'a Unit<'input>,
         offset: SubprogramOffset,
     ) -> Option<&'a Subprogram<'input>> {
-        unit.subprograms.get(&offset.0)
+        unit.subprograms.get(&offset)
     }
 
     fn filter(&self, flags: &Flags) -> bool {
@@ -3344,6 +3344,15 @@ impl<'input> InlinedSubroutine<'input> {
                 )?;
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct VariableOffset(usize);
+
+impl From<gimli::UnitOffset> for VariableOffset {
+    fn from(o: gimli::UnitOffset) -> VariableOffset {
+        VariableOffset(o.0)
     }
 }
 

@@ -146,7 +146,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 };
                 unit.types
                     .insert(
-                        index,
+                        TypeOffset(index),
                         Type {
                             offset: TypeOffset(index),
                             kind: TypeKind::Modifier(
@@ -174,7 +174,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 };
                 unit.types
                     .insert(
-                        index,
+                        TypeOffset(index),
                         Type {
                             offset: TypeOffset(index),
                             kind: TypeKind::Modifier(
@@ -242,7 +242,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 if function {
                     unit.subprograms
                         .insert(
-                            symbol_index,
+                            SubprogramOffset(symbol_index),
                             Subprogram {
                                 offset: SubprogramOffset(symbol_index),
                                 namespace: namespace.clone(),
@@ -277,7 +277,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     cb(&mut file)
 }
 
-fn add_primitive_types<'input>(types: &mut BTreeMap<usize, Type<'input>>) {
+fn add_primitive_types<'input>(types: &mut BTreeMap<TypeOffset, Type<'input>>) {
     add_primitive_type(types, 0x00, b"NoType", 4);
     add_primitive_type(types, 0x03, b"void", 0);
     add_primitive_type(types, 0x10, b"i8", 1); // signed char
@@ -304,13 +304,13 @@ fn add_primitive_types<'input>(types: &mut BTreeMap<usize, Type<'input>>) {
 }
 
 fn add_primitive_type<'input>(
-    types: &mut BTreeMap<usize, Type<'input>>,
+    types: &mut BTreeMap<TypeOffset, Type<'input>>,
     index: usize,
     name: &'static [u8],
     size: u64,
 ) {
     types.insert(
-        index,
+        TypeOffset(index),
         Type {
             offset: TypeOffset(index),
             kind: TypeKind::Base(
@@ -323,7 +323,7 @@ fn add_primitive_type<'input>(
     );
 
     types.insert(
-        0x400 + index,
+        TypeOffset(0x400 + index),
         Type {
             offset: TypeOffset(0x400 + index),
             kind: TypeKind::Modifier(
@@ -338,7 +338,7 @@ fn add_primitive_type<'input>(
     );
 
     types.insert(
-        0x600 + index,
+        TypeOffset(0x600 + index),
         Type {
             offset: TypeOffset(0x600 + index),
             kind: TypeKind::Modifier(
@@ -376,7 +376,7 @@ fn parse_class<'input>(
     };
     unit.types
         .insert(
-            index,
+            TypeOffset(index),
             Type {
                 offset: TypeOffset(index),
                 kind: TypeKind::Struct(
@@ -416,7 +416,7 @@ fn parse_union<'input>(
     };
     unit.types
         .insert(
-            index,
+            TypeOffset(index),
             Type {
                 offset: TypeOffset(index),
                 kind: TypeKind::Union(
@@ -455,7 +455,7 @@ fn parse_enumeration<'input>(
     };
     unit.types
         .insert(
-            index,
+            TypeOffset(index),
             Type {
                 offset: TypeOffset(index),
                 kind: TypeKind::Enumeration(
@@ -513,7 +513,7 @@ fn parse_procedure<'input>(
 
     unit.types
         .insert(
-            index,
+            TypeOffset(index),
             // TODO: attributes
             Type {
                 offset: TypeOffset(index),
@@ -569,7 +569,7 @@ fn parse_member_function<'input>(
 
     unit.types
         .insert(
-            index,
+            TypeOffset(index),
             // TODO: class_type, attributes, this_adjustment
             Type {
                 offset: TypeOffset(index),
@@ -598,7 +598,7 @@ fn parse_array<'input>(
     let byte_size = Some(dimensions[0] as u64);
     unit.types
         .insert(
-            index,
+            TypeOffset(index),
             // TODO: indexing_type, stride
             Type {
                 offset: TypeOffset(index),
