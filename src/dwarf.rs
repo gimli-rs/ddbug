@@ -328,6 +328,20 @@ fn parse_namespace<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     parse_namespace_children(unit, dwarf, dwarf_unit, &namespace, iter)
 }
 
+fn parse_type_offset<Endian>(attr: &gimli::Attribute<Endian>) -> Option<gimli::UnitOffset>
+    where Endian: gimli::Endianity
+{
+    match attr.value() {
+        gimli::AttributeValue::UnitRef(offset) => {
+            Some(offset)
+        }
+        other => {
+            debug!("unknown type offset: {:?}", other);
+            None
+        }
+    }
+}
+
 fn parse_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
@@ -457,7 +471,7 @@ fn parse_type_modifier<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                     modifier.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         modifier.ty = Some(offset.into());
                     }
                 }
@@ -542,7 +556,7 @@ fn parse_typedef<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     typedef.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         typedef.ty = Some(offset.into());
                     }
                 }
@@ -719,7 +733,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     member.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         member.ty = Some(offset.into());
                     }
                 }
@@ -958,7 +972,7 @@ fn parse_array_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         array.ty = Some(offset.into());
                     }
                 }
@@ -1020,7 +1034,7 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         subroutine.return_type = Some(offset.into());
                     }
                 }
@@ -1102,12 +1116,12 @@ fn parse_pointer_to_member_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         ty.ty = Some(offset.into());
                     }
                 }
                 gimli::DW_AT_containing_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         ty.containing_ty = Some(offset.into());
                     }
                 }
@@ -1196,7 +1210,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     }
                 }
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         subprogram.return_type = Some(offset.into());
                     }
                 }
@@ -1204,6 +1218,10 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_abstract_origin => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
                         specification = Some(offset);
+                    } else {
+                        debug!("unknown subprogram attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
                     }
                 }
                 gimli::DW_AT_declaration => {
@@ -1368,7 +1386,7 @@ fn parse_parameter<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                     parameter.name = attr.string_value(&dwarf.debug_str).map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         parameter.ty = Some(offset.into());
                     }
                 }
@@ -1489,6 +1507,10 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 gimli::DW_AT_abstract_origin => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
                         subroutine.abstract_origin = Some(offset.into());
+                    } else {
+                        debug!("unknown inlined_subroutine attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
                     }
                 }
                 gimli::DW_AT_low_pc => {
@@ -1601,13 +1623,17 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         .map(ffi::CStr::to_bytes);
                 }
                 gimli::DW_AT_type => {
-                    if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
+                    if let Some(offset) = parse_type_offset(&attr) {
                         variable.ty = Some(offset.into());
                     }
                 }
                 gimli::DW_AT_specification => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
                         specification = Some(offset);
+                    } else {
+                        debug!("unknown variable attribute: {} {:?}",
+                               attr.name(),
+                               attr.value())
                     }
                 }
                 gimli::DW_AT_declaration => {
