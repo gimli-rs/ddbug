@@ -952,6 +952,7 @@ fn parse_array_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_byte_size => {
                     array.byte_size = attr.udata_value();
                 }
+                gimli::DW_AT_name |
                 gimli::DW_AT_GNU_vector |
                 gimli::DW_AT_sibling => {}
                 _ => debug!("unknown array attribute: {} {:?}", attr.name(), attr.value()),
@@ -1021,6 +1022,7 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                         subroutine.return_type = Some(offset);
                     }
                 }
+                gimli::DW_AT_name |
                 gimli::DW_AT_prototyped |
                 gimli::DW_AT_sibling => {}
                 _ => debug!("unknown subroutine attribute: {} {:?}", attr.name(), attr.value()),
