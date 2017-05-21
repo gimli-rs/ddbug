@@ -949,6 +949,9 @@ fn parse_array_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         array.ty = Some(offset);
                     }
                 }
+                gimli::DW_AT_byte_size => {
+                    array.byte_size = attr.udata_value();
+                }
                 gimli::DW_AT_GNU_vector |
                 gimli::DW_AT_sibling => {}
                 _ => debug!("unknown array attribute: {} {:?}", attr.name(), attr.value()),
@@ -966,8 +969,12 @@ fn parse_array_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                             array.count = attr.udata_value();
                         }
                         gimli::DW_AT_upper_bound => {
-                            // TODO: use AT_lower_bound too
-                            array.count = attr.udata_value().map(|v| v + 1);
+                            // byte_size takes precedence over upper_bound when
+                            // determining the count.
+                            if array.byte_size.is_none() {
+                                // TODO: use AT_lower_bound too
+                                array.count = attr.udata_value().map(|v| v + 1);
+                            }
                         }
                         gimli::DW_AT_type |
                         gimli::DW_AT_lower_bound => {}
