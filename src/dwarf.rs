@@ -1005,7 +1005,12 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
 ) -> Result<SubroutineType<'input>>
     where Endian: gimli::Endianity
 {
-    let mut subroutine = SubroutineType::default();
+    let mut subroutine = SubroutineType {
+        // Go treats subroutine types as pointers.
+        // Not sure if this is valid for all languages.
+        byte_size: Some(dwarf_unit.header.address_size() as u64),
+        ..Default::default()
+    };
 
     {
         let mut attrs = iter.entry().unwrap().attrs();

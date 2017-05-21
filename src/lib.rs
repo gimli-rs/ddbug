@@ -2656,11 +2656,12 @@ impl<'input> ArrayType<'input> {
 struct SubroutineType<'input> {
     parameters: Vec<Parameter<'input>>,
     return_type: Option<TypeOffset>,
+    byte_size: Option<u64>,
 }
 
 impl<'input> SubroutineType<'input> {
     fn byte_size(&self) -> Option<u64> {
-        None
+        self.byte_size
     }
 
     fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>

@@ -524,6 +524,7 @@ fn parse_procedure<'input>(
                     SubroutineType {
                         parameters: parameters,
                         return_type: return_type,
+                        byte_size: None,
                     }
                 ),
             },
@@ -580,6 +581,7 @@ fn parse_member_function<'input>(
                     SubroutineType {
                         parameters: parameters,
                         return_type: return_type,
+                        byte_size: None,
                     }
                 ),
             },
