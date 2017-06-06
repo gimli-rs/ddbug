@@ -631,6 +631,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
             }
         }
     }
+    ty.members.sort_by_key(|v| v.bit_offset);
     Ok(ty)
 }
 
