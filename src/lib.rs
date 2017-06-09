@@ -832,7 +832,7 @@ fn cmp_ns_and_name(
         }
         (&Some(_), &None) => cmp::Ordering::Greater,
         (&None, &Some(_)) => cmp::Ordering::Less,
-        (&None, &None) => cmp::Ordering::Equal,
+        (&None, &None) => name1.cmp(&name2),
     }
 }
 
