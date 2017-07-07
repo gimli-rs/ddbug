@@ -974,8 +974,14 @@ fn parse_array_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                             // byte_size takes precedence over upper_bound when
                             // determining the count.
                             if array.byte_size.is_none() {
-                                // TODO: use AT_lower_bound too
-                                array.count = attr.udata_value().map(|v| v + 1);
+                                if let Some(upper_bound) = attr.udata_value() {
+                                    // TODO: use AT_lower_bound too (and default lower bound)
+                                    if let Some(count) = u64::checked_add(upper_bound, 1) {
+                                        array.count = Some(count);
+                                    } else {
+                                        debug!("overflow for array upper bound: {}", upper_bound);
+                                    }
+                                }
                             }
                         }
                         gimli::DW_AT_type |
