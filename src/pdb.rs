@@ -144,22 +144,19 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 } else {
                     Some(byte_size)
                 };
-                unit.types
-                    .insert(
-                        TypeOffset(index),
-                        Type {
-                            offset: TypeOffset(index),
-                            kind: TypeKind::Modifier(
-                                TypeModifier {
-                                    kind: TypeModifierKind::Pointer,
-                                    ty: underlying_type,
-                                    name: None,
-                                    byte_size: byte_size,
-                                    address_size: None,
-                                }
-                            ),
-                        },
-                    );
+                unit.types.insert(
+                    TypeOffset(index),
+                    Type {
+                        offset: TypeOffset(index),
+                        kind: TypeKind::Modifier(TypeModifier {
+                            kind: TypeModifierKind::Pointer,
+                            ty: underlying_type,
+                            name: None,
+                            byte_size: byte_size,
+                            address_size: None,
+                        }),
+                    },
+                );
             }
             Ok(pdb::TypeData::Modifier {
                    underlying_type,
@@ -173,22 +170,19 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 } else {
                     TypeModifierKind::Other
                 };
-                unit.types
-                    .insert(
-                        TypeOffset(index),
-                        Type {
-                            offset: TypeOffset(index),
-                            kind: TypeKind::Modifier(
-                                TypeModifier {
-                                    kind: kind,
-                                    ty: underlying_type,
-                                    name: None,
-                                    byte_size: None,
-                                    address_size: None,
-                                }
-                            ),
-                        },
-                    );
+                unit.types.insert(
+                    TypeOffset(index),
+                    Type {
+                        offset: TypeOffset(index),
+                        kind: TypeKind::Modifier(TypeModifier {
+                            kind: kind,
+                            ty: underlying_type,
+                            name: None,
+                            byte_size: None,
+                            address_size: None,
+                        }),
+                    },
+                );
             }
             Ok(pdb::TypeData::Bitfield {
                    underlying_type,
@@ -242,24 +236,23 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
         match symbol.parse()? {
             pdb::SymbolData::PublicSymbol { function, offset, .. } => {
                 if function {
-                    unit.subprograms
-                        .insert(
-                            SubprogramOffset(symbol_index),
-                            Subprogram {
-                                namespace: namespace.clone(),
-                                name: Some(symbol.name()?.as_bytes()),
-                                linkage_name: None,
-                                low_pc: Some(offset as u64),
-                                high_pc: None,
-                                size: None,
-                                inline: false,
-                                declaration: false,
-                                parameters: Vec::new(),
-                                return_type: None,
-                                inlined_subroutines: Vec::new(),
-                                variables: Vec::new(),
-                            },
-                        );
+                    unit.subprograms.insert(
+                        SubprogramOffset(symbol_index),
+                        Subprogram {
+                            namespace: namespace.clone(),
+                            name: Some(symbol.name()?.as_bytes()),
+                            linkage_name: None,
+                            low_pc: Some(offset as u64),
+                            high_pc: None,
+                            size: None,
+                            inline: false,
+                            declaration: false,
+                            parameters: Vec::new(),
+                            return_type: None,
+                            inlined_subroutines: Vec::new(),
+                            variables: Vec::new(),
+                        },
+                    );
                     symbol_index += 1;
                 }
             }
@@ -314,12 +307,10 @@ fn add_primitive_type<'input>(
         TypeOffset(index),
         Type {
             offset: TypeOffset(index),
-            kind: TypeKind::Base(
-                BaseType {
-                    name: Some(name),
-                    byte_size: Some(size),
-                }
-            ),
+            kind: TypeKind::Base(BaseType {
+                name: Some(name),
+                byte_size: Some(size),
+            }),
         },
     );
 
@@ -327,15 +318,13 @@ fn add_primitive_type<'input>(
         TypeOffset(0x400 + index),
         Type {
             offset: TypeOffset(0x400 + index),
-            kind: TypeKind::Modifier(
-                TypeModifier {
-                    kind: TypeModifierKind::Pointer,
-                    ty: Some(TypeOffset(index)),
-                    name: None,
-                    byte_size: Some(4),
-                    address_size: None,
-                }
-            ),
+            kind: TypeKind::Modifier(TypeModifier {
+                kind: TypeModifierKind::Pointer,
+                ty: Some(TypeOffset(index)),
+                name: None,
+                byte_size: Some(4),
+                address_size: None,
+            }),
         },
     );
 
@@ -343,15 +332,13 @@ fn add_primitive_type<'input>(
         TypeOffset(0x600 + index),
         Type {
             offset: TypeOffset(0x600 + index),
-            kind: TypeKind::Modifier(
-                TypeModifier {
-                    kind: TypeModifierKind::Pointer,
-                    ty: Some(TypeOffset(index)),
-                    name: None,
-                    byte_size: Some(8),
-                    address_size: None,
-                }
-            ),
+            kind: TypeKind::Modifier(TypeModifier {
+                kind: TypeModifierKind::Pointer,
+                ty: Some(TypeOffset(index)),
+                name: None,
+                byte_size: Some(8),
+                address_size: None,
+            }),
         },
     );
 }
@@ -377,22 +364,19 @@ fn parse_class<'input>(
         }
         None => Vec::new(),
     };
-    unit.types
-        .insert(
-            TypeOffset(index),
-            Type {
-                offset: TypeOffset(index),
-                kind: TypeKind::Struct(
-                    StructType {
-                        namespace: namespace.clone(),
-                        name: Some(name.as_bytes()),
-                        byte_size: byte_size,
-                        declaration: declaration,
-                        members: members,
-                    }
-                ),
-            },
-        );
+    unit.types.insert(
+        TypeOffset(index),
+        Type {
+            offset: TypeOffset(index),
+            kind: TypeKind::Struct(StructType {
+                namespace: namespace.clone(),
+                name: Some(name.as_bytes()),
+                byte_size: byte_size,
+                declaration: declaration,
+                members: members,
+            }),
+        },
+    );
     Ok(())
 }
 
@@ -417,22 +401,19 @@ fn parse_union<'input>(
         }
         None => Vec::new(),
     };
-    unit.types
-        .insert(
-            TypeOffset(index),
-            Type {
-                offset: TypeOffset(index),
-                kind: TypeKind::Union(
-                    UnionType {
-                        namespace: namespace.clone(),
-                        name: Some(name.as_bytes()),
-                        byte_size: byte_size,
-                        declaration: declaration,
-                        members: members,
-                    }
-                ),
-            },
-        );
+    unit.types.insert(
+        TypeOffset(index),
+        Type {
+            offset: TypeOffset(index),
+            kind: TypeKind::Union(UnionType {
+                namespace: namespace.clone(),
+                name: Some(name.as_bytes()),
+                byte_size: byte_size,
+                declaration: declaration,
+                members: members,
+            }),
+        },
+    );
     Ok(())
 }
 
@@ -456,23 +437,20 @@ fn parse_enumeration<'input>(
         }
         None => Vec::new(),
     };
-    unit.types
-        .insert(
-            TypeOffset(index),
-            Type {
-                offset: TypeOffset(index),
-                kind: TypeKind::Enumeration(
-                    EnumerationType {
-                        namespace: namespace.clone(),
-                        name: Some(name.as_bytes()),
-                        declaration: declaration,
-                        ty: underlying_type,
-                        byte_size: None,
-                        enumerators: enumerators,
-                    }
-                ),
-            },
-        );
+    unit.types.insert(
+        TypeOffset(index),
+        Type {
+            offset: TypeOffset(index),
+            kind: TypeKind::Enumeration(EnumerationType {
+                namespace: namespace.clone(),
+                name: Some(name.as_bytes()),
+                declaration: declaration,
+                ty: underlying_type,
+                byte_size: None,
+                enumerators: enumerators,
+            }),
+        },
+    );
     Ok(())
 }
 
@@ -498,14 +476,12 @@ fn parse_procedure<'input>(
                     }
                     arguments
                         .iter()
-                        .map(
-                            |argument| {
-                                Parameter {
-                                    name: None,
-                                    ty: parse_type_index(*argument),
-                                }
+                        .map(|argument| {
+                            Parameter {
+                                name: None,
+                                ty: parse_type_index(*argument),
                             }
-                        )
+                        })
                         .collect()
                 }
                 None => return Err(format!("Missing argument list {}", argument_list.0).into()),
@@ -514,21 +490,18 @@ fn parse_procedure<'input>(
         None => Vec::new(),
     };
 
-    unit.types
-        .insert(
-            TypeOffset(index),
-            // TODO: attributes
-            Type {
-                offset: TypeOffset(index),
-                kind: TypeKind::Subroutine(
-                    SubroutineType {
-                        parameters: parameters,
-                        return_type: return_type,
-                        byte_size: None,
-                    }
-                ),
-            },
-        );
+    unit.types.insert(
+        TypeOffset(index),
+        // TODO: attributes
+        Type {
+            offset: TypeOffset(index),
+            kind: TypeKind::Subroutine(SubroutineType {
+                parameters: parameters,
+                return_type: return_type,
+                byte_size: None,
+            }),
+        },
+    );
     Ok(())
 }
 
@@ -559,33 +532,28 @@ fn parse_member_function<'input>(
                     debug!("PDB parameter count mismatch {}, {}", arguments.len(), parameter_count);
                 }
                 for argument in arguments {
-                    parameters.push(
-                        Parameter {
-                            name: None,
-                            ty: parse_type_index(*argument),
-                        }
-                    );
+                    parameters.push(Parameter {
+                        name: None,
+                        ty: parse_type_index(*argument),
+                    });
                 }
             }
             None => return Err(format!("Missing argument list {}", argument_list.0).into()),
         }
     };
 
-    unit.types
-        .insert(
-            TypeOffset(index),
-            // TODO: class_type, attributes, this_adjustment
-            Type {
-                offset: TypeOffset(index),
-                kind: TypeKind::Subroutine(
-                    SubroutineType {
-                        parameters: parameters,
-                        return_type: return_type,
-                        byte_size: None,
-                    }
-                ),
-            },
-        );
+    unit.types.insert(
+        TypeOffset(index),
+        // TODO: class_type, attributes, this_adjustment
+        Type {
+            offset: TypeOffset(index),
+            kind: TypeKind::Subroutine(SubroutineType {
+                parameters: parameters,
+                return_type: return_type,
+                byte_size: None,
+            }),
+        },
+    );
     Ok(())
 }
 
@@ -601,21 +569,18 @@ fn parse_array<'input>(
         return Err("Unsupported multi-dimensional array".into());
     }
     let byte_size = Some(dimensions[0] as u64);
-    unit.types
-        .insert(
-            TypeOffset(index),
-            // TODO: indexing_type, stride
-            Type {
-                offset: TypeOffset(index),
-                kind: TypeKind::Array(
-                    ArrayType {
-                        ty: element_type,
-                        byte_size: byte_size,
-                        ..Default::default()
-                    }
-                ),
-            },
-        );
+    unit.types.insert(
+        TypeOffset(index),
+        // TODO: indexing_type, stride
+        Type {
+            offset: TypeOffset(index),
+            kind: TypeKind::Array(ArrayType {
+                ty: element_type,
+                byte_size: byte_size,
+                ..Default::default()
+            }),
+        },
+    );
     Ok(())
 }
 
@@ -651,14 +616,12 @@ fn parse_field_list<'input>(
                     }
                     None => {}
                 }
-                members.push(
-                    Member {
-                        name: Some(name.as_bytes()),
-                        ty: ty,
-                        bit_offset: bit_offset,
-                        bit_size: bit_size,
-                    }
-                );
+                members.push(Member {
+                    name: Some(name.as_bytes()),
+                    ty: ty,
+                    bit_offset: bit_offset,
+                    bit_size: bit_size,
+                });
             }
             pdb::TypeData::Enumerate { value, name, .. } => {
                 let value = match value {
@@ -671,12 +634,10 @@ fn parse_field_list<'input>(
                     pdb::EnumValue::I32(val) => val as i64,
                     pdb::EnumValue::I64(val) => val as i64,
                 };
-                enumerators.push(
-                    Enumerator {
-                        name: Some(name.as_bytes()),
-                        value: Some(value),
-                    }
-                );
+                enumerators.push(Enumerator {
+                    name: Some(name.as_bytes()),
+                    value: Some(value),
+                });
             }
             _ => {
                 debug!("PDB unimplemented field type {:?}", field);

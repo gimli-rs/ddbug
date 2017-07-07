@@ -47,13 +47,15 @@ pub fn parse<'input, Endian>(elf: &xmas_elf::ElfFile<'input>) -> Result<Vec<Unit
     where Endian: gimli::Endianity
 {
     let debug_abbrev = elf.find_section_by_name(".debug_abbrev").map(|s| s.raw_data(elf));
-    let debug_abbrev = gimli::DebugAbbrev::<gimli::EndianBuf<Endian>>::new(debug_abbrev.unwrap_or(&[]));
+    let debug_abbrev =
+        gimli::DebugAbbrev::<gimli::EndianBuf<Endian>>::new(debug_abbrev.unwrap_or(&[]));
     let debug_info = elf.find_section_by_name(".debug_info").map(|s| s.raw_data(elf));
     let debug_info = gimli::DebugInfo::<gimli::EndianBuf<Endian>>::new(debug_info.unwrap_or(&[]));
     let debug_str = elf.find_section_by_name(".debug_str").map(|s| s.raw_data(elf));
     let debug_str = gimli::DebugStr::<gimli::EndianBuf<Endian>>::new(debug_str.unwrap_or(&[]));
     let debug_ranges = elf.find_section_by_name(".debug_ranges").map(|s| s.raw_data(elf));
-    let debug_ranges = gimli::DebugRanges::<gimli::EndianBuf<Endian>>::new(debug_ranges.unwrap_or(&[]));
+    let debug_ranges =
+        gimli::DebugRanges::<gimli::EndianBuf<Endian>>::new(debug_ranges.unwrap_or(&[]));
 
     let dwarf = DwarfFileState {
         debug_abbrev: debug_abbrev,
@@ -1171,8 +1173,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 }
                 gimli::DW_AT_linkage_name |
                 gimli::DW_AT_MIPS_linkage_name => {
-                    subprogram.linkage_name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.buf());
+                    subprogram.linkage_name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
                 }
                 gimli::DW_AT_inline => {
                     if let gimli::AttributeValue::Inline(val) = attr.value() {
@@ -1246,15 +1247,11 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 
     if let Some(specification) = specification {
         if !parse_subprogram_specification(unit, &mut subprogram, specification) {
-            dwarf_unit
-                .subprograms
-                .push(
-                    DwarfSubprogram {
-                        offset: offset,
-                        specification: specification,
-                        subprogram: subprogram,
-                    }
-                );
+            dwarf_unit.subprograms.push(DwarfSubprogram {
+                offset: offset,
+                specification: specification,
+                subprogram: subprogram,
+            });
             return Ok(());
         }
     }
@@ -1310,14 +1307,12 @@ fn parse_subprogram_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 subprogram.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_inlined_subroutine => {
-                subprogram.inlined_subroutines.push(
-                    parse_inlined_subroutine(
-                        unit,
-                        dwarf,
-                        dwarf_unit,
-                        child,
-                    )?
-                );
+                subprogram.inlined_subroutines.push(parse_inlined_subroutine(
+                    unit,
+                    dwarf,
+                    dwarf_unit,
+                    child,
+                )?);
             }
             gimli::DW_TAG_variable => {
                 let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
@@ -1563,14 +1558,12 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
     while let Some(child) = iter.next()? {
         match child.entry().unwrap().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                subroutine.inlined_subroutines.push(
-                    parse_inlined_subroutine(
-                        unit,
-                        dwarf,
-                        dwarf_unit,
-                        child,
-                    )?
-                );
+                subroutine.inlined_subroutines.push(parse_inlined_subroutine(
+                    unit,
+                    dwarf,
+                    dwarf_unit,
+                    child,
+                )?);
             }
             gimli::DW_TAG_variable => {
                 let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
@@ -1621,8 +1614,7 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 }
                 gimli::DW_AT_linkage_name |
                 gimli::DW_AT_MIPS_linkage_name => {
-                    variable.linkage_name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.buf());
+                    variable.linkage_name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
                 }
                 gimli::DW_AT_type => {
                     if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
@@ -1683,13 +1675,11 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         }
     }
 
-    Ok(
-        DwarfVariable {
-            offset: offset,
-            specification: specification,
-            variable: variable,
-        }
-    )
+    Ok(DwarfVariable {
+        offset: offset,
+        specification: specification,
+        variable: variable,
+    })
 }
 
 

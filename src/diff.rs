@@ -59,8 +59,7 @@ pub fn shortest_path<Item, F>(
     let len2 = item2.len() + 1;
     let len = len1 * len2;
 
-    let mut node: Vec<Node> = vec![
-        Node {
+    let mut node: Vec<Node> = vec![Node {
             cost: usize::MAX,
             from: Direction::None,
             done: false,
@@ -78,13 +77,11 @@ pub fn shortest_path<Item, F>(
         if cost < node.cost {
             node.cost = cost;
             node.from = from;
-            heap.push(
-                State {
-                    cost: cost,
-                    index1: index1,
-                    index2: index2,
-                }
-            );
+            heap.push(State {
+                cost: cost,
+                index1: index1,
+                index2: index2,
+            });
         }
     }
 

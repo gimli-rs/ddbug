@@ -78,16 +78,12 @@ fn equal(mut diff: &str, expect: &str) -> bool {
 
 fn diff(output_file_1: &str, output_file_2: &str, expect: &str, flags: &ddbug::Flags) {
     let mut diff = Vec::new();
-    ddbug::parse_file(
-        output_file_1,
-        &mut |output_1| {
-            ddbug::parse_file(
-                output_file_2,
-                &mut |output_2| ddbug::diff_file(&mut diff, output_1, output_2, flags),
-            )
-        },
-    )
-            .unwrap();
+    ddbug::parse_file(output_file_1, &mut |output_1| {
+        ddbug::parse_file(
+            output_file_2,
+            &mut |output_2| ddbug::diff_file(&mut diff, output_1, output_2, flags),
+        )
+    }).unwrap();
     let diff = String::from_utf8(diff).unwrap();
     if !equal(&diff, expect) {
         println!("\nDiff:");
@@ -1136,7 +1132,7 @@ fn test_function_diff_return_type() {
 fn test_function_diff_parameters() {
     diff_c(
         concat!(
-            "char F(char a, char c, char d, char e, int extra, char g) {}\n",
+            "char F(char a, char c, char d, char e, int extra, char g) {}\n", //
             "int main() {}\n"
         ),
         concat!(
@@ -1215,7 +1211,7 @@ fn test_variable_diff_decl() {
             "int main() { environ == 0; }\n"
         ),
         concat!(
-            "  var environ: * * char\n",
+            "  var environ: * * char\n", //
             "[..]",
             "  \tsize: 8\n",
             "+ \tdeclaration: yes\n",
