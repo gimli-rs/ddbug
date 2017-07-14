@@ -72,10 +72,29 @@ impl From<crate_pdb::Error> for Error {
 
 pub type Result<T> = result::Result<T, Error>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Sort {
+    None,
+    Name,
+    Size,
+}
+
+impl Sort {
+    fn with_diff(self, diff: bool) -> Self {
+        if diff { Sort::Name } else { self }
+    }
+}
+
+impl Default for Sort {
+    fn default() -> Self {
+        Sort::None
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Flags<'a> {
     pub calls: bool,
-    pub sort: bool,
+    pub sort: Sort,
     pub ignore_added: bool,
     pub ignore_deleted: bool,
     pub ignore_function_address: bool,
@@ -157,8 +176,10 @@ pub struct File<'input> {
 impl<'input> File<'input> {
     fn filter_units(&self, flags: &Flags, diff: bool) -> Vec<&Unit> {
         let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(flags)).collect();
-        if diff || flags.sort {
-            units.sort_by(|a, b| Unit::cmp_id(a, b));
+        match flags.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => units.sort_by(|a, b| Unit::cmp_id(a, b)),
+            Sort::Size => units.sort_by(|a, b| Unit::cmp_size(a, b)),
         }
         units
     }
@@ -898,8 +919,10 @@ impl<'input> Unit<'input> {
             !inline_types.contains(&t.offset.0)
         };
         let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
-        if diff || flags.sort {
-            types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b));
+        match flags.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b)),
+            Sort::Size => types.sort_by(|a, b| Type::cmp_size(state.hash, a, state.hash, b)),
         }
         types
     }
@@ -909,18 +932,24 @@ impl<'input> Unit<'input> {
     fn filter_subprograms(&self, flags: &Flags, diff: bool) -> Vec<&Subprogram> {
         let mut subprograms: Vec<_> =
             self.subprograms.values().filter(|a| a.filter(flags)).collect();
-        if diff || flags.sort {
-            subprograms.sort_by(|a, b| Subprogram::cmp_id(a, b));
+        match flags.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => subprograms.sort_by(|a, b| Subprogram::cmp_id(a, b)),
+            Sort::Size => subprograms.sort_by(|a, b| Subprogram::cmp_size(a, b)),
         }
         subprograms
     }
 
     /// Filter and sort the list of variables using the options in the flags.
     /// Always sort when diffing.
-    fn filter_variables(&self, flags: &Flags, diff: bool) -> Vec<&Variable> {
+    fn filter_variables(&self, state: &PrintState, flags: &Flags, diff: bool) -> Vec<&Variable> {
         let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(flags)).collect();
-        if diff || flags.sort {
-            variables.sort_by(|a, b| Variable::cmp_id(a, b));
+        match flags.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => variables.sort_by(|a, b| Variable::cmp_id(a, b)),
+            Sort::Size => {
+                variables.sort_by(|a, b| Variable::cmp_size(state.hash, a, state.hash, b))
+            }
         }
         variables
     }
@@ -942,7 +971,7 @@ impl<'input> Unit<'input> {
             subprogram.print(w, state, self)?;
             writeln!(w, "")?;
         }
-        for variable in &self.filter_variables(flags, false) {
+        for variable in &self.filter_variables(state, flags, false) {
             variable.print(w, state)?;
             writeln!(w, "")?;
         }
@@ -954,6 +983,11 @@ impl<'input> Unit<'input> {
     fn cmp_id(a: &Unit, b: &Unit) -> cmp::Ordering {
         // TODO: ignore base paths
         a.name.cmp(&b.name)
+    }
+
+    /// Compare the size of two units.
+    fn cmp_size(a: &Unit, b: &Unit) -> cmp::Ordering {
+        a.size.cmp(&b.size)
     }
 
     fn diff(
@@ -1026,8 +1060,8 @@ impl<'input> Unit<'input> {
         state
             .merge(
                 w,
-                |_state| unit_a.filter_variables(flags, true),
-                |_state| unit_b.filter_variables(flags, true),
+                |state| unit_a.filter_variables(state, flags, true),
+                |state| unit_b.filter_variables(state, flags, true),
                 |_hash_a, a, _hash_b, b| Variable::cmp_id(a, b),
                 |w, state, a, b| {
                     state.diff(
@@ -1282,6 +1316,16 @@ impl<'input> Type<'input> {
                 discr_a.cmp(&discr_b)
             }
         }
+    }
+
+    /// Compare the size of two types.
+    fn cmp_size(
+        hash_a: &FileHash,
+        type_a: &Type,
+        hash_b: &FileHash,
+        type_b: &Type,
+    ) -> cmp::Ordering {
+        type_a.byte_size(hash_a).cmp(&type_b.byte_size(hash_b))
     }
 
     fn diff(
@@ -2806,6 +2850,11 @@ impl<'input> Subprogram<'input> {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
+    /// Compare the size of two subprograms.
+    fn cmp_size(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+        a.size.cmp(&b.size)
+    }
+
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -3279,6 +3328,11 @@ impl<'input> Variable<'input> {
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    /// Compare the size of two variables.
+    fn cmp_size(hash_a: &FileHash, a: &Variable, hash_b: &FileHash, b: &Variable) -> cmp::Ordering {
+        a.byte_size(hash_a).cmp(&b.byte_size(hash_b))
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {

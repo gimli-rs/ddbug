@@ -14,7 +14,8 @@ fn main() {
     let mut opts = getopts::Options::new();
     opts.optflag("", "calls", "print subprogram calls");
     opts.optflag("", "diff", "print difference between two files");
-    opts.optflag("", "sort", "sort entries by type and name");
+    opts.optflag("", "sort-name", "sort entries by type and name");
+    opts.optflag("", "sort-size", "sort entries by size");
     opts.optflag(
         "",
         "ignore-added",
@@ -60,7 +61,13 @@ fn main() {
 
     let calls = matches.opt_present("calls");
     let diff = matches.opt_present("diff");
-    let sort = matches.opt_present("sort");
+    let sort = if matches.opt_present("sort-name") {
+        ddbug::Sort::Name
+    } else if matches.opt_present("sort-size") {
+        ddbug::Sort::Size
+    } else {
+        ddbug::Sort::None
+    };
     let ignore_added = matches.opt_present("ignore-added");
     let ignore_deleted = matches.opt_present("ignore-deleted");
     let ignore_function_address = matches.opt_present("ignore-function-address");

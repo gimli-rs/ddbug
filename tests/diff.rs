@@ -44,7 +44,7 @@ fn compile_c(input_text: &str, input_file: &str, output_file: &str) {
 fn flags() -> ddbug::Flags<'static> {
     ddbug::Flags {
         calls: false,
-        sort: false,
+        sort: ddbug::Sort::None,
         inline_depth: 1,
         unit: None,
         name: None,
