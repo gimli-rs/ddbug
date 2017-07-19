@@ -242,8 +242,8 @@ pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Resul
     }
 
     let units = match elf.header.pt1.data.as_data() {
-        xmas_elf::header::Data::LittleEndian => dwarf::parse::<gimli::LittleEndian>(&elf)?,
-        xmas_elf::header::Data::BigEndian => dwarf::parse::<gimli::BigEndian>(&elf)?,
+        xmas_elf::header::Data::LittleEndian => dwarf::parse(&elf, gimli::LittleEndian)?,
+        xmas_elf::header::Data::BigEndian => dwarf::parse(&elf, gimli::BigEndian)?,
         _ => {
             return Err("Unknown endianity".into());
         }

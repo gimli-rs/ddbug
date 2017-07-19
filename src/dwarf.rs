@@ -13,6 +13,7 @@ use super::{Unit, Namespace, NamespaceKind, Subprogram, InlinedSubroutine, Varia
 struct DwarfFileState<'input, Endian>
     where Endian: gimli::Endianity
 {
+    endian: Endian,
     debug_abbrev: gimli::DebugAbbrev<gimli::EndianBuf<'input, Endian>>,
     debug_info: gimli::DebugInfo<gimli::EndianBuf<'input, Endian>>,
     debug_str: gimli::DebugStr<gimli::EndianBuf<'input, Endian>>,
@@ -43,21 +44,20 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub fn parse<'input, Endian>(elf: &xmas_elf::ElfFile<'input>) -> Result<Vec<Unit<'input>>>
+pub fn parse<'input, Endian>(elf: &xmas_elf::ElfFile<'input>, endian: Endian) -> Result<Vec<Unit<'input>>>
     where Endian: gimli::Endianity
 {
     let debug_abbrev = elf.find_section_by_name(".debug_abbrev").map(|s| s.raw_data(elf));
-    let debug_abbrev =
-        gimli::DebugAbbrev::<gimli::EndianBuf<Endian>>::new(debug_abbrev.unwrap_or(&[]));
+    let debug_abbrev = gimli::DebugAbbrev::new(debug_abbrev.unwrap_or(&[]), endian);
     let debug_info = elf.find_section_by_name(".debug_info").map(|s| s.raw_data(elf));
-    let debug_info = gimli::DebugInfo::<gimli::EndianBuf<Endian>>::new(debug_info.unwrap_or(&[]));
+    let debug_info = gimli::DebugInfo::new(debug_info.unwrap_or(&[]), endian);
     let debug_str = elf.find_section_by_name(".debug_str").map(|s| s.raw_data(elf));
-    let debug_str = gimli::DebugStr::<gimli::EndianBuf<Endian>>::new(debug_str.unwrap_or(&[]));
+    let debug_str = gimli::DebugStr::new(debug_str.unwrap_or(&[]), endian);
     let debug_ranges = elf.find_section_by_name(".debug_ranges").map(|s| s.raw_data(elf));
-    let debug_ranges =
-        gimli::DebugRanges::<gimli::EndianBuf<Endian>>::new(debug_ranges.unwrap_or(&[]));
+    let debug_ranges = gimli::DebugRanges::new(debug_ranges.unwrap_or(&[]), endian);
 
     let dwarf = DwarfFileState {
+        endian: endian,
         debug_abbrev: debug_abbrev,
         debug_info: debug_info,
         debug_str: debug_str,
@@ -803,7 +803,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
         // byte_size is the size of the anonymous object.
         // bit_offset is the offset from the anonymous object MSB to the bit field MSB.
         // bit_size is the size of the bit field.
-        if Endian::is_big_endian() {
+        if dwarf.endian.is_big_endian() {
             // For big endian, the MSB is the first bit, so we simply add bit_offset,
             // and byte_size is unneeded.
             member.bit_offset = member.bit_offset.wrapping_add(bit_offset);
@@ -1685,11 +1685,11 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 
 fn evaluate<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
-    bytecode: gimli::EndianBuf<'input, Endian>,
+    expression: gimli::Expression<gimli::EndianBuf<'input, Endian>>,
 ) -> Option<gimli::Location<gimli::EndianBuf<'input, Endian>>>
     where Endian: gimli::Endianity + 'input
 {
-    let mut evaluation = gimli::Evaluation::new(bytecode, unit.address_size(), unit.format());
+    let mut evaluation = expression.evaluation(unit.address_size(), unit.format());
     evaluation.set_initial_value(0);
     let result = evaluation.evaluate();
     match result {
