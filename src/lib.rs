@@ -3,7 +3,8 @@ extern crate gimli;
 extern crate log;
 extern crate memmap;
 extern crate xmas_elf;
-extern crate panopticon;
+extern crate panopticon_core as panopticon;
+extern crate panopticon_amd64 as amd64;
 extern crate pdb as crate_pdb;
 
 use std::borrow::Borrow;
@@ -18,8 +19,6 @@ use std::fs;
 use std::io::Write;
 use std::result;
 use std::rc::Rc;
-
-use panopticon::amd64;
 
 mod diff;
 mod dwarf;
@@ -3166,9 +3165,7 @@ impl<'input> Subprogram<'input> {
     }
 
     fn print_calls_label(&self, w: &mut Write) -> Result<()> {
-        if self.return_type.is_some() {
-            write!(w, "calls:")?;
-        }
+        write!(w, "calls:")?;
         Ok(())
     }
 
