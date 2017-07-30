@@ -2,7 +2,6 @@ use std::rc::Rc;
 use std::mem;
 
 use gimli;
-use xmas_elf;
 
 use super::Result;
 use super::{Unit, Namespace, NamespaceKind, Subprogram, InlinedSubroutine, Variable, TypeOffset,
@@ -44,17 +43,18 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub fn parse<'input, Endian>(elf: &xmas_elf::ElfFile<'input>, endian: Endian) -> Result<Vec<Unit<'input>>>
-    where Endian: gimli::Endianity
+pub fn parse<'input, Endian, F>(endian: Endian, get_section: F) -> Result<Vec<Unit<'input>>>
+    where Endian: gimli::Endianity,
+          F: Fn(&str) -> &'input [u8]
 {
-    let debug_abbrev = elf.find_section_by_name(".debug_abbrev").map(|s| s.raw_data(elf));
-    let debug_abbrev = gimli::DebugAbbrev::new(debug_abbrev.unwrap_or(&[]), endian);
-    let debug_info = elf.find_section_by_name(".debug_info").map(|s| s.raw_data(elf));
-    let debug_info = gimli::DebugInfo::new(debug_info.unwrap_or(&[]), endian);
-    let debug_str = elf.find_section_by_name(".debug_str").map(|s| s.raw_data(elf));
-    let debug_str = gimli::DebugStr::new(debug_str.unwrap_or(&[]), endian);
-    let debug_ranges = elf.find_section_by_name(".debug_ranges").map(|s| s.raw_data(elf));
-    let debug_ranges = gimli::DebugRanges::new(debug_ranges.unwrap_or(&[]), endian);
+    let debug_abbrev = get_section(".debug_abbrev");
+    let debug_abbrev = gimli::DebugAbbrev::new(debug_abbrev, endian);
+    let debug_info = get_section(".debug_info");
+    let debug_info = gimli::DebugInfo::new(debug_info, endian);
+    let debug_str = get_section(".debug_str");
+    let debug_str = gimli::DebugStr::new(debug_str, endian);
+    let debug_ranges = get_section(".debug_ranges");
+    let debug_ranges = gimli::DebugRanges::new(debug_ranges, endian);
 
     let dwarf = DwarfFileState {
         endian: endian,

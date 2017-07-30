@@ -2,7 +2,7 @@ extern crate gimli;
 #[macro_use]
 extern crate log;
 extern crate memmap;
-extern crate xmas_elf;
+extern crate goblin;
 extern crate panopticon_core as panopticon;
 extern crate panopticon_amd64 as amd64;
 extern crate pdb as crate_pdb;
@@ -16,6 +16,7 @@ use std::cmp;
 use std::error;
 use std::fmt::{self, Debug};
 use std::fs;
+use std::io;
 use std::io::Write;
 use std::result;
 use std::rc::Rc;
@@ -162,7 +163,7 @@ fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
 #[derive(Debug)]
 pub struct CodeRegion {
     // TODO: use format independent machine type
-    machine: xmas_elf::header::Machine,
+    machine: u16,
     region: panopticon::Region,
 }
 
@@ -200,62 +201,77 @@ pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result
     };
 
     let input = unsafe { file.as_slice() };
-    if input.starts_with(&xmas_elf::header::MAGIC) {
-        parse_elf(input, cb)
-    } else if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
+    if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
         pdb::parse(input, cb)
     } else {
-        Err("unrecognized file format".into())
+        let mut cursor = io::Cursor::new(input);
+        match goblin::peek(&mut cursor) {
+            Ok(goblin::Hint::Elf(_)) => parse_elf(input, cb),
+            Ok(_) => Err("unrecognized file format".into()),
+            Err(e) => Err(format!("file identification failed: {}", e).into()),
+        }
     }
 }
 
-pub fn parse_elf(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
-    let elf = xmas_elf::ElfFile::new(input);
-    let machine = elf.header.pt2?.machine().as_machine();
-    let mut region = match machine {
-        xmas_elf::header::Machine::X86_64 => {
-            panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF)
-        }
-        machine => return Err(format!("Unsupported machine: {:?}", machine).into()),
+pub fn parse_elf<'input>(
+    input: &'input [u8],
+    cb: &mut FnMut(&mut File) -> Result<()>,
+) -> Result<()> {
+    let elf = match goblin::elf::Elf::parse(&input) {
+        Ok(elf) => elf,
+        Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
     };
 
-    for ph in elf.program_iter() {
-        if ph.get_type() == Ok(xmas_elf::program::Type::Load) {
-            let offset = ph.offset();
-            let size = ph.file_size();
-            let addr = ph.virtual_addr();
-            if offset as usize <= elf.input.len() {
-                let input = &elf.input[offset as usize..];
-                if size as usize <= input.len() {
-                    let bound = panopticon::Bound::new(addr, addr + size);
-                    let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
-                    region.cover(bound, layer);
-                    debug!("loaded program header addr {:#x} size {:#x}", addr, size);
+    let machine = elf.header.e_machine;
+    let region = match machine {
+        goblin::elf::header::EM_X86_64 => {
+            Some(panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF))
+        }
+        _ => None,
+    };
+
+    let mut code = None;
+    if let Some(mut region) = region {
+        for ph in &elf.program_headers {
+            if ph.p_type == goblin::elf::program_header::PT_LOAD {
+                let offset = ph.p_offset;
+                let size = ph.p_filesz;
+                let addr = ph.p_vaddr;
+                if offset as usize <= input.len() {
+                    let input = &input[offset as usize..];
+                    if size as usize <= input.len() {
+                        let bound = panopticon::Bound::new(addr, addr + size);
+                        let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
+                        region.cover(bound, layer);
+                        debug!("loaded program header addr {:#x} size {:#x}", addr, size);
+                    } else {
+                        debug!("invalid program header size {}", size);
+                    }
                 } else {
-                    debug!("invalid program header size {}", size);
+                    debug!("invalid program header offset {}", offset);
                 }
-            } else {
-                debug!("invalid program header offset {}", offset);
             }
         }
+        code = Some(CodeRegion { machine, region });
     }
 
-    let units = match elf.header.pt1.data.as_data() {
-        xmas_elf::header::Data::LittleEndian => dwarf::parse(&elf, gimli::LittleEndian)?,
-        xmas_elf::header::Data::BigEndian => dwarf::parse(&elf, gimli::BigEndian)?,
-        _ => {
-            return Err("Unknown endianity".into());
+    let get_section = |section_name: &str| -> &'input [u8] {
+        for header in &elf.section_headers {
+            let name = elf.shdr_strtab.get(header.sh_name);
+            if name == section_name {
+                return &input[header.sh_offset as usize..][..header.sh_size as usize];
+            }
         }
+        &[]
     };
 
-    let mut file = File {
-        code: Some(CodeRegion {
-            machine: machine,
-            region: region,
-        }),
-        units: units,
+    let units = match elf.header.e_ident[goblin::elf::header::EI_DATA] {
+        goblin::elf::header::ELFDATA2LSB => dwarf::parse(gimli::LittleEndian, get_section)?,
+        goblin::elf::header::ELFDATA2MSB => dwarf::parse(gimli::BigEndian, get_section)?,
+        _ => return Err("unknown endianity".into()),
     };
 
+    let mut file = File { code, units };
     cb(&mut file)
 }
 
@@ -3420,7 +3436,7 @@ impl<'input> Variable<'input> {
 
 fn disassemble(code: &CodeRegion, low_pc: u64, high_pc: u64) -> Vec<u64> {
     match code.machine {
-        xmas_elf::header::Machine::X86_64 => {
+        goblin::elf::header::EM_X86_64 => {
             disassemble_arch::<amd64::Amd64>(&code.region, low_pc, high_pc, amd64::Mode::Long)
         }
         _ => Vec::new(),
