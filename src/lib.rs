@@ -207,6 +207,7 @@ pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result
         let mut cursor = io::Cursor::new(input);
         match goblin::peek(&mut cursor) {
             Ok(goblin::Hint::Elf(_)) => parse_elf(input, cb),
+            Ok(goblin::Hint::Mach(_)) => parse_mach(input, cb),
             Ok(_) => Err("unrecognized file format".into()),
             Err(e) => Err(format!("file identification failed: {}", e).into()),
         }
@@ -255,11 +256,13 @@ pub fn parse_elf<'input>(
         code = Some(CodeRegion { machine, region });
     }
 
+    // Code based on 'object' crate
     let get_section = |section_name: &str| -> &'input [u8] {
         for header in &elf.section_headers {
-            let name = elf.shdr_strtab.get(header.sh_name);
-            if name == section_name {
-                return &input[header.sh_offset as usize..][..header.sh_size as usize];
+            if let Ok(name) = elf.shdr_strtab.get(header.sh_name) {
+                if name == section_name {
+                    return &input[header.sh_offset as usize..][..header.sh_size as usize];
+                }
             }
         }
         &[]
@@ -272,6 +275,53 @@ pub fn parse_elf<'input>(
     };
 
     let mut file = File { code, units };
+    cb(&mut file)
+}
+
+pub fn parse_mach<'input>(
+    input: &'input [u8],
+    cb: &mut FnMut(&mut File) -> Result<()>,
+) -> Result<()> {
+    let macho = match goblin::mach::MachO::parse(&input, 0) {
+        Ok(macho) => macho,
+        Err(e) => return Err(format!("Mach-O parse failed: {}", e).into()),
+    };
+
+    // Code based on 'object' crate
+    let get_section = |section_name: &str| -> &'input [u8] {
+        let mut name = Vec::with_capacity(section_name.len() + 1);
+        name.push(b'_');
+        name.push(b'_');
+        for ch in &section_name.as_bytes()[1..] {
+            name.push(*ch);
+        }
+        let section_name = name;
+
+        for segment in &*macho.segments {
+            if let Ok(name) = segment.name() {
+                if name == "__DWARF" {
+                    if let Ok(sections) = segment.sections() {
+                        for section in sections {
+                            if let Ok(name) = section.name() {
+                                if name.as_bytes() == &*section_name {
+                                    return section.data;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        &[]
+    };
+
+    let units = if macho.header.is_little_endian() {
+        dwarf::parse(gimli::LittleEndian, get_section)?
+    } else {
+        dwarf::parse(gimli::BigEndian, get_section)?
+    };
+
+    let mut file = File { code: None, units };
     cb(&mut file)
 }
 
