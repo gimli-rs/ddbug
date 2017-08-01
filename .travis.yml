@@ -1,0 +1,11 @@
+language: rust
+rust:
+  - stable
+  - beta
+  - nightly
+os:
+  - linux
+matrix:
+  include:
+    - os: osx
+      rust: stable
