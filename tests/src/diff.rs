@@ -42,6 +42,7 @@ test!(array_diff_size, "- type ", "array_diff_size", " = [char; 1]\n", "+ type "
 test!(function_equal, "");
 test!(function_diff_return_type, "  fn ", "function_diff_return_type", "\n", "[..]\n", "  \treturn type:\n", "- \t\t[1]\tchar\n", "+ \t\t[4]\tint\n", "\n");
 test!(function_diff_parameters, "  fn ", "function_diff_parameters", "\n", "[..]\n", "  \treturn type:\n", "  \t\t[1]\tchar\n", "  \tparameters:\n", "- \t\t[1]\ta: char\n", "+ \t\t[1]\tb: char\n", "  \t\t[1]\tc: char\n", "- \t\t[1]\td: char\n", "+ \t\t[4]\td: int\n", "- \t\t[1]\te: char\n", "+ \t\t[1]\tf: char\n", "- \t\t[4]\textra: int\n", "  \t\t[1]\tg: char\n", "\n");
+test!(function_diff_variables, "  fn ", "function_diff_variables", "\n", "[..]\n", "  \tvariables:\n", "- \t\t[1]\ta: char\n", "+ \t\t[1]\tb: char\n", "  \t\t[1]\tc: char\n", "- \t\t[1]\td: char\n", "+ \t\t[4]\td: int\n", "- \t\t[1]\te: char\n", "+ \t\t[1]\tf: char\n", "- \t\t[4]\textra: int\n", "  \t\t[1]\tg: char\n", "\n");
 test!(variable_equal, "");
 test!(variable_diff_size, "- var ", "variable_diff_size", ": [char; 1]\n", "+ var ", "variable_diff_size", ": [char; 2]\n", "[..]", "- \tsize: 1\n", "+ \tsize: 2\n", "\n");
 test!(variable_diff_decl, "  var ", "variable_diff_decl", ": int\n", "[..]", "  \tsize: 4\n", "+ \tdeclaration: yes\n", "\n");

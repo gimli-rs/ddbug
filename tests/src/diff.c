@@ -951,6 +951,30 @@ EXPECT(
     "\n")
 
 #undef T
+#define T function_diff_variables
+#ifdef TEST1
+    void T(void) { char a; char c; char d; char e; int extra; char g; }
+#endif
+#ifdef TEST2
+    void T(void) { char b; char c; int d; char f; char g; }
+#endif
+EXPECT(
+    T,
+    "  fn ", S(T), "\n",
+    "[..]\n",
+    "  \tvariables:\n",
+    "- \t\t[1]\ta: char\n",
+    "+ \t\t[1]\tb: char\n",
+    "  \t\t[1]\tc: char\n",
+    "- \t\t[1]\td: char\n",
+    "+ \t\t[4]\td: int\n",
+    "- \t\t[1]\te: char\n",
+    "+ \t\t[1]\tf: char\n",
+    "- \t\t[4]\textra: int\n",
+    "  \t\t[1]\tg: char\n",
+    "\n")
+
+#undef T
 #define T variable_equal
 #ifdef TEST
     char T;

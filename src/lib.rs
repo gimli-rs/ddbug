@@ -2946,6 +2946,8 @@ impl<'input> Subprogram<'input> {
                     )?;
             state.line_option(w, |w, _state| self.print_parameters_label(w))?;
             state.indent(|state| self.print_parameters(w, state))?;
+            state.line_option(w, |w, _state| self.print_variables_label(w))?;
+            state.indent(|state| self.print_variables(w, state))?;
             if state.flags.inline_depth > 0 {
                 state.line_option(w, |w, _state| self.print_inlined_subroutines_label(w))?;
                 state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
@@ -3009,6 +3011,12 @@ impl<'input> Subprogram<'input> {
                 |w, _state| b.print_parameters_label(w),
             )?;
             state.indent(|state| Subprogram::diff_parameters(w, state, a, b))?;
+            state.line_option(
+                w,
+                |w, _state| a.print_variables_label(w),
+                |w, _state| b.print_variables_label(w),
+            )?;
+            state.indent(|state| Subprogram::diff_variables(w, state, a, b))?;
             // TODO
             if false && state.flags.inline_depth > 0 {
                 state.line_option(
@@ -3197,6 +3205,86 @@ impl<'input> Subprogram<'input> {
         }
         write!(w, "\t")?;
         parameter.print(w, state)
+    }
+
+    fn print_variables_label(&self, w: &mut Write) -> Result<()> {
+        if !self.variables.is_empty() {
+            write!(w, "variables:")?;
+        }
+        Ok(())
+    }
+
+    fn print_variables(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        for variable in &self.variables {
+            state.line(w, |w, state| Self::print_variable(w, state, variable))?;
+        }
+        Ok(())
+    }
+
+    fn diff_variables(
+        w: &mut Write,
+        state: &mut DiffState,
+        a: &Subprogram,
+        b: &Subprogram,
+    ) -> Result<()> {
+        let path = diff::shortest_path(&a.variables, &b.variables, 1, |a, b| {
+            let mut cost = 0;
+            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+                cost += 1;
+            }
+            match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+                (Some(ty_a), Some(ty_b)) => {
+                    if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
+                       cmp::Ordering::Equal {
+                        cost += 1;
+                    }
+                }
+                (None, None) => {}
+                _ => {
+                    cost += 1;
+                }
+            }
+            cost
+        });
+
+        let mut iter_a = a.variables.iter();
+        let mut iter_b = b.variables.iter();
+        for dir in path {
+            match dir {
+                diff::Direction::None => break,
+                diff::Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        state.line(w, |w, state| Self::print_variable(w, state, a), |w, state| {
+                            Self::print_variable(w, state, b)
+                        })?;
+                    }
+                }
+                diff::Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        state.prefix_less(
+                            |state| state.line(w, |w, state| Self::print_variable(w, state, a)),
+                        )?;
+                    }
+                }
+                diff::Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        state.prefix_greater(
+                            |state| state.line(w, |w, state| Self::print_variable(w, state, b)),
+                        )?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn print_variable(w: &mut Write, state: &mut PrintState, variable: &Variable) -> Result<()> {
+        match variable.byte_size(state.hash) {
+            Some(byte_size) => write!(w, "[{}]", byte_size)?,
+            None => write!(w, "[??]")?,
+        }
+        write!(w, "\t")?;
+        variable.print_decl(w, state)
     }
 
     fn print_inlined_subroutines_label(&self, w: &mut Write) -> Result<()> {
@@ -3406,6 +3494,13 @@ impl<'input> Variable<'input> {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
+        Ok(())
+    }
+
+    fn print_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        self.print_ref(w)?;
+        write!(w, ": ")?;
+        Type::print_ref_from_offset(w, state, self.ty)?;
         Ok(())
     }
 
