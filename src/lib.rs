@@ -721,6 +721,62 @@ impl<'a, 'input> DiffState<'a, 'input>
     {
         self.line(w, arg_a, arg_b, f)
     }
+
+    fn list<T, Cost, Arg, MutArg, Print, Diff>(
+        &mut self,
+        w: &mut Write,
+        list_a: &[T],
+        arg_a: Arg,
+        mut_arg_a: &mut MutArg,
+        list_b: &[T],
+        arg_b: Arg,
+        mut_arg_b: &mut MutArg,
+        step_cost: usize,
+        diff_cost: Cost,
+        mut print: Print,
+        mut diff: Diff,
+    ) -> Result<()>
+        where Arg: Copy,
+              Cost: Fn(&DiffState<'a, 'input>, &T, &T) -> usize,
+              Print: FnMut(&mut Write, &mut PrintState<'a, 'input>, &T, Arg, &mut MutArg)
+                           -> Result<()>,
+              Diff: FnMut(&mut Write,
+                          &mut DiffState<'a, 'input>,
+                          &T,
+                          Arg,
+                          &mut MutArg,
+                          &T,
+                          Arg,
+                          &mut MutArg)
+                          -> Result<()>
+    {
+        let path = diff::shortest_path(list_a, list_b, step_cost, |a, b| diff_cost(self, a, b));
+        let mut iter_a = list_a.iter();
+        let mut iter_b = list_b.iter();
+        for dir in path {
+            match dir {
+                diff::Direction::None => break,
+                diff::Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        self.prefix_diff(
+                            |state| diff(w, state, a, arg_a, mut_arg_a, b, arg_b, mut_arg_b),
+                        )?;
+                    }
+                }
+                diff::Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        self.prefix_less(|state| print(w, state, a, arg_a, mut_arg_a))?;
+                    }
+                }
+                diff::Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        self.prefix_greater(|state| print(w, state, b, arg_b, mut_arg_b))?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> Result<()> {
@@ -1879,10 +1935,13 @@ impl<'input> StructType<'input> {
         mut bit_offset: Option<u64>,
     ) -> Result<()> {
         for member in &self.members {
-            state.line_option(w, |w, _state| Member::print_padding(w, member.padding(bit_offset)))?;
+            state.line_option(
+                w,
+                |w, state| Member::print_padding(w, state, member.padding(bit_offset)),
+            )?;
             member.print(w, state, unit, &mut bit_offset)?;
         }
-        state.line_option(w, |w, _state| Member::print_padding(w, self.padding(bit_offset)))?;
+        state.line_option(w, |w, state| Member::print_padding(w, state, self.padding(bit_offset)))?;
         Ok(())
     }
 
@@ -1896,71 +1955,41 @@ impl<'input> StructType<'input> {
         b: &StructType,
         mut bit_offset_b: Option<u64>,
     ) -> Result<()> {
-        let path = diff::shortest_path(&a.members, &b.members, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
-                       cmp::Ordering::Equal {
-                        cost += 1;
-                    }
-                }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
-            }
-            cost
-        });
-
-        let mut iter_a = a.members.iter();
-        let mut iter_b = b.members.iter();
-        for dir in path {
-            match dir {
-                diff::Direction::None => break,
-                diff::Direction::Diagonal => {
-                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        state.line_option(
-                            w,
-                            (a, bit_offset_a),
-                            (b, bit_offset_b),
-                            |w, _state, (x, bit_offset)| {
-                                Member::print_padding(w, x.padding(bit_offset))
-                            },
-                        )?;
-                        state.prefix_diff(|state| {
-                            Member::diff(
-                                w,
-                                state,
-                                unit_a,
-                                a,
-                                &mut bit_offset_a,
-                                unit_b,
-                                b,
-                                &mut bit_offset_b,
-                            )
-                        })?;
-                    }
-                }
-                diff::Direction::Horizontal => {
-                    if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| a.print(w, state, unit_a, &mut bit_offset_a))?;
-                    }
-                }
-                diff::Direction::Vertical => {
-                    if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| b.print(w, state, unit_b, &mut bit_offset_b))?;
-                    }
-                }
-            }
-        }
-
-        state.line_option(w, (a, bit_offset_a), (b, bit_offset_b), |w, _state, (x, bit_offset)| {
-            Member::print_padding(w, x.padding(bit_offset))
+        state.list(w,
+                   &a.members,
+                   unit_a,
+                   &mut bit_offset_a,
+                   &b.members,
+                   unit_b,
+                   &mut bit_offset_b,
+                   Member::step_cost(),
+                   Member::diff_cost,
+        |w, state, x, unit, bit_offset| x.print(w, state, unit, bit_offset),
+        |w, state, a, unit_a, bit_offset_a, b, unit_b, bit_offset_b| {
+            state.line_option(
+                w,
+                a.padding(*bit_offset_a),
+                b.padding(*bit_offset_b),
+                Member::print_padding
+                )?;
+            Member::diff(
+                w,
+                state,
+                unit_a,
+                a,
+                bit_offset_a,
+                unit_b,
+                b,
+                bit_offset_b,
+                )
         })?;
+
+        state.line_option(
+            w,
+            a.padding(bit_offset_a),
+            b.padding(bit_offset_b),
+            Member::print_padding,
+        )?;
         Ok(())
     }
 
@@ -2127,64 +2156,29 @@ impl<'input> UnionType<'input> {
         bit_offset_b: Option<u64>,
     ) -> Result<()> {
         // TODO: handle reordering better
-        let path = diff::shortest_path(&a.members, &b.members, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
-                       cmp::Ordering::Equal {
-                        cost += 1;
-                    }
-                }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
-            }
-            cost
-        });
-
-        let mut iter_a = a.members.iter();
-        let mut iter_b = b.members.iter();
-        for dir in path {
-            match dir {
-                diff::Direction::None => break,
-                diff::Direction::Diagonal => {
-                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        // TODO: padding?
-                        state.prefix_diff(|state| {
-                            Member::diff(
-                                w,
-                                state,
-                                unit_a,
-                                a,
-                                &mut bit_offset_a.clone(),
-                                unit_b,
-                                b,
-                                &mut bit_offset_b.clone(),
-                            )
-                        })?;
-                    }
-                }
-                diff::Direction::Horizontal => {
-                    if let Some(a) = iter_a.next() {
-                        state.prefix_less(
-                            |state| a.print(w, state, unit_a, &mut bit_offset_a.clone()),
-                        )?;
-                    }
-                }
-                diff::Direction::Vertical => {
-                    if let Some(b) = iter_b.next() {
-                        state.prefix_greater(
-                            |state| b.print(w, state, unit_b, &mut bit_offset_b.clone()),
-                        )?;
-                    }
-                }
-            }
-        }
+        state.list(w,
+                   &a.members,
+                   (unit_a, bit_offset_a),
+                   &mut (),
+                   &b.members,
+                   (unit_b, bit_offset_b),
+                   &mut (),
+                   Member::step_cost(),
+                   Member::diff_cost,
+        |w, state, x, (unit, bit_offset), _| x.print(w, state, unit, &mut bit_offset.clone()),
+        |w, state, a, (unit_a, bit_offset_a), _, b, (unit_b, bit_offset_b), _| {
+            // TODO: padding?
+            Member::diff(
+                w,
+                state,
+                unit_a,
+                a,
+                &mut bit_offset_a.clone(),
+                unit_b,
+                b,
+                &mut bit_offset_b.clone(),
+                )
+        })?;
 
         // TODO: trailing padding?
         Ok(())
@@ -2297,6 +2291,29 @@ impl<'input> Member<'input> {
         })
     }
 
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(state: &DiffState, a: &Member, b: &Member) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+            (Some(ty_a), Some(ty_b)) => {
+                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+        cost
+    }
+
     // Returns (offset, size) of padding.
     fn padding(&self, end_bit_offset: Option<u64>) -> Option<(u64, u64)> {
         if let Some(end_bit_offset) = end_bit_offset {
@@ -2307,7 +2324,11 @@ impl<'input> Member<'input> {
         None
     }
 
-    fn print_padding(w: &mut Write, padding: Option<(u64, u64)>) -> Result<()> {
+    fn print_padding(
+        w: &mut Write,
+        _state: &mut PrintState,
+        padding: Option<(u64, u64)>,
+    ) -> Result<()> {
         if let Some((padding_bit_offset, padding_bit_size)) = padding {
             write!(
                 w,
@@ -2491,42 +2512,24 @@ impl<'input> EnumerationType<'input> {
         b: &EnumerationType,
     ) -> Result<()> {
         // TODO: handle reordering better
-
-        // A difference in name is usually more significant than a difference in value,
-        // such as for enums where the value is assigned by the compiler.
-        let path = diff::shortest_path(&a.enumerators, &b.enumerators, 3, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 4;
-            }
-            if a.value.cmp(&b.value) != cmp::Ordering::Equal {
-                cost += 2;
-            }
-            cost
-        });
-
-        let mut iter_a = a.enumerators.iter();
-        let mut iter_b = b.enumerators.iter();
-        for dir in path {
-            match dir {
-                diff::Direction::None => break,
-                diff::Direction::Diagonal => {
-                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        Enumerator::diff(w, state, a, b)?;
-                    }
-                }
-                diff::Direction::Horizontal => {
-                    if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| a.print(w, state))?;
-                    }
-                }
-                diff::Direction::Vertical => {
-                    if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| b.print(w, state))?;
-                    }
-                }
-            }
-        }
+        state.list(w,
+                   &a.enumerators,
+                   (),
+                   &mut (),
+                   &b.enumerators,
+                   (),
+                   &mut (),
+                   Enumerator::step_cost(),
+                   Enumerator::diff_cost,
+        |w, state, x, _, _| x.print(w, state),
+        |w, state, a, _, _, b, _, _| {
+            Enumerator::diff(
+                w,
+                state,
+                a,
+                b,
+                )
+        })?;
         Ok(())
     }
 }
@@ -2552,6 +2555,23 @@ impl<'input> Enumerator<'input> {
 
     fn diff(w: &mut Write, state: &mut DiffState, a: &Enumerator, b: &Enumerator) -> Result<()> {
         state.line(w, a, b, |w, _state, x| x.print_name_value(w))
+    }
+
+    fn step_cost() -> usize {
+        3
+    }
+
+    fn diff_cost(_state: &DiffState, a: &Enumerator, b: &Enumerator) -> usize {
+        // A difference in name is usually more significant than a difference in value,
+        // such as for enums where the value is assigned by the compiler.
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 4;
+        }
+        if a.value.cmp(&b.value) != cmp::Ordering::Equal {
+            cost += 2;
+        }
+        cost
     }
 
     fn print_name_value(&self, w: &mut Write) -> Result<()> {
@@ -3079,52 +3099,17 @@ impl<'input> Subprogram<'input> {
         a: &Subprogram,
         b: &Subprogram,
     ) -> Result<()> {
-        let path = diff::shortest_path(&a.parameters, &b.parameters, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
-                       cmp::Ordering::Equal {
-                        cost += 1;
-                    }
-                }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
-            }
-            cost
-        });
-
-        let mut iter_a = a.parameters.iter();
-        let mut iter_b = b.parameters.iter();
-        for dir in path {
-            match dir {
-                diff::Direction::None => break,
-                diff::Direction::Diagonal => {
-                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        state.line(w, a, b, |w, state, x| Self::print_parameter(w, state, x))?;
-                    }
-                }
-                diff::Direction::Horizontal => {
-                    if let Some(a) = iter_a.next() {
-                        state.prefix_less(
-                            |state| state.line(w, |w, state| Self::print_parameter(w, state, a)),
-                        )?;
-                    }
-                }
-                diff::Direction::Vertical => {
-                    if let Some(b) = iter_b.next() {
-                        state.prefix_greater(
-                            |state| state.line(w, |w, state| Self::print_parameter(w, state, b)),
-                        )?;
-                    }
-                }
-            }
-        }
+        state.list(w,
+                   &a.parameters,
+                   (),
+                   &mut (),
+                   &b.parameters,
+                   (),
+                   &mut (),
+                   Self::parameter_step_cost(),
+                   Self::parameter_diff_cost,
+        |w, state, x, _, _| state.line(w, |w, state| Self::print_parameter(w, state, x)),
+        |w, state, a, _, _, b, _, _| state.line(w, a, b, |w, state, x| Self::print_parameter(w, state, x)))?;
         Ok(())
     }
 
@@ -3135,6 +3120,29 @@ impl<'input> Subprogram<'input> {
         }
         write!(w, "\t")?;
         parameter.print(w, state)
+    }
+
+    fn parameter_step_cost() -> usize {
+        1
+    }
+
+    fn parameter_diff_cost(state: &DiffState, a: &Parameter, b: &Parameter) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+            (Some(ty_a), Some(ty_b)) => {
+                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+        cost
     }
 
     fn print_variables_label(&self, w: &mut Write) -> Result<()> {
@@ -3157,52 +3165,17 @@ impl<'input> Subprogram<'input> {
         a: &Subprogram,
         b: &Subprogram,
     ) -> Result<()> {
-        let path = diff::shortest_path(&a.variables, &b.variables, 1, |a, b| {
-            let mut cost = 0;
-            if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-                cost += 1;
-            }
-            match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-                (Some(ty_a), Some(ty_b)) => {
-                    if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) !=
-                       cmp::Ordering::Equal {
-                        cost += 1;
-                    }
-                }
-                (None, None) => {}
-                _ => {
-                    cost += 1;
-                }
-            }
-            cost
-        });
-
-        let mut iter_a = a.variables.iter();
-        let mut iter_b = b.variables.iter();
-        for dir in path {
-            match dir {
-                diff::Direction::None => break,
-                diff::Direction::Diagonal => {
-                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        state.line(w, a, b, |w, state, x| Self::print_variable(w, state, x))?;
-                    }
-                }
-                diff::Direction::Horizontal => {
-                    if let Some(a) = iter_a.next() {
-                        state.prefix_less(
-                            |state| state.line(w, |w, state| Self::print_variable(w, state, a)),
-                        )?;
-                    }
-                }
-                diff::Direction::Vertical => {
-                    if let Some(b) = iter_b.next() {
-                        state.prefix_greater(
-                            |state| state.line(w, |w, state| Self::print_variable(w, state, b)),
-                        )?;
-                    }
-                }
-            }
-        }
+        state.list(w,
+                   &a.variables,
+                   (),
+                   &mut (),
+                   &b.variables,
+                   (),
+                   &mut (),
+                   Self::variable_step_cost(),
+                   Self::variable_diff_cost,
+        |w, state, x, _, _| state.line(w, |w, state| Self::print_variable(w, state, x)),
+        |w, state, a, _, _, b, _, _| state.line(w, a, b, |w, state, x| Self::print_variable(w, state, x)))?;
         Ok(())
     }
 
@@ -3213,6 +3186,29 @@ impl<'input> Subprogram<'input> {
         }
         write!(w, "\t")?;
         variable.print_decl(w, state)
+    }
+
+    fn variable_step_cost() -> usize {
+        1
+    }
+
+    fn variable_diff_cost(state: &DiffState, a: &Variable, b: &Variable) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+            (Some(ty_a), Some(ty_b)) => {
+                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+        cost
     }
 
     fn print_inlined_subroutines_label(&self, w: &mut Write) -> Result<()> {
