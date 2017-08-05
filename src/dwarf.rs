@@ -602,6 +602,7 @@ fn parse_structure_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_containing_type |
+                gimli::DW_AT_alignment |
                 gimli::DW_AT_sibling => {}
                 _ => debug!("unknown struct attribute: {} {:?}", attr.name(), attr.value()),
             }
@@ -663,6 +664,7 @@ fn parse_union_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                         ty.declaration = flag;
                     }
                 }
+                gimli::DW_AT_alignment |
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_sibling => {}
@@ -775,6 +777,7 @@ fn parse_member<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_accessibility |
                 gimli::DW_AT_artificial |
                 gimli::DW_AT_const_value |
+                gimli::DW_AT_alignment |
                 gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown member attribute: {} {:?}", attr.name(), attr.value());
@@ -870,6 +873,7 @@ fn parse_enumeration_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_sibling |
                 gimli::DW_AT_type |
+                gimli::DW_AT_alignment |
                 gimli::DW_AT_enum_class => {}
                 _ => debug!("unknown enumeration attribute: {} {:?}", attr.name(), attr.value()),
             }
@@ -1229,6 +1233,7 @@ fn parse_subprogram<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_virtuality |
                 gimli::DW_AT_vtable_elem_location |
                 gimli::DW_AT_containing_type |
+                gimli::DW_AT_main_subprogram |
                 gimli::DW_AT_APPLE_optimized |
                 gimli::DW_AT_APPLE_omit_frame_ptr |
                 gimli::DW_AT_sibling => {}
@@ -1660,6 +1665,7 @@ fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
                 gimli::DW_AT_const_value |
                 gimli::DW_AT_external |
                 gimli::DW_AT_accessibility |
+                gimli::DW_AT_alignment |
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line => {}
                 _ => debug!("unknown variable attribute: {} {:?}", attr.name(), attr.value()),
