@@ -956,7 +956,7 @@ EXPECT(
     void T(void) { char a; char c; char d; char e; int extra; char g; }
 #endif
 #ifdef TEST2
-    void T(void) { char b; char c; int d; char f; char g; }
+    void T(void) { char b; int d; char c; char f; char g; }
 #endif
 EXPECT(
     T,

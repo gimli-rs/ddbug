@@ -3165,15 +3165,19 @@ impl<'input> Subprogram<'input> {
         a: &Subprogram,
         b: &Subprogram,
     ) -> Result<()> {
+        let mut variables_a: Vec<_> = a.variables.iter().collect();
+        variables_a.sort_by(|x, y| Variable::cmp_id(x, y));
+        let mut variables_b: Vec<_> = b.variables.iter().collect();
+        variables_b.sort_by(|x, y| Variable::cmp_id(x, y));
         state.list(w,
-                   &a.variables,
+                   &variables_a,
                    (),
                    &mut (),
-                   &b.variables,
+                   &variables_b,
                    (),
                    &mut (),
                    Self::variable_step_cost(),
-                   Self::variable_diff_cost,
+                   |state, a, b| Self::variable_diff_cost(state, a, b),
         |w, state, x, _, _| state.line(w, |w, state| Self::print_variable(w, state, x)),
         |w, state, a, _, _, b, _, _| state.line(w, a, b, |w, state, x| Self::print_variable(w, state, x)))?;
         Ok(())
