@@ -16,6 +16,4 @@ gimli = "0.14.0"
 goblin = "0.0.10"
 log = "0.3.6"
 memmap = "0.4.0"
-panopticon-core = { git = "https://github.com/das-labor/panopticon" }
-panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
 pdb = "0.1.5"

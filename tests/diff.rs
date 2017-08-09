@@ -22,7 +22,6 @@ fn diff(name: &str, expect: &str) {
 
 fn flags<'a>() -> ddbug::Flags<'a> {
     ddbug::Flags {
-        calls: false,
         sort: ddbug::Sort::None,
         ignore_function_address: true,
         ignore_variable_address: true,

@@ -263,10 +263,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     let mut units = Vec::new();
     units.push(unit);
 
-    let mut file = File {
-        code: None,
-        units: units,
-    };
+    let mut file = File { units: units };
 
     cb(&mut file)
 }

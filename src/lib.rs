@@ -3,8 +3,6 @@ extern crate gimli;
 extern crate log;
 extern crate memmap;
 extern crate goblin;
-extern crate panopticon_core as panopticon;
-extern crate panopticon_amd64 as amd64;
 extern crate pdb as crate_pdb;
 
 use std::borrow::Borrow;
@@ -14,7 +12,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::cmp;
 use std::error;
-use std::fmt::{self, Debug};
+use std::fmt;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -93,7 +91,6 @@ impl Default for Sort {
 
 #[derive(Debug, Default, Clone)]
 pub struct Flags<'a> {
-    pub calls: bool,
     pub sort: Sort,
     pub ignore_added: bool,
     pub ignore_deleted: bool,
@@ -161,15 +158,7 @@ fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
 }
 
 #[derive(Debug)]
-pub struct CodeRegion {
-    // TODO: use format independent machine type
-    machine: u16,
-    region: panopticon::Region,
-}
-
-#[derive(Debug)]
 pub struct File<'input> {
-    code: Option<CodeRegion>,
     units: Vec<Unit<'input>>,
 }
 
@@ -223,39 +212,6 @@ pub fn parse_elf<'input>(
         Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
     };
 
-    let machine = elf.header.e_machine;
-    let region = match machine {
-        goblin::elf::header::EM_X86_64 => {
-            Some(panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF))
-        }
-        _ => None,
-    };
-
-    let mut code = None;
-    if let Some(mut region) = region {
-        for ph in &elf.program_headers {
-            if ph.p_type == goblin::elf::program_header::PT_LOAD {
-                let offset = ph.p_offset;
-                let size = ph.p_filesz;
-                let addr = ph.p_vaddr;
-                if offset as usize <= input.len() {
-                    let input = &input[offset as usize..];
-                    if size as usize <= input.len() {
-                        let bound = panopticon::Bound::new(addr, addr + size);
-                        let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
-                        region.cover(bound, layer);
-                        debug!("loaded program header addr {:#x} size {:#x}", addr, size);
-                    } else {
-                        debug!("invalid program header size {}", size);
-                    }
-                } else {
-                    debug!("invalid program header offset {}", offset);
-                }
-            }
-        }
-        code = Some(CodeRegion { machine, region });
-    }
-
     // Code based on 'object' crate
     let get_section = |section_name: &str| -> &'input [u8] {
         for header in &elf.section_headers {
@@ -274,7 +230,7 @@ pub fn parse_elf<'input>(
         _ => return Err("unknown endianity".into()),
     };
 
-    let mut file = File { code, units };
+    let mut file = File { units };
     cb(&mut file)
 }
 
@@ -321,7 +277,7 @@ pub fn parse_mach<'input>(
         dwarf::parse(gimli::BigEndian, get_section)?
     };
 
-    let mut file = File { code: None, units };
+    let mut file = File { units };
     cb(&mut file)
 }
 
@@ -2881,17 +2837,6 @@ impl<'input> Subprogram<'input> {
         flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
-    fn calls(&self, file: &File) -> Vec<u64> {
-        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
-            if low_pc != 0 {
-                if let Some(ref code) = file.code {
-                    return disassemble(code, low_pc, high_pc);
-                }
-            }
-        }
-        Vec::new()
-    }
-
     /// Compare the identifying information of two subprograms.
     /// This can be used to sort, and to determine if two subprograms refer to the same definition
     /// (even if there are differences in the definitions).
@@ -2935,13 +2880,6 @@ impl<'input> Subprogram<'input> {
             if state.flags.inline_depth > 0 {
                 state.line_option(w, |w, _state| self.print_inlined_subroutines_label(w))?;
                 state.indent(|state| self.print_inlined_subroutines(w, state, unit))?;
-            }
-            if state.flags.calls {
-                let calls = self.calls(state.file);
-                if !calls.is_empty() {
-                    state.line(w, |w, _state| self.print_calls_label(w))?;
-                    state.indent(|state| self.print_calls(w, state, &calls))?;
-                }
             }
             Ok(())
         })
@@ -2988,18 +2926,6 @@ impl<'input> Subprogram<'input> {
                 state.indent(
                     |state| Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b),
                 )?;
-            }
-            // TODO
-            if false && state.flags.calls {
-                let calls_a = a.calls(state.a.file);
-                let calls_b = b.calls(state.b.file);
-                state.line_option(w, (a, &calls_a), (b, &calls_b), |w, _state, (x, calls)| {
-                    if !calls.is_empty() {
-                        x.print_calls_label(w)?;
-                    }
-                    Ok(())
-                })?;
-                state.indent(|state| Subprogram::diff_calls(w, state, &calls_a, &calls_b))?;
             }
             Ok(())
         })
@@ -3245,35 +3171,6 @@ impl<'input> Subprogram<'input> {
         // TODO
         Ok(())
     }
-
-    fn print_calls_label(&self, w: &mut Write) -> Result<()> {
-        write!(w, "calls:")?;
-        Ok(())
-    }
-
-    fn print_calls(&self, w: &mut Write, state: &mut PrintState, calls: &[u64]) -> Result<()> {
-        for call in calls {
-            state.line(w, |w, state| {
-                write!(w, "0x{:x}", call)?;
-                if let Some(subprogram) = state.hash.subprograms.get(call) {
-                    write!(w, " ")?;
-                    subprogram.print_ref(w)?;
-                }
-                Ok(())
-            })?;
-        }
-        Ok(())
-    }
-
-    fn diff_calls(
-        _w: &mut Write,
-        _state: &mut DiffState,
-        _calls_a: &[u64],
-        _calls_b: &[u64],
-    ) -> Result<()> {
-        // TODO
-        Ok(())
-    }
 }
 
 #[derive(Debug, Default)]
@@ -3494,89 +3391,6 @@ impl<'input> Variable<'input> {
         }
         Ok(())
     }
-}
-
-fn disassemble(code: &CodeRegion, low_pc: u64, high_pc: u64) -> Vec<u64> {
-    match code.machine {
-        goblin::elf::header::EM_X86_64 => {
-            disassemble_arch::<amd64::Amd64>(&code.region, low_pc, high_pc, amd64::Mode::Long)
-        }
-        _ => Vec::new(),
-    }
-}
-
-fn disassemble_arch<A>(
-    region: &panopticon::Region,
-    low_pc: u64,
-    high_pc: u64,
-    cfg: A::Configuration,
-) -> Vec<u64>
-    where A: panopticon::Architecture + Debug,
-          A::Configuration: Debug
-{
-    let mut calls = Vec::new();
-    let mut mnemonics = BTreeMap::new();
-    let mut jumps = vec![low_pc];
-    while let Some(addr) = jumps.pop() {
-        if mnemonics.contains_key(&addr) {
-            continue;
-        }
-
-        let m = match A::decode(region, addr, &cfg) {
-            Ok(m) => m,
-            Err(e) => {
-                error!("failed to disassemble: {}", e);
-                return calls;
-            }
-        };
-
-        for mnemonic in m.mnemonics {
-            /*
-            //writeln!(w, "\t{:?}", mnemonic);
-            write!(w, "\t{}", mnemonic.opcode);
-            let mut first = true;
-            for operand in &mnemonic.operands {
-                if first {
-                    write!(w, "\t");
-                    first = false;
-                } else {
-                    write!(w, ", ");
-                }
-                match *operand {
-                    panopticon::Rvalue::Variable { ref name, .. } => write!(w, "{}", name),
-                    panopticon::Rvalue::Constant { ref value, .. } => write!(w, "0x{:x}", value),
-                    _ => write!(w, "?"),
-                }
-            }
-            writeln!(w, "");
-            */
-
-            for instruction in &mnemonic.instructions {
-                match *instruction {
-                    panopticon::Statement { op: panopticon::Operation::Call(ref call), .. } => {
-                        match *call {
-                            panopticon::Rvalue::Constant { ref value, .. } => {
-                                calls.push(*value);
-                            }
-                            _ => {}
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            // FIXME: mnemonic is large, insert boxed value
-            mnemonics.insert(mnemonic.area.start, mnemonic);
-        }
-
-        for (_origin, target, _guard) in m.jumps {
-            if let panopticon::Rvalue::Constant { value, .. } = target {
-                if value > addr && value < high_pc {
-                    jumps.push(value);
-                }
-            }
-        }
-    }
-    calls
 }
 
 fn format_bit(val: u64) -> String {

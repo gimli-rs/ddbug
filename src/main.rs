@@ -12,7 +12,6 @@ fn main() {
     env_logger::init().ok();
 
     let mut opts = getopts::Options::new();
-    opts.optflag("", "calls", "print subprogram calls");
     opts.optflag("", "diff", "print difference between two files");
     opts.optflag("", "sort-name", "sort entries by type and name");
     opts.optflag("", "sort-size", "sort entries by size");
@@ -59,7 +58,6 @@ fn main() {
         }
     };
 
-    let calls = matches.opt_present("calls");
     let diff = matches.opt_present("diff");
     let sort = if matches.opt_present("sort-name") {
         ddbug::Sort::Name
@@ -96,7 +94,6 @@ fn main() {
     };
 
     let flags = ddbug::Flags {
-        calls: calls,
         sort: sort,
         ignore_added: ignore_added,
         ignore_deleted: ignore_deleted,
