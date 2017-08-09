@@ -1,4 +1,7 @@
 # ddbug - Display debugging information 
+
+[![](https://img.shields.io/crates/v/ddbug.svg)](https://crates.io/crates/ddbug) [![](https://docs.rs/ddbug/badge.svg)](https://docs.rs/ddbug/)
+
 `ddbug` is a utility that can extract useful information from DWARF/PDB
 debugging data. Its goal is to use the debugging information to provide
 insights into the code generation. This can be used to guide improvements
