@@ -2,6 +2,12 @@
 name = "ddbug"
 version = "0.1.0"
 authors = ["Philip Craig <philipjcraig@gmail.com>"]
+description = "Display debugging information"
+repository = "https://github.com/philipc/ddbug"
+readme = "README.md"
+keywords = ["debug", "DWARF", "PDB"]
+categories = ["development-tools::debugging"]
+license = "Apache-2.0/MIT"
 
 [dependencies]
 env_logger = "0.3.5"
