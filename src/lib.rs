@@ -758,9 +758,7 @@ impl<'a, 'input> DiffState<'a, 'input>
                 diff::Direction::None => break,
                 diff::Direction::Diagonal => {
                     if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                        self.prefix_diff(
-                            |state| diff(w, state, a, arg_a, mut_arg_a, b, arg_b, mut_arg_b),
-                        )?;
+                        diff(w, self, a, arg_a, mut_arg_a, b, arg_b, mut_arg_b)?;
                     }
                 }
                 diff::Direction::Horizontal => {
@@ -2982,12 +2980,9 @@ impl<'input> Subprogram<'input> {
             state.indent(|state| Subprogram::diff_parameters(w, state, a, b))?;
             state.line_option(w, a, b, |w, _state, x| x.print_variables_label(w))?;
             state.indent(|state| Subprogram::diff_variables(w, state, a, b))?;
-            // TODO
-            if false && state.flags.inline_depth > 0 {
+            if state.flags.inline_depth > 0 {
                 state.line_option(w, a, b, |w, _state, x| x.print_inlined_subroutines_label(w))?;
-                state.indent(
-                    |state| Subprogram::diff_inlined_subroutines(w, state, unit_a, a, unit_b, b),
-                )?;
+                InlinedSubroutine::diff_inlined_subroutines(w, state, unit_a, &a.inlined_subroutines, unit_b, &b.inlined_subroutines, 1)?;
             }
             // TODO
             if false && state.flags.calls {
@@ -3234,18 +3229,6 @@ impl<'input> Subprogram<'input> {
         Ok(())
     }
 
-    fn diff_inlined_subroutines(
-        _w: &mut Write,
-        _state: &mut DiffState,
-        _unit_a: &Unit,
-        _a: &Subprogram,
-        _unit_b: &Unit,
-        _b: &Subprogram,
-    ) -> Result<()> {
-        // TODO
-        Ok(())
-    }
-
     fn print_calls_label(&self, w: &mut Write) -> Result<()> {
         write!(w, "calls:")?;
         Ok(())
@@ -3343,18 +3326,7 @@ impl<'input> InlinedSubroutine<'input> {
         unit: &Unit,
         depth: usize,
     ) -> Result<()> {
-        state.line(w, |w, _state| {
-            match self.size {
-                Some(size) => write!(w, "[{}]", size)?,
-                None => write!(w, "[??]")?,
-            }
-            write!(w, "\t")?;
-            match self.abstract_origin.and_then(|v| Subprogram::from_offset(unit, v)) {
-                Some(subprogram) => subprogram.print_ref(w)?,
-                None => write!(w, "<anon>")?,
-            }
-            Ok(())
-        })?;
+        state.line(w, |w, state| self.print_name(w, state, unit))?;
 
         if state.flags.inline_depth > depth {
             state.indent(|state| {
@@ -3365,6 +3337,78 @@ impl<'input> InlinedSubroutine<'input> {
             })?;
         }
         Ok(())
+    }
+
+    fn print_name(&self, w: &mut Write, _state: &PrintState, unit: &Unit) -> Result<()> {
+        match self.size {
+            Some(size) => write!(w, "[{}]", size)?,
+            None => write!(w, "[??]")?,
+        }
+        write!(w, "\t")?;
+        match self.abstract_origin.and_then(|v| Subprogram::from_offset(unit, v)) {
+            Some(subprogram) => subprogram.print_ref(w)?,
+            None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &InlinedSubroutine,
+        unit_b: &Unit,
+        b: &InlinedSubroutine,
+        depth: usize,
+    ) -> Result<()> {
+        state.line(w, (unit_a, a), (unit_b, b), |w, state, (unit, x)| x.print_name(w, state, unit))?;
+
+        if state.flags.inline_depth > depth {
+            Self::diff_inlined_subroutines(w, state, unit_a, &a.inlined_subroutines, unit_b, &b.inlined_subroutines, 1)?;
+        }
+
+        Ok(())
+    }
+
+    fn diff_inlined_subroutines(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &[InlinedSubroutine],
+        unit_b: &Unit,
+        b: &[InlinedSubroutine],
+        depth: usize,
+    ) -> Result<()> {
+        state.indent(|state| {
+            state.list(w,
+                       a,
+                       unit_a,
+                       &mut (),
+                       b,
+                       unit_b,
+                       &mut (),
+                       InlinedSubroutine::step_cost(),
+                       |state, a, b| InlinedSubroutine::diff_cost(state, unit_a, a, unit_b, b),
+            |w, state, x, unit, _| x.print(w, state, unit, depth + 1),
+            |w, state, a, unit_a, _, b, unit_b, _| InlinedSubroutine::diff(w, state, unit_a, a, unit_b, b, depth + 1))
+        })
+    }
+
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(_state: &DiffState, unit_a: &Unit, a: &InlinedSubroutine, unit_b: &Unit, b: &InlinedSubroutine) -> usize {
+        let mut cost = 0;
+        let subprogram_a = a.abstract_origin.and_then(|v| Subprogram::from_offset(unit_a, v)).unwrap();
+        let subprogram_b = b.abstract_origin.and_then(|v| Subprogram::from_offset(unit_b, v)).unwrap();
+        if Subprogram::cmp_id(subprogram_a, subprogram_b) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        if a.size != b.size {
+            cost += 1;
+        }
+        cost
     }
 }
 
