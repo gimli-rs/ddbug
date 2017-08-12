@@ -1469,12 +1469,11 @@ impl<'input> Type<'input> {
         state: &mut PrintState,
         unit: &Unit,
         ty: Option<&Type>,
-        offset: Option<u64>,
     ) -> Result<()> {
         if let Some(ty) = ty {
             match ty.kind {
-                TypeKind::Struct(ref t) => return t.print_members(w, state, unit, offset),
-                TypeKind::Union(ref t) => return t.print_members(w, state, unit, offset),
+                TypeKind::Struct(ref t) => return t.print_members(w, state, unit),
+                TypeKind::Union(ref t) => return t.print_members(w, state, unit),
                 _ => return Err(format!("can't print members {:?}", ty).into()),
             }
         }
@@ -1486,10 +1485,8 @@ impl<'input> Type<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         type_a: Option<&Type>,
-        offset_a: Option<u64>,
         unit_b: &Unit,
         type_b: Option<&Type>,
-        offset_b: Option<u64>,
     ) -> Result<()> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
@@ -1499,10 +1496,8 @@ impl<'input> Type<'input> {
                         state,
                         unit_a,
                         a,
-                        offset_a,
                         unit_b,
                         b,
-                        offset_b,
                     );
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
@@ -1511,10 +1506,8 @@ impl<'input> Type<'input> {
                         state,
                         unit_a,
                         a,
-                        offset_a,
                         unit_b,
                         b,
-                        offset_b,
                     );
                 }
                 _ => {}
@@ -1522,8 +1515,8 @@ impl<'input> Type<'input> {
         }
 
         state.prefix_diff(|state| {
-            Type::print_members(w, &mut state.a, unit_a, type_a, offset_a)?;
-            Type::print_members(w, &mut state.b, unit_b, type_b, offset_b)
+            Type::print_members(w, &mut state.a, unit_a, type_a)?;
+            Type::print_members(w, &mut state.b, unit_b, type_b)
         })
     }
 
@@ -1532,12 +1525,11 @@ impl<'input> Type<'input> {
         state: &mut PrintState,
         unit: &Unit,
         ty: Option<&Type>,
-        offset: Option<u64>,
     ) -> Result<()> {
         if let Some(ty) = ty {
             match ty.kind {
-                TypeKind::Struct(ref t) => return t.print_members_entries(w, state, unit, offset),
-                TypeKind::Union(ref t) => return t.print_members_entries(w, state, unit, offset),
+                TypeKind::Struct(ref t) => return t.print_members_entries(w, state, unit),
+                TypeKind::Union(ref t) => return t.print_members_entries(w, state, unit),
                 _ => return Err(format!("can't print members entries {:?}", ty).into()),
             }
         }
@@ -1549,10 +1541,8 @@ impl<'input> Type<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         type_a: Option<&Type>,
-        offset_a: Option<u64>,
         unit_b: &Unit,
         type_b: Option<&Type>,
-        offset_b: Option<u64>,
     ) -> Result<()> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
@@ -1562,10 +1552,8 @@ impl<'input> Type<'input> {
                         state,
                         unit_a,
                         a,
-                        offset_a,
                         unit_b,
                         b,
-                        offset_b,
                     );
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
@@ -1574,10 +1562,8 @@ impl<'input> Type<'input> {
                         state,
                         unit_a,
                         a,
-                        offset_a,
                         unit_b,
                         b,
-                        offset_b,
                     );
                 }
                 _ => {}
@@ -1585,8 +1571,8 @@ impl<'input> Type<'input> {
         }
 
         state.prefix_diff(|state| {
-            Type::print_members_entries(w, &mut state.a, unit_a, type_a, offset_a)?;
-            Type::print_members_entries(w, &mut state.b, unit_b, type_b, offset_b)
+            Type::print_members_entries(w, &mut state.a, unit_a, type_a)?;
+            Type::print_members_entries(w, &mut state.b, unit_b, type_b)
         })
     }
 }
@@ -1790,7 +1776,7 @@ impl<'input> TypeDef<'input> {
             state.line(w, |w, state| self.print_byte_size(w, state))?;
             if let Some(ty) = ty {
                 if ty.is_anon() {
-                    Type::print_members(w, state, unit, Some(ty), Some(0))?;
+                    Type::print_members(w, state, unit, Some(ty))?;
                 }
             }
             Ok(())
@@ -1818,7 +1804,7 @@ impl<'input> TypeDef<'input> {
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
             let ty_b = filter_option(b.ty(state.b.hash), Type::is_anon);
-            Type::diff_members(w, state, unit_a, ty_a, Some(0), unit_b, ty_b, Some(0))
+            Type::diff_members(w, state, unit_a, ty_a, unit_b, ty_b)
         })
     }
 }
@@ -1852,7 +1838,7 @@ impl<'input> StructType<'input> {
         state.indent(|state| {
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            self.print_members(w, state, unit, Some(0))
+            self.print_members(w, state, unit)
         })
     }
 
@@ -1869,7 +1855,7 @@ impl<'input> StructType<'input> {
         state.indent(|state| {
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
+            Self::diff_members(w, state, unit_a, a, unit_b, b)
         })?;
 
         Ok(())
@@ -1880,10 +1866,9 @@ impl<'input> StructType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        bit_offset: Option<u64>,
     ) -> Result<()> {
         state.line_option(w, |w, state| self.print_members_label(w, state))?;
-        state.indent(|state| self.print_members_entries(w, state, unit, bit_offset))
+        state.indent(|state| self.print_members_entries(w, state, unit))
     }
 
     fn diff_members(
@@ -1891,14 +1876,12 @@ impl<'input> StructType<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         a: &StructType,
-        bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &StructType,
-        bit_offset_b: Option<u64>,
     ) -> Result<()> {
         state.line_option(w, a, b, |w, state, x| x.print_members_label(w, state))?;
         state.indent(|state| {
-            Self::diff_members_entries(w, state, unit_a, a, bit_offset_a, unit_b, b, bit_offset_b)
+            Self::diff_members_entries(w, state, unit_a, a, unit_b, b)
         })
     }
 
@@ -1930,8 +1913,8 @@ impl<'input> StructType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        mut bit_offset: Option<u64>,
     ) -> Result<()> {
+        let mut bit_offset = Some(0);
         for member in &self.members {
             state.line_option(
                 w,
@@ -1948,11 +1931,11 @@ impl<'input> StructType<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         a: &StructType,
-        mut bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &StructType,
-        mut bit_offset_b: Option<u64>,
     ) -> Result<()> {
+        let mut bit_offset_a = Some(0);
+        let mut bit_offset_b = Some(0);
         state.list(w,
                    &a.members,
                    unit_a,
@@ -2054,7 +2037,7 @@ impl<'input> UnionType<'input> {
         state.indent(|state| {
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            self.print_members(w, state, unit, Some(0))
+            self.print_members(w, state, unit)
         })
     }
 
@@ -2071,7 +2054,7 @@ impl<'input> UnionType<'input> {
         state.indent(|state| {
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            Self::diff_members(w, state, unit_a, a, Some(0), unit_b, b, Some(0))
+            Self::diff_members(w, state, unit_a, a, unit_b, b)
         })?;
 
         Ok(())
@@ -2082,10 +2065,9 @@ impl<'input> UnionType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        bit_offset: Option<u64>,
     ) -> Result<()> {
         state.line_option(w, |w, state| self.print_members_label(w, state))?;
-        state.indent(|state| self.print_members_entries(w, state, unit, bit_offset))
+        state.indent(|state| self.print_members_entries(w, state, unit))
     }
 
     fn diff_members(
@@ -2093,14 +2075,12 @@ impl<'input> UnionType<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         a: &UnionType,
-        bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &UnionType,
-        bit_offset_b: Option<u64>,
     ) -> Result<()> {
         state.line_option(w, a, b, |w, state, x| x.print_members_label(w, state))?;
         state.indent(|state| {
-            Self::diff_members_entries(w, state, unit_a, a, bit_offset_a, unit_b, b, bit_offset_b)
+            Self::diff_members_entries(w, state, unit_a, a, unit_b, b)
         })
     }
 
@@ -2132,12 +2112,10 @@ impl<'input> UnionType<'input> {
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
-        bit_offset: Option<u64>,
     ) -> Result<()> {
         for member in &self.members {
-            let mut bit_offset = bit_offset;
             // TODO: padding?
-            member.print(w, state, unit, &mut bit_offset)?;
+            member.print(w, state, unit, &mut None)?;
         }
         // TODO: trailing padding?
         Ok(())
@@ -2148,33 +2126,31 @@ impl<'input> UnionType<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         a: &UnionType,
-        bit_offset_a: Option<u64>,
         unit_b: &Unit,
         b: &UnionType,
-        bit_offset_b: Option<u64>,
     ) -> Result<()> {
         // TODO: handle reordering better
         state.list(w,
                    &a.members,
-                   (unit_a, bit_offset_a),
+                   unit_a,
                    &mut (),
                    &b.members,
-                   (unit_b, bit_offset_b),
+                   unit_b,
                    &mut (),
                    Member::step_cost(),
                    Member::diff_cost,
-        |w, state, x, (unit, bit_offset), _| x.print(w, state, unit, &mut bit_offset.clone()),
-        |w, state, a, (unit_a, bit_offset_a), _, b, (unit_b, bit_offset_b), _| {
+        |w, state, x, unit, _| x.print(w, state, unit, &mut None),
+        |w, state, a, unit_a, _, b, unit_b, _| {
             // TODO: padding?
             Member::diff(
                 w,
                 state,
                 unit_a,
                 a,
-                &mut bit_offset_a.clone(),
+                &mut None,
                 unit_b,
                 b,
-                &mut bit_offset_b.clone(),
+                &mut None,
                 )
         })?;
 
@@ -2245,7 +2221,7 @@ impl<'input> Member<'input> {
             } else {
                 None
             };
-            Type::print_members_entries(w, state, unit, ty, Some(self.bit_offset))
+            Type::print_members_entries(w, state, unit, ty)
         })
     }
 
@@ -2281,10 +2257,8 @@ impl<'input> Member<'input> {
                 state,
                 unit_a,
                 ty_a,
-                Some(a.bit_offset),
                 unit_b,
                 ty_b,
-                Some(b.bit_offset),
             )
         })
     }
