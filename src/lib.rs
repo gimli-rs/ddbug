@@ -81,7 +81,11 @@ pub enum Sort {
 
 impl Sort {
     fn with_diff(self, diff: bool) -> Self {
-        if diff { Sort::Name } else { self }
+        if diff {
+            Sort::Name
+        } else {
+            self
+        }
     }
 }
 
@@ -154,8 +158,9 @@ fn filter_name(name: Option<&[u8]>, filter: &str) -> bool {
 }
 
 fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
-    where T: Copy,
-          F: FnOnce(T) -> bool
+where
+    T: Copy,
+    F: FnOnce(T) -> bool,
 {
     o.and_then(|v| if f(v) { Some(v) } else { None })
 }
@@ -327,7 +332,8 @@ pub fn parse_mach<'input>(
 
 #[derive(Debug)]
 struct FileHash<'a, 'input>
-    where 'input: 'a
+where
+    'input: 'a,
 {
     // All subprograms by address.
     subprograms: HashMap<u64, &'a Subprogram<'input>>,
@@ -379,7 +385,8 @@ enum DiffPrefix {
 }
 
 struct PrintState<'a, 'input>
-    where 'input: 'a
+where
+    'input: 'a,
 {
     indent: usize,
     prefix: DiffPrefix,
@@ -393,7 +400,8 @@ struct PrintState<'a, 'input>
 }
 
 impl<'a, 'input> PrintState<'a, 'input>
-    where 'input: 'a
+where
+    'input: 'a,
 {
     fn new(file: &'a File<'input>, hash: &'a FileHash<'a, 'input>, flags: &'a Flags<'a>) -> Self {
         PrintState {
@@ -407,7 +415,8 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 
     fn indent<F>(&mut self, mut f: F) -> Result<()>
-        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
         self.indent += 1;
         let ret = f(self);
@@ -416,7 +425,8 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 
     fn prefix<F>(&mut self, prefix: DiffPrefix, mut f: F) -> Result<()>
-        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
         let prev = self.prefix;
         self.prefix = prefix;
@@ -426,7 +436,8 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 
     fn line<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
-        where F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
     {
         match self.prefix {
             DiffPrefix::None => {}
@@ -449,7 +460,8 @@ impl<'a, 'input> PrintState<'a, 'input>
     }
 
     fn line_option<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
-        where F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
     {
         let mut buf = Vec::new();
         let mut state = PrintState::new(self.file, self.hash, self.flags);
@@ -483,9 +495,10 @@ enum MergeResult<T> {
 }
 
 struct MergeIterator<T, I, C>
-    where T: Copy,
-          I: Iterator<Item = T>,
-          C: Fn(T, T) -> cmp::Ordering
+where
+    T: Copy,
+    I: Iterator<Item = T>,
+    C: Fn(T, T) -> cmp::Ordering,
 {
     iter_left: I,
     iter_right: I,
@@ -495,9 +508,10 @@ struct MergeIterator<T, I, C>
 }
 
 impl<T, I, C> MergeIterator<T, I, C>
-    where T: Copy,
-          I: Iterator<Item = T>,
-          C: Fn(T, T) -> cmp::Ordering
+where
+    T: Copy,
+    I: Iterator<Item = T>,
+    C: Fn(T, T) -> cmp::Ordering,
 {
     fn new(mut left: I, mut right: I, cmp: C) -> Self {
         let item_left = left.next();
@@ -513,9 +527,10 @@ impl<T, I, C> MergeIterator<T, I, C>
 }
 
 impl<T, I, C> Iterator for MergeIterator<T, I, C>
-    where T: Copy,
-          I: Iterator<Item = T>,
-          C: Fn(T, T) -> cmp::Ordering
+where
+    T: Copy,
+    I: Iterator<Item = T>,
+    C: Fn(T, T) -> cmp::Ordering,
 {
     type Item = MergeResult<T>;
 
@@ -552,7 +567,8 @@ impl<T, I, C> Iterator for MergeIterator<T, I, C>
 }
 
 struct DiffState<'a, 'input>
-    where 'input: 'a
+where
+    'input: 'a,
 {
     a: PrintState<'a, 'input>,
     b: PrintState<'a, 'input>,
@@ -560,7 +576,8 @@ struct DiffState<'a, 'input>
 }
 
 impl<'a, 'input> DiffState<'a, 'input>
-    where 'input: 'a
+where
+    'input: 'a,
 {
     fn new(
         file_a: &'a File<'input>,
@@ -586,14 +603,15 @@ impl<'a, 'input> DiffState<'a, 'input>
         less: FLess,
         greater: FGreater,
     ) -> Result<()>
-        where T: Copy,
-              I: IntoIterator<Item = T>,
-              FIterA: Fn(&PrintState<'a, 'input>) -> I,
-              FIterB: Fn(&PrintState<'a, 'input>) -> I,
-              FCmp: Fn(&FileHash, T, &FileHash, T) -> cmp::Ordering,
-              FEqual: FnMut(&mut Write, &mut DiffState<'a, 'input>, T, T) -> Result<()>,
-              FLess: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
-              FGreater: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>
+    where
+        T: Copy,
+        I: IntoIterator<Item = T>,
+        FIterA: Fn(&PrintState<'a, 'input>) -> I,
+        FIterB: Fn(&PrintState<'a, 'input>) -> I,
+        FCmp: Fn(&FileHash, T, &FileHash, T) -> cmp::Ordering,
+        FEqual: FnMut(&mut Write, &mut DiffState<'a, 'input>, T, T) -> Result<()>,
+        FLess: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
+        FGreater: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
         let iter_a = &mut iter_a(&self.a).into_iter();
         let iter_b = &mut iter_b(&self.b).into_iter();
@@ -610,7 +628,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 
     fn diff<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
-        where F: FnMut(&mut Write, &mut DiffState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut Write, &mut DiffState<'a, 'input>) -> Result<()>,
     {
         let mut buf = Vec::new();
         self.a.diff = false;
@@ -623,7 +642,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 
     fn ignore_diff<F>(&mut self, flag: bool, mut f: F) -> Result<()>
-        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
         let a_diff = self.a.diff;
         let b_diff = self.b.diff;
@@ -636,7 +656,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 
     fn indent<F>(&mut self, mut f: F) -> Result<()>
-        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
         self.a.indent += 1;
         self.b.indent += 1;
@@ -647,7 +668,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 
     fn prefix_equal<F>(&mut self, mut f: F) -> Result<()>
-        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
         let prev_a = self.a.prefix;
         let prev_b = self.b.prefix;
@@ -660,19 +682,22 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 
     fn prefix_less<F>(&mut self, f: F) -> Result<()>
-        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
         self.a.prefix(DiffPrefix::Less, f)
     }
 
     fn prefix_greater<F>(&mut self, f: F) -> Result<()>
-        where F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
         self.b.prefix(DiffPrefix::Greater, f)
     }
 
     fn prefix_diff<F>(&mut self, mut f: F) -> Result<()>
-        where F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>
+    where
+        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
         let prev_a = self.a.prefix;
         let prev_b = self.b.prefix;
@@ -685,7 +710,8 @@ impl<'a, 'input> DiffState<'a, 'input>
     }
 
     fn line<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
-        where F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>
+    where
+        F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
         let mut a = Vec::new();
         let mut state = PrintState::new(self.a.file, self.a.hash, self.a.flags);
@@ -717,7 +743,8 @@ impl<'a, 'input> DiffState<'a, 'input>
 
     /// This is the same as `Self::line`. It exists for symmetry with `PrintState::line_option`.
     fn line_option<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, f: F) -> Result<()>
-        where F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>
+    where
+        F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
         self.line(w, arg_a, arg_b, f)
     }
@@ -736,19 +763,12 @@ impl<'a, 'input> DiffState<'a, 'input>
         mut print: Print,
         mut diff: Diff,
     ) -> Result<()>
-        where Arg: Copy,
-              Cost: Fn(&DiffState<'a, 'input>, &T, &T) -> usize,
-              Print: FnMut(&mut Write, &mut PrintState<'a, 'input>, &T, Arg, &mut MutArg)
-                           -> Result<()>,
-              Diff: FnMut(&mut Write,
-                          &mut DiffState<'a, 'input>,
-                          &T,
-                          Arg,
-                          &mut MutArg,
-                          &T,
-                          Arg,
-                          &mut MutArg)
-                          -> Result<()>
+    where
+        Arg: Copy,
+        Cost: Fn(&DiffState<'a, 'input>, &T, &T) -> usize,
+        Print: FnMut(&mut Write, &mut PrintState<'a, 'input>, &T, Arg, &mut MutArg) -> Result<()>,
+        Diff: FnMut(&mut Write, &mut DiffState<'a, 'input>, &T, Arg, &mut MutArg, &T, Arg, &mut MutArg)
+            -> Result<()>,
     {
         let path = diff::shortest_path(list_a, list_b, step_cost, |a, b| diff_cost(self, a, b));
         let mut iter_a = list_a.iter();
@@ -937,7 +957,7 @@ impl<'input> Namespace<'input> {
         match *namespace {
             Some(ref namespace) => {
                 namespace.kind == NamespaceKind::Type &&
-                (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
+                    (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
             }
             None => false,
         }
@@ -1268,7 +1288,8 @@ impl<'input> Type<'input> {
         hash: &'a FileHash<'a, 'input>,
         offset: TypeOffset,
     ) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         hash.types.get(&offset).map(|ty| *ty)
     }
@@ -1491,24 +1512,10 @@ impl<'input> Type<'input> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
                 (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
-                    return StructType::diff_members(
-                        w,
-                        state,
-                        unit_a,
-                        a,
-                        unit_b,
-                        b,
-                    );
+                    return StructType::diff_members(w, state, unit_a, a, unit_b, b);
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
-                    return UnionType::diff_members(
-                        w,
-                        state,
-                        unit_a,
-                        a,
-                        unit_b,
-                        b,
-                    );
+                    return UnionType::diff_members(w, state, unit_a, a, unit_b, b);
                 }
                 _ => {}
             }
@@ -1547,24 +1554,10 @@ impl<'input> Type<'input> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
                 (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
-                    return StructType::diff_members_entries(
-                        w,
-                        state,
-                        unit_a,
-                        a,
-                        unit_b,
-                        b,
-                    );
+                    return StructType::diff_members_entries(w, state, unit_a, a, unit_b, b);
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
-                    return UnionType::diff_members_entries(
-                        w,
-                        state,
-                        unit_a,
-                        a,
-                        unit_b,
-                        b,
-                    );
+                    return UnionType::diff_members_entries(w, state, unit_a, a, unit_b, b);
                 }
                 _ => {}
             }
@@ -1622,7 +1615,8 @@ impl TypeModifierKind {
 
 impl<'input> TypeModifier<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -1730,7 +1724,8 @@ struct TypeDef<'input> {
 
 impl<'input> TypeDef<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
@@ -1861,12 +1856,7 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_members(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-    ) -> Result<()> {
+    fn print_members(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line_option(w, |w, state| self.print_members_label(w, state))?;
         state.indent(|state| self.print_members_entries(w, state, unit))
     }
@@ -1880,9 +1870,7 @@ impl<'input> StructType<'input> {
         b: &StructType,
     ) -> Result<()> {
         state.line_option(w, a, b, |w, state, x| x.print_members_label(w, state))?;
-        state.indent(|state| {
-            Self::diff_members_entries(w, state, unit_a, a, unit_b, b)
-        })
+        state.indent(|state| Self::diff_members_entries(w, state, unit_a, a, unit_b, b))
     }
 
     fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
@@ -2060,12 +2048,7 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_members(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-    ) -> Result<()> {
+    fn print_members(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line_option(w, |w, state| self.print_members_label(w, state))?;
         state.indent(|state| self.print_members_entries(w, state, unit))
     }
@@ -2079,9 +2062,7 @@ impl<'input> UnionType<'input> {
         b: &UnionType,
     ) -> Result<()> {
         state.line_option(w, a, b, |w, state, x| x.print_members_label(w, state))?;
-        state.indent(|state| {
-            Self::diff_members_entries(w, state, unit_a, a, unit_b, b)
-        })
+        state.indent(|state| Self::diff_members_entries(w, state, unit_a, a, unit_b, b))
     }
 
     fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
@@ -2194,7 +2175,8 @@ struct Member<'input> {
 
 impl<'input> Member<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
@@ -2252,14 +2234,7 @@ impl<'input> Member<'input> {
             } else {
                 None
             };
-            Type::diff_members_entries(
-                w,
-                state,
-                unit_a,
-                ty_a,
-                unit_b,
-                ty_b,
-            )
+            Type::diff_members_entries(w, state, unit_a, ty_a, unit_b, ty_b)
         })
     }
 
@@ -2369,7 +2344,8 @@ struct EnumerationType<'input> {
 
 impl<'input> EnumerationType<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
@@ -2565,7 +2541,8 @@ struct ArrayType<'input> {
 
 impl<'input> ArrayType<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -2636,7 +2613,8 @@ impl<'input> SubroutineType<'input> {
     }
 
     fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
@@ -2743,13 +2721,15 @@ struct PointerToMemberType {
 
 impl PointerToMemberType {
     fn ty<'a, 'input>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
     fn containing_ty<'a, 'input>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.containing_ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -2897,9 +2877,7 @@ impl<'input> Subprogram<'input> {
             state.line_option(w, |w, _state| self.print_declaration(w))?;
             state.line_option(w, |w, _state| self.print_return_type_label(w))?;
             state
-                    .indent(
-                        |state| state.line_option(w, |w, state| self.print_return_type(w, state)),
-                    )?;
+                .indent(|state| state.line_option(w, |w, state| self.print_return_type(w, state)))?;
             state.line_option(w, |w, _state| self.print_parameters_label(w))?;
             state.indent(|state| self.print_parameters(w, state))?;
             state.line_option(w, |w, _state| self.print_variables_label(w))?;
@@ -2947,16 +2925,25 @@ impl<'input> Subprogram<'input> {
             )?;
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, _state, x| x.print_return_type_label(w))?;
-            state.indent(
-                |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
-            )?;
+            state
+                .indent(
+                    |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
+                )?;
             state.line_option(w, a, b, |w, _state, x| x.print_parameters_label(w))?;
             state.indent(|state| Subprogram::diff_parameters(w, state, a, b))?;
             state.line_option(w, a, b, |w, _state, x| x.print_variables_label(w))?;
             state.indent(|state| Subprogram::diff_variables(w, state, a, b))?;
             if state.flags.inline_depth > 0 {
                 state.line_option(w, a, b, |w, _state, x| x.print_inlined_subroutines_label(w))?;
-                InlinedSubroutine::diff_inlined_subroutines(w, state, unit_a, &a.inlined_subroutines, unit_b, &b.inlined_subroutines, 1)?;
+                InlinedSubroutine::diff_inlined_subroutines(
+                    w,
+                    state,
+                    unit_a,
+                    &a.inlined_subroutines,
+                    unit_b,
+                    &b.inlined_subroutines,
+                    1,
+                )?;
             }
             // TODO
             if false && state.flags.calls {
@@ -3241,7 +3228,8 @@ struct Parameter<'input> {
 
 impl<'input> Parameter<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -3335,10 +3323,19 @@ impl<'input> InlinedSubroutine<'input> {
         b: &InlinedSubroutine,
         depth: usize,
     ) -> Result<()> {
-        state.line(w, (unit_a, a), (unit_b, b), |w, state, (unit, x)| x.print_name(w, state, unit))?;
+        state
+            .line(w, (unit_a, a), (unit_b, b), |w, state, (unit, x)| x.print_name(w, state, unit))?;
 
         if state.flags.inline_depth > depth {
-            Self::diff_inlined_subroutines(w, state, unit_a, &a.inlined_subroutines, unit_b, &b.inlined_subroutines, 1)?;
+            Self::diff_inlined_subroutines(
+                w,
+                state,
+                unit_a,
+                &a.inlined_subroutines,
+                unit_b,
+                &b.inlined_subroutines,
+                1,
+            )?;
         }
 
         Ok(())
@@ -3372,10 +3369,18 @@ impl<'input> InlinedSubroutine<'input> {
         1
     }
 
-    fn diff_cost(_state: &DiffState, unit_a: &Unit, a: &InlinedSubroutine, unit_b: &Unit, b: &InlinedSubroutine) -> usize {
+    fn diff_cost(
+        _state: &DiffState,
+        unit_a: &Unit,
+        a: &InlinedSubroutine,
+        unit_b: &Unit,
+        b: &InlinedSubroutine,
+    ) -> usize {
         let mut cost = 0;
-        let subprogram_a = a.abstract_origin.and_then(|v| Subprogram::from_offset(unit_a, v)).unwrap();
-        let subprogram_b = b.abstract_origin.and_then(|v| Subprogram::from_offset(unit_b, v)).unwrap();
+        let subprogram_a =
+            a.abstract_origin.and_then(|v| Subprogram::from_offset(unit_a, v)).unwrap();
+        let subprogram_b =
+            b.abstract_origin.and_then(|v| Subprogram::from_offset(unit_b, v)).unwrap();
         if Subprogram::cmp_id(subprogram_a, subprogram_b) != cmp::Ordering::Equal {
             cost += 1;
         }
@@ -3407,7 +3412,8 @@ struct Variable<'input> {
 
 impl<'input> Variable<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-        where 'input: 'a
+    where
+        'input: 'a,
     {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -3529,8 +3535,9 @@ fn disassemble_arch<A>(
     high_pc: u64,
     cfg: A::Configuration,
 ) -> Vec<u64>
-    where A: panopticon::Architecture + Debug,
-          A::Configuration: Debug
+where
+    A: panopticon::Architecture + Debug,
+    A::Configuration: Debug,
 {
     let mut calls = Vec::new();
     let mut mnemonics = BTreeMap::new();

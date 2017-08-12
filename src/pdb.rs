@@ -31,12 +31,12 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
         // debug!("Type: {} {:?}", index, ty.parse());
         match ty.parse() {
             Ok(pdb::TypeData::Class {
-                   properties,
-                   fields,
-                   size,
-                   name,
-                   ..
-               }) => {
+                properties,
+                fields,
+                size,
+                name,
+                ..
+            }) => {
                 // TODO: derived_from, vtable_shape
                 let fields = fields.and_then(parse_type_index);
                 parse_class(
@@ -51,12 +51,12 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 )?;
             }
             Ok(pdb::TypeData::Union {
-                   properties,
-                   fields,
-                   size,
-                   name,
-                   ..
-               }) => {
+                properties,
+                fields,
+                size,
+                name,
+                ..
+            }) => {
                 let fields = parse_type_index(fields);
                 parse_union(
                     &mut unit,
@@ -70,12 +70,12 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 )?;
             }
             Ok(pdb::TypeData::Enumeration {
-                   properties,
-                   underlying_type,
-                   fields,
-                   name,
-                   ..
-               }) => {
+                properties,
+                underlying_type,
+                fields,
+                name,
+                ..
+            }) => {
                 let underlying_type = parse_type_index(underlying_type);
                 let fields = parse_type_index(fields);
                 parse_enumeration(
@@ -90,11 +90,11 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 )?;
             }
             Ok(pdb::TypeData::Procedure {
-                   return_type,
-                   attributes,
-                   parameter_count,
-                   argument_list,
-               }) => {
+                return_type,
+                attributes,
+                parameter_count,
+                argument_list,
+            }) => {
                 let return_type = parse_type_index(return_type);
                 let argument_list = parse_type_index(argument_list);
                 parse_procedure(
@@ -108,14 +108,14 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 )?;
             }
             Ok(pdb::TypeData::MemberFunction {
-                   return_type,
-                   class_type,
-                   this_pointer_type,
-                   attributes,
-                   parameter_count,
-                   argument_list,
-                   this_adjustment,
-               }) => {
+                return_type,
+                class_type,
+                this_pointer_type,
+                attributes,
+                parameter_count,
+                argument_list,
+                this_adjustment,
+            }) => {
                 let return_type = parse_type_index(return_type);
                 let class_type = parse_type_index(class_type);
                 let this_pointer_type = parse_type_index(this_pointer_type);
@@ -134,9 +134,9 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 )?;
             }
             Ok(pdb::TypeData::Pointer {
-                   underlying_type,
-                   attributes,
-               }) => {
+                underlying_type,
+                attributes,
+            }) => {
                 let underlying_type = parse_type_index(underlying_type);
                 let byte_size = attributes.size() as u64;
                 let byte_size = if byte_size == 0 {
@@ -159,10 +159,10 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 );
             }
             Ok(pdb::TypeData::Modifier {
-                   underlying_type,
-                   constant,
-                   ..
-               }) => {
+                underlying_type,
+                constant,
+                ..
+            }) => {
                 let underlying_type = parse_type_index(underlying_type);
                 // TODO: volatile, unaligned
                 let kind = if constant {
@@ -185,26 +185,26 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                 );
             }
             Ok(pdb::TypeData::Bitfield {
-                   underlying_type,
-                   length,
-                   position,
-               }) => {
+                underlying_type,
+                length,
+                position,
+            }) => {
                 bitfields.insert(index, (underlying_type, position, length));
             }
             Ok(pdb::TypeData::Array {
-                   element_type,
-                   indexing_type,
-                   stride,
-                   dimensions,
-               }) => {
+                element_type,
+                indexing_type,
+                stride,
+                dimensions,
+            }) => {
                 let element_type = parse_type_index(element_type);
                 let indexing_type = parse_type_index(indexing_type);
                 parse_array(&mut unit, index, element_type, indexing_type, stride, dimensions)?;
             }
             Ok(pdb::TypeData::FieldList {
-                   fields,
-                   continuation,
-               }) => {
+                fields,
+                continuation,
+            }) => {
                 let continuation = continuation.and_then(parse_type_index);
                 parse_field_list(
                     &mut member_lists,

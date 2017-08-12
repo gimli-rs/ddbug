@@ -52,18 +52,22 @@ pub fn shortest_path<Item, F>(
     step_cost: usize,
     diff_cost: F,
 ) -> Vec<Direction>
-    where F: Fn(&Item, &Item) -> usize
+where
+    F: Fn(&Item, &Item) -> usize,
 {
     // len + 1 because we need to allow for the 0 items state too.
     let len1 = item1.len() + 1;
     let len2 = item2.len() + 1;
     let len = len1 * len2;
 
-    let mut node: Vec<Node> = vec![Node {
+    let mut node: Vec<Node> = vec![
+        Node {
             cost: usize::MAX,
             from: Direction::None,
             done: false,
-        }; len];
+        };
+        len
+    ];
     let mut heap = BinaryHeap::new();
 
     fn push(
