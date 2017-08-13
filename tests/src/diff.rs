@@ -3,6 +3,7 @@ test!(typedef_diff_base, "- type ", "typedef_diff_base", " = char\n", "+ type ",
 test!(typedef_diff_anon_equal, "");
 test!(typedef_diff_anon, "  type ", "typedef_diff_anon", " = struct <anon>\n", "- \tsize: 1\n", "+ \tsize: 4\n", "  \tmembers:\n", "- \t\t0[1]\tc: char\n", "+ \t\t0[4]\ti: int\n", "\n");
 test!(typedef_diff_anon_base, "- type ", "typedef_diff_anon_base", " = char\n", "+ type ", "typedef_diff_anon_base", " = struct <anon>\n", "  \tsize: 1\n", "+ \tmembers:\n", "+ \t\t0[1]\tc: char\n", "\n");
+test!(typedef_diff_anon_struct_union, "- type ", "typedef_diff_anon_struct_union", " = struct <anon>\n", "+ type ", "typedef_diff_anon_struct_union", " = union <anon>\n", "  \tsize: 1\n", "- \tmembers:\n", "- \t\t0[1]\tc: char\n", "+ \tmembers:\n", "+ \t\t0[1]\tc: char\n", "\n");
 test!(typedef_diff_base_anon, "- type ", "typedef_diff_base_anon", " = struct <anon>\n", "+ type ", "typedef_diff_base_anon", " = char\n", "  \tsize: 1\n", "- \tmembers:\n", "- \t\t0[1]\tc: char\n", "\n");
 test!(typedef_diff_struct_name, "- type ", "typedef_diff_struct_name", " = struct ", "typedef_diff_struct_name_s1", "\n", "+ type ", "typedef_diff_struct_name", " = struct ", "typedef_diff_struct_name_s2", "\n", "  \tsize: 1\n", "\n");
 test!(typedef_diff_struct_size, "  type ", "typedef_diff_struct_size", " = struct s\n", "- \tsize: 1\n", "+ \tsize: 4\n", "\n");

@@ -119,6 +119,32 @@ EXPECT(
     "+ \t\t0[1]\tc: char\n",
     "\n")
 
+// Even though they have the same members, it is not meaningful to diff them.
+#undef T
+#define T typedef_diff_anon_struct_union
+#ifdef TEST1
+    typedef struct {
+        char c;
+    } T;
+    USE_TYPE(T);
+#endif
+#ifdef TEST2
+    typedef union {
+        char c;
+    } T;
+    USE_TYPE(T);
+#endif
+EXPECT(
+    T,
+    "- type ", S(T), " = struct <anon>\n",
+    "+ type ", S(T), " = union <anon>\n",
+    "  \tsize: 1\n",
+    "- \tmembers:\n",
+    "- \t\t0[1]\tc: char\n",
+    "+ \tmembers:\n",
+    "+ \t\t0[1]\tc: char\n",
+    "\n")
+
 #undef T
 #define T typedef_diff_base_anon
 #ifdef TEST1
