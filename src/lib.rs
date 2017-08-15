@@ -3362,20 +3362,18 @@ impl<'input> InlinedSubroutine<'input> {
         )?;
 
         if state.flags.inline_depth > depth {
-            state.indent(|state| {
-                state.list_with_arg(
-                    false,
-                    w,
-                    unit_a,
-                    &a.inlined_subroutines,
-                    depth + 1,
-                    &mut (),
-                    unit_b,
-                    &b.inlined_subroutines,
-                    depth + 1,
-                    &mut (),
-                )
-            })?;
+            state.list_with_arg(
+                false,
+                w,
+                unit_a,
+                &a.inlined_subroutines,
+                depth + 1,
+                &mut (),
+                unit_b,
+                &b.inlined_subroutines,
+                depth + 1,
+                &mut (),
+            )?;
         }
 
         Ok(())
