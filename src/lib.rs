@@ -513,34 +513,6 @@ where
             Ok(())
         })
     }
-
-    fn list_with_arg<T: PrintListWithArg<Arg, MutArg>, Arg: Copy, MutArg>(
-        &mut self,
-        label: bool,
-        w: &mut Write,
-        unit: &Unit,
-        list: &[T],
-        arg: Arg,
-        mut_arg: &mut MutArg,
-    ) -> Result<()> {
-        if list.is_empty() {
-            return Ok(());
-        }
-
-        if label {
-            self.line(w, |w, _state| {
-                write!(w, "{}:", T::list_label())?;
-                Ok(())
-            })?;
-        }
-
-        self.indent(|state| {
-            for item in list {
-                item.print_list(w, state, unit, arg, mut_arg)?;
-            }
-            Ok(())
-        })
-    }
 }
 
 trait PrintList {
@@ -913,82 +885,6 @@ where
                     diff::Direction::Vertical => {
                         if let Some(b) = iter_b.next() {
                             state.prefix_greater(|state| b.print_list(w, state, unit_b))?;
-                        }
-                    }
-                }
-            }
-            Ok(())
-        })
-    }
-
-    fn list_with_arg<T: DiffListWithArg<Arg, MutArg>, Arg: Copy, MutArg>(
-        &mut self,
-        label: bool,
-        w: &mut Write,
-        unit_a: &Unit,
-        list_a: &[T],
-        arg_a: Arg,
-        mut_arg_a: &mut MutArg,
-        unit_b: &Unit,
-        list_b: &[T],
-        arg_b: Arg,
-        mut_arg_b: &mut MutArg,
-    ) -> Result<()> {
-        if list_a.is_empty() && list_b.is_empty() {
-            return Ok(());
-        }
-
-        if label {
-            self.line(w, list_a, list_b, |w, _state, list| {
-                if !list.is_empty() {
-                    write!(w, "{}:", T::list_label())?;
-                }
-                Ok(())
-            })?;
-        }
-
-        self.indent(|state| {
-            let path = diff::shortest_path(
-                list_a,
-                list_b,
-                T::step_cost(),
-                |a, b| T::diff_cost(state, unit_a, a, unit_b, b),
-            );
-            let mut iter_a = list_a.iter();
-            let mut iter_b = list_b.iter();
-            for dir in path {
-                match dir {
-                    diff::Direction::None => break,
-                    diff::Direction::Diagonal => {
-                        if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                            T::diff_list(
-                                w,
-                                state,
-                                unit_a,
-                                a,
-                                arg_a,
-                                mut_arg_a,
-                                unit_b,
-                                b,
-                                arg_b,
-                                mut_arg_b,
-                            )?;
-                        }
-                    }
-                    diff::Direction::Horizontal => {
-                        if let Some(a) = iter_a.next() {
-                            state
-                                .prefix_less(
-                                    |state| a.print_list(w, state, unit_a, arg_a, mut_arg_a),
-                                )?;
-                        }
-                    }
-                    diff::Direction::Vertical => {
-                        if let Some(b) = iter_b.next() {
-                            state
-                                .prefix_greater(
-                                    |state| b.print_list(w, state, unit_b, arg_b, mut_arg_b),
-                                )?;
                         }
                     }
                 }
@@ -2076,14 +1972,7 @@ impl<'input> StructType<'input> {
         state: &mut PrintState,
         unit: &Unit,
     ) -> Result<()> {
-        let mut bit_offset = Some(0);
-        state.list_with_arg(label, w, unit, &self.members, (), &mut bit_offset)?;
-        state.indent(|state| {
-            state.line_option(
-                w,
-                |w, state| Member::print_padding(w, state, self.padding(bit_offset)),
-            )
-        })
+        state.list(label, w, unit, &self.members)
     }
 
     fn diff_members(
@@ -2095,38 +1984,7 @@ impl<'input> StructType<'input> {
         unit_b: &Unit,
         b: &StructType,
     ) -> Result<()> {
-        let mut bit_offset_a = Some(0);
-        let mut bit_offset_b = Some(0);
-        state.list_with_arg(
-            label,
-            w,
-            unit_a,
-            &a.members,
-            (),
-            &mut bit_offset_a,
-            unit_b,
-            &b.members,
-            (),
-            &mut bit_offset_b,
-        )?;
-        state.indent(|state| {
-            state.line_option(
-                w,
-                a.padding(bit_offset_a),
-                b.padding(bit_offset_b),
-                Member::print_padding,
-            )
-        })
-    }
-
-    // Returns (offset, size) of padding.
-    fn padding(&self, bit_offset: Option<u64>) -> Option<(u64, u64)> {
-        if let (Some(bit_offset), Some(size)) = (bit_offset, self.byte_size) {
-            if bit_offset < size * 8 {
-                return Some((bit_offset, size * 8 - bit_offset));
-            }
-        }
-        None
+        state.list(label, w, unit_a, &a.members, unit_b, &b.members)
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -2229,7 +2087,6 @@ impl<'input> UnionType<'input> {
         unit: &Unit,
     ) -> Result<()> {
         state.list(label, w, unit, &self.members)
-        // TODO: trailing padding?
     }
 
     fn diff_members(
@@ -2243,7 +2100,6 @@ impl<'input> UnionType<'input> {
     ) -> Result<()> {
         // TODO: handle reordering better
         state.list(label, w, unit_a, &a.members, unit_b, &b.members)
-        // TODO: trailing padding?
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -2273,11 +2129,12 @@ impl<'input> UnionType<'input> {
 #[derive(Debug, Default, Clone)]
 struct Member<'input> {
     name: Option<&'input [u8]>,
-    // TODO: treat padding as typeless member?
     ty: Option<TypeOffset>,
     // Defaults to 0, so always present.
     bit_offset: u64,
     bit_size: Option<u64>,
+    // Redundant, but simplifies code.
+    next_bit_offset: Option<u64>,
 }
 
 impl<'input> Member<'input> {
@@ -2296,14 +2153,9 @@ impl<'input> Member<'input> {
         }
     }
 
-    fn print(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-        end_bit_offset: &mut Option<u64>,
-    ) -> Result<()> {
-        state.line(w, |w, state| self.print_name(w, state, end_bit_offset))?;
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        let bit_size = self.bit_size(state.hash);
+        state.line(w, |w, state| self.print_name(w, state, bit_size))?;
         state.indent(|state| {
             let ty = if self.is_inline(state.hash) {
                 self.ty(state.hash)
@@ -2311,7 +2163,8 @@ impl<'input> Member<'input> {
                 None
             };
             Type::print_members(false, w, state, unit, ty)
-        })
+        })?;
+        state.line_option(w, |w, state| self.print_padding(w, state, bit_size))
     }
 
     fn diff(
@@ -2319,16 +2172,16 @@ impl<'input> Member<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         a: &Member,
-        end_bit_offset_a: &mut Option<u64>,
         unit_b: &Unit,
         b: &Member,
-        end_bit_offset_b: &mut Option<u64>,
     ) -> Result<()> {
+        let bit_size_a = a.bit_size(state.a.hash);
+        let bit_size_b = b.bit_size(state.b.hash);
         state.line(
             w,
-            (a, end_bit_offset_a),
-            (b, end_bit_offset_b),
-            |w, state, (x, end_bit_offset)| x.print_name(w, state, end_bit_offset),
+            (a, bit_size_a),
+            (b, bit_size_b),
+            |w, state, (x, bit_size)| x.print_name(w, state, bit_size),
         )?;
 
         let ty_a = if a.is_inline(state.a.hash) {
@@ -2341,31 +2194,38 @@ impl<'input> Member<'input> {
         } else {
             None
         };
-        Type::diff_members(false, w, state, unit_a, ty_a, unit_b, ty_b)
+        Type::diff_members(false, w, state, unit_a, ty_a, unit_b, ty_b)?;
+
+        state.line_option(
+            w,
+            (a, bit_size_a),
+            (b, bit_size_b),
+            |w, state, (x, bit_size)| x.print_padding(w, state, bit_size),
+        )
     }
 
-    // Returns (offset, size) of padding.
-    fn padding(&self, end_bit_offset: Option<u64>) -> Option<(u64, u64)> {
-        if let Some(end_bit_offset) = end_bit_offset {
-            if self.bit_offset > end_bit_offset {
-                return Some((end_bit_offset, self.bit_offset - end_bit_offset));
+    fn padding(&self, bit_size: Option<u64>) -> Option<Padding> {
+        if let (Some(bit_size), Some(next_bit_offset)) = (bit_size, self.next_bit_offset) {
+            let bit_offset = self.bit_offset + bit_size;
+            if next_bit_offset > bit_offset {
+                let bit_size = next_bit_offset - bit_offset;
+                return Some(Padding {
+                    bit_offset,
+                    bit_size,
+                });
             }
         }
         None
     }
 
     fn print_padding(
+        &self,
         w: &mut Write,
-        _state: &mut PrintState,
-        padding: Option<(u64, u64)>,
+        state: &mut PrintState,
+        bit_size: Option<u64>,
     ) -> Result<()> {
-        if let Some((padding_bit_offset, padding_bit_size)) = padding {
-            write!(
-                w,
-                "{}[{}]\t<padding>",
-                format_bit(padding_bit_offset),
-                format_bit(padding_bit_size)
-            )?;
+        if let Some(padding) = self.padding(bit_size) {
+            padding.print(w, state)?;
         }
         Ok(())
     }
@@ -2374,19 +2234,17 @@ impl<'input> Member<'input> {
         &self,
         w: &mut Write,
         state: &mut PrintState,
-        end_bit_offset: &mut Option<u64>,
+        bit_size: Option<u64>,
     ) -> Result<()> {
         write!(w, "{}", format_bit(self.bit_offset))?;
-        match self.bit_size(state.hash) {
+        match bit_size {
             Some(bit_size) => {
                 write!(w, "[{}]", format_bit(bit_size))?;
-                *end_bit_offset = self.bit_offset.checked_add(bit_size);
             }
             None => {
                 // TODO: show element size for unsized arrays.
                 debug!("no size for {:?}", self);
                 write!(w, "[??]")?;
-                *end_bit_offset = None;
             }
         }
         match self.name {
@@ -2415,85 +2273,18 @@ impl<'input> Member<'input> {
     }
 }
 
-// Print struct members
-impl<'input> PrintListWithArg<(), Option<u64>> for Member<'input> {
-    fn list_label() -> &'static str {
-        "members"
-    }
-
-    fn print_list(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-        _arg: (),
-        bit_offset: &mut Option<u64>,
-    ) -> Result<()> {
-        self.print(w, state, unit, bit_offset)
-    }
-}
-
-// Diff struct members
-impl<'input> DiffListWithArg<(), Option<u64>> for Member<'input> {
-    fn step_cost() -> usize {
-        1
-    }
-
-    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-            cost += 1;
-        }
-        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-            (Some(ty_a), Some(ty_b)) => {
-                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
-                    cost += 1;
-                }
-            }
-            (None, None) => {}
-            _ => {
-                cost += 1;
-            }
-        }
-        cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Self,
-        _arg_a: (),
-        bit_offset_a: &mut Option<u64>,
-        unit_b: &Unit,
-        b: &Self,
-        _arg_b: (),
-        bit_offset_b: &mut Option<u64>,
-    ) -> Result<()> {
-        state.line_option(
-            w,
-            a.padding(*bit_offset_a),
-            b.padding(*bit_offset_b),
-            Member::print_padding,
-        )?;
-        Member::diff(w, state, unit_a, a, bit_offset_a, unit_b, b, bit_offset_b)?;
-        Ok(())
-    }
-}
-
-// Print union members
+// Print members without padding
 impl<'input> PrintList for Member<'input> {
     fn list_label() -> &'static str {
         "members"
     }
 
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        // TODO: padding?
-        self.print(w, state, unit, &mut None)
+        self.print(w, state, unit)
     }
 }
 
-// Diff union members
+// Diff members without padding
 impl<'input> DiffList for Member<'input> {
     fn step_cost() -> usize {
         1
@@ -2526,7 +2317,20 @@ impl<'input> DiffList for Member<'input> {
         unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        Member::diff(w, state, unit_a, a, &mut None, unit_b, b, &mut None)
+        Member::diff(w, state, unit_a, a, unit_b, b)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Padding {
+    bit_offset: u64,
+    bit_size: u64,
+}
+
+impl Padding {
+    fn print(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+        write!(w, "{}[{}]\t<padding>", format_bit(self.bit_offset), format_bit(self.bit_size))?;
+        Ok(())
     }
 }
 

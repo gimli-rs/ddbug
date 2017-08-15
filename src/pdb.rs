@@ -355,7 +355,7 @@ fn parse_class<'input>(
 ) -> Result<()> {
     let declaration = properties.forward_reference();
     let byte_size = if declaration { None } else { Some(size as u64) };
-    let members = match fields {
+    let mut members = match fields {
         Some(ref fields) => {
             match member_lists.get(&fields.0) {
                 Some(members) => members.clone(),
@@ -364,6 +364,11 @@ fn parse_class<'input>(
         }
         None => Vec::new(),
     };
+    let mut bit_offset = byte_size.map(|v| v * 8);
+    for member in members.iter_mut().rev() {
+        member.next_bit_offset = bit_offset;
+        bit_offset = Some(member.bit_offset);
+    }
     unit.types.insert(
         TypeOffset(index),
         Type {
@@ -392,7 +397,7 @@ fn parse_union<'input>(
 ) -> Result<()> {
     let declaration = properties.forward_reference();
     let byte_size = if declaration { None } else { Some(size as u64) };
-    let members = match fields {
+    let mut members = match fields {
         Some(fields) => {
             match member_lists.get(&fields.0) {
                 Some(members) => members.clone(),
@@ -401,6 +406,11 @@ fn parse_union<'input>(
         }
         None => Vec::new(),
     };
+    let mut bit_offset = byte_size.map(|v| v * 8);
+    for member in members.iter_mut().rev() {
+        member.next_bit_offset = bit_offset;
+        bit_offset = Some(member.bit_offset);
+    }
     unit.types.insert(
         TypeOffset(index),
         Type {
@@ -621,6 +631,7 @@ fn parse_field_list<'input>(
                     ty: ty,
                     bit_offset: bit_offset,
                     bit_size: bit_size,
+                    next_bit_offset: None,
                 });
             }
             pdb::TypeData::Enumerate { value, name, .. } => {

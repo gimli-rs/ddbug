@@ -649,6 +649,11 @@ where
         }
     }
     ty.members.sort_by_key(|v| v.bit_offset);
+    let mut bit_offset = ty.byte_size.map(|v| v * 8);
+    for member in ty.members.iter_mut().rev() {
+        member.next_bit_offset = bit_offset;
+        bit_offset = Some(member.bit_offset);
+    }
     Ok(ty)
 }
 
