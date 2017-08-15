@@ -2639,14 +2639,6 @@ impl<'input> Enumerator<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        state.line(w, |w, _state| self.print_name_value(w))
-    }
-
-    fn diff(w: &mut Write, state: &mut DiffState, a: &Enumerator, b: &Enumerator) -> Result<()> {
-        state.line(w, a, b, |w, _state, x| x.print_name_value(w))
-    }
-
     fn print_name_value(&self, w: &mut Write) -> Result<()> {
         self.print_ref(w)?;
         if let Some(value) = self.value {
@@ -2662,7 +2654,7 @@ impl<'input> PrintList for Enumerator<'input> {
     }
 
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
-        self.print(w, state)
+        state.line(w, |w, _state| self.print_name_value(w))
     }
 }
 
@@ -2692,7 +2684,7 @@ impl<'input> DiffList for Enumerator<'input> {
         _unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        Enumerator::diff(w, state, a, b)
+        state.line(w, a, b, |w, _state, x| x.print_name_value(w))
     }
 }
 
