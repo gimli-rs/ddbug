@@ -392,6 +392,7 @@ where
     prefix: DiffPrefix,
     // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
     diff: bool,
+    inline_depth: usize,
 
     // The remaining fields contain information that is commonly needed in print methods.
     file: &'a File<'input>,
@@ -408,6 +409,7 @@ where
             indent: 0,
             prefix: DiffPrefix::None,
             diff: false,
+            inline_depth: flags.inline_depth,
             file: file,
             hash: hash,
             flags: flags,
@@ -423,6 +425,20 @@ where
         self.indent -= 1;
         ret
     }
+
+    fn inline<F>(&mut self, mut f: F) -> Result<()>
+    where
+        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+    {
+        if self.inline_depth == 0 {
+            return Ok(());
+        }
+        self.inline_depth -= 1;
+        let ret = f(self);
+        self.inline_depth += 1;
+        ret
+    }
+
 
     fn prefix<F>(&mut self, prefix: DiffPrefix, mut f: F) -> Result<()>
     where
@@ -750,6 +766,21 @@ where
         let ret = f(self);
         self.a.indent -= 1;
         self.b.indent -= 1;
+        ret
+    }
+
+    fn inline<F>(&mut self, mut f: F) -> Result<()>
+    where
+        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
+    {
+        if self.a.inline_depth == 0 {
+            return Ok(());
+        }
+        self.a.inline_depth -= 1;
+        self.b.inline_depth -= 1;
+        let ret = f(self);
+        self.a.inline_depth += 1;
+        self.b.inline_depth += 1;
         ret
     }
 
@@ -3014,9 +3045,7 @@ impl<'input> Subprogram<'input> {
                 .indent(|state| state.line_option(w, |w, state| self.print_return_type(w, state)))?;
             state.list(true, w, unit, &self.parameters)?;
             state.list(true, w, unit, &self.variables)?;
-            if state.flags.inline_depth > 0 {
-                state.list_with_arg(true, w, unit, &self.inlined_subroutines, 1, &mut ())?;
-            }
+            state.inline(|state| state.list(true, w, unit, &self.inlined_subroutines))?;
             if state.flags.calls {
                 let calls = self.calls(state.file);
                 if !calls.is_empty() {
@@ -3068,20 +3097,18 @@ impl<'input> Subprogram<'input> {
                 variables_b.sort_by(|x, y| Variable::cmp_id(x, y));
                 state.list(true, w, unit_a, &variables_a, unit_b, &variables_b)?;
             }
-            if state.flags.inline_depth > 0 {
-                state.list_with_arg(
-                    true,
-                    w,
-                    unit_a,
-                    &a.inlined_subroutines,
-                    1,
-                    &mut (),
-                    unit_b,
-                    &b.inlined_subroutines,
-                    1,
-                    &mut (),
-                )?;
-            }
+            state.inline(
+                |state| {
+                    state.list(
+                        true,
+                        w,
+                        unit_a,
+                        &a.inlined_subroutines,
+                        unit_b,
+                        &b.inlined_subroutines,
+                    )
+                },
+            )?;
             // TODO
             if false && state.flags.calls {
                 let calls_a = a.calls(state.a.file);
@@ -3318,20 +3345,6 @@ struct InlinedSubroutine<'input> {
 }
 
 impl<'input> InlinedSubroutine<'input> {
-    fn print(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-        depth: usize,
-    ) -> Result<()> {
-        state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
-        if state.flags.inline_depth > depth {
-            state.list_with_arg(false, w, unit, &self.inlined_subroutines, depth + 1, &mut ())?;
-        }
-        Ok(())
-    }
-
     fn print_size_and_decl(&self, w: &mut Write, _state: &PrintState, unit: &Unit) -> Result<()> {
         match self.size {
             Some(size) => write!(w, "[{}]", size)?,
@@ -3344,60 +3357,21 @@ impl<'input> InlinedSubroutine<'input> {
         }
         Ok(())
     }
-
-    fn diff(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &InlinedSubroutine,
-        unit_b: &Unit,
-        b: &InlinedSubroutine,
-        depth: usize,
-    ) -> Result<()> {
-        state.line(
-            w,
-            (unit_a, a),
-            (unit_b, b),
-            |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
-        )?;
-
-        if state.flags.inline_depth > depth {
-            state.list_with_arg(
-                false,
-                w,
-                unit_a,
-                &a.inlined_subroutines,
-                depth + 1,
-                &mut (),
-                unit_b,
-                &b.inlined_subroutines,
-                depth + 1,
-                &mut (),
-            )?;
-        }
-
-        Ok(())
-    }
 }
 
-impl<'input> PrintListWithArg<usize, ()> for InlinedSubroutine<'input> {
+impl<'input> PrintList for InlinedSubroutine<'input> {
     fn list_label() -> &'static str {
         "inlined subroutines"
     }
 
-    fn print_list(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-        depth: usize,
-        _mut_arg: &mut (),
-    ) -> Result<()> {
-        self.print(w, state, unit, depth)
+    fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
+        state.inline(|state| state.list(false, w, unit, &self.inlined_subroutines))?;
+        Ok(())
     }
 }
 
-impl<'input> DiffListWithArg<usize, ()> for InlinedSubroutine<'input> {
+impl<'input> DiffList for InlinedSubroutine<'input> {
     fn step_cost() -> usize {
         1
     }
@@ -3422,14 +3396,31 @@ impl<'input> DiffListWithArg<usize, ()> for InlinedSubroutine<'input> {
         state: &mut DiffState,
         unit_a: &Unit,
         a: &Self,
-        depth: usize,
-        _mut_arg_a: &mut (),
         unit_b: &Unit,
         b: &Self,
-        _depth: usize,
-        _mut_arg_b: &mut (),
     ) -> Result<()> {
-        Self::diff(w, state, unit_a, a, unit_b, b, depth)
+        state.line(
+            w,
+            (unit_a, a),
+            (unit_b, b),
+            |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
+        )?;
+
+        state
+            .inline(
+                |state| {
+                    state.list(
+                        false,
+                        w,
+                        unit_a,
+                        &a.inlined_subroutines,
+                        unit_b,
+                        &b.inlined_subroutines,
+                    )
+                },
+            )?;
+
+        Ok(())
     }
 }
 
