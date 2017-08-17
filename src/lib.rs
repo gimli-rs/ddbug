@@ -610,23 +610,21 @@ where
 
     fn next(&mut self) -> Option<MergeResult<T>> {
         match (self.item_left, self.item_right) {
-            (Some(left), Some(right)) => {
-                match (self.item_cmp)(left, right) {
-                    cmp::Ordering::Equal => {
-                        self.item_left = self.iter_left.next();
-                        self.item_right = self.iter_right.next();
-                        Some(MergeResult::Both(left, right))
-                    }
-                    cmp::Ordering::Less => {
-                        self.item_left = self.iter_left.next();
-                        Some(MergeResult::Left(left))
-                    }
-                    cmp::Ordering::Greater => {
-                        self.item_right = self.iter_right.next();
-                        Some(MergeResult::Right(right))
-                    }
+            (Some(left), Some(right)) => match (self.item_cmp)(left, right) {
+                cmp::Ordering::Equal => {
+                    self.item_left = self.iter_left.next();
+                    self.item_right = self.iter_right.next();
+                    Some(MergeResult::Both(left, right))
                 }
-            }
+                cmp::Ordering::Less => {
+                    self.item_left = self.iter_left.next();
+                    Some(MergeResult::Left(left))
+                }
+                cmp::Ordering::Greater => {
+                    self.item_right = self.iter_right.next();
+                    Some(MergeResult::Right(right))
+                }
+            },
             (Some(left), None) => {
                 self.item_left = self.iter_left.next();
                 Some(MergeResult::Left(left))
@@ -877,16 +875,12 @@ where
                             T::diff_list(w, state, unit_a, a, unit_b, b)?;
                         }
                     }
-                    diff::Direction::Horizontal => {
-                        if let Some(a) = iter_a.next() {
-                            state.prefix_less(|state| a.print_list(w, state, unit_a))?;
-                        }
-                    }
-                    diff::Direction::Vertical => {
-                        if let Some(b) = iter_b.next() {
-                            state.prefix_greater(|state| b.print_list(w, state, unit_b))?;
-                        }
-                    }
+                    diff::Direction::Horizontal => if let Some(a) = iter_a.next() {
+                        state.prefix_less(|state| a.print_list(w, state, unit_a))?;
+                    },
+                    diff::Direction::Vertical => if let Some(b) = iter_b.next() {
+                        state.prefix_greater(|state| b.print_list(w, state, unit_b))?;
+                    },
                 }
             }
             Ok(())
@@ -1052,12 +1046,10 @@ impl<'input> Namespace<'input> {
     fn _cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
         debug_assert_eq!(a.len(), b.len());
         match (a.parent.as_ref(), b.parent.as_ref()) {
-            (Some(p1), Some(p2)) => {
-                match Self::_cmp(p1, p2) {
-                    cmp::Ordering::Equal => a.name.cmp(&b.name),
-                    o => o,
-                }
-            }
+            (Some(p1), Some(p2)) => match Self::_cmp(p1, p2) {
+                cmp::Ordering::Equal => a.name.cmp(&b.name),
+                o => o,
+            },
             _ => cmp::Ordering::Equal,
         }
     }
@@ -1102,12 +1094,10 @@ fn cmp_ns_and_name(
     name2: Option<&[u8]>,
 ) -> cmp::Ordering {
     match (ns1, ns2) {
-        (&Some(ref ns1), &Some(ref ns2)) => {
-            match Namespace::cmp(ns1, ns2) {
-                cmp::Ordering::Equal => name1.cmp(&name2),
-                o => o,
-            }
-        }
+        (&Some(ref ns1), &Some(ref ns2)) => match Namespace::cmp(ns1, ns2) {
+            cmp::Ordering::Equal => name1.cmp(&name2),
+            o => o,
+        },
         (&Some(_), &None) => cmp::Ordering::Greater,
         (&None, &Some(_)) => cmp::Ordering::Less,
         (&None, &None) => name1.cmp(&name2),
@@ -1173,9 +1163,7 @@ impl<'input> Unit<'input> {
                         return false;
                     }
                 }
-                TypeKind::Def(..) |
-                TypeKind::Union(..) |
-                TypeKind::Enumeration(..) => {}
+                TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
                 TypeKind::Base(..) |
                 TypeKind::Array(..) |
                 TypeKind::Subroutine(..) |
@@ -1506,12 +1494,10 @@ impl<'input> Type<'input> {
         offset: Option<TypeOffset>,
     ) -> Result<()> {
         match offset {
-            Some(offset) => {
-                match Type::from_offset(state.hash, offset) {
-                    Some(ty) => ty.print_ref(w, state)?,
-                    None => write!(w, "<invalid-type {}>", offset.0)?,
-                }
-            }
+            Some(offset) => match Type::from_offset(state.hash, offset) {
+                Some(ty) => ty.print_ref(w, state)?,
+                None => write!(w, "<invalid-type {}>", offset.0)?,
+            },
             None => write!(w, "void")?,
         }
         Ok(())
@@ -1535,18 +1521,14 @@ impl<'input> Type<'input> {
     fn is_subroutine(&self, hash: &FileHash) -> bool {
         match self.kind {
             TypeKind::Subroutine(..) => true,
-            TypeKind::Def(ref val) => {
-                match val.ty(hash) {
-                    Some(ty) => ty.is_subroutine(hash),
-                    None => false,
-                }
-            }
-            TypeKind::Modifier(ref val) => {
-                match val.ty(hash) {
-                    Some(ty) => ty.is_subroutine(hash),
-                    None => false,
-                }
-            }
+            TypeKind::Def(ref val) => match val.ty(hash) {
+                Some(ty) => ty.is_subroutine(hash),
+                None => false,
+            },
+            TypeKind::Modifier(ref val) => match val.ty(hash) {
+                Some(ty) => ty.is_subroutine(hash),
+                None => false,
+            },
             TypeKind::Struct(..) |
             TypeKind::Union(..) |
             TypeKind::Base(..) |
@@ -1738,13 +1720,14 @@ impl<'input> TypeModifier<'input> {
         } else {
             match self.kind {
                 TypeModifierKind::Pointer => write!(w, "* ")?,
-                TypeModifierKind::Reference |
-                TypeModifierKind::RvalueReference => write!(w, "& ")?,
+                TypeModifierKind::Reference | TypeModifierKind::RvalueReference => write!(w, "& ")?,
                 TypeModifierKind::Const => write!(w, "const ")?,
                 TypeModifierKind::Volatile => write!(w, "volatile ")?,
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
-                TypeModifierKind::Packed | TypeModifierKind::Shared |
-                TypeModifierKind::Atomic | TypeModifierKind::Other => {}
+                TypeModifierKind::Packed |
+                TypeModifierKind::Shared |
+                TypeModifierKind::Atomic |
+                TypeModifierKind::Other => {}
             }
             Type::print_ref_from_offset(w, state, self.ty)?;
         }
@@ -2207,11 +2190,9 @@ impl<'input> Member<'input> {
 
     fn is_inline(&self, hash: &FileHash) -> bool {
         match self.name {
-            Some(s) => {
-                if s.starts_with(b"RUST$ENCODED$ENUM$") {
-                    return true;
-                }
-            }
+            Some(s) => if s.starts_with(b"RUST$ENCODED$ENUM$") {
+                return true;
+            },
             None => return true,
         };
         if let Some(ty) = self.ty(hash) {
@@ -2278,12 +2259,10 @@ impl<'input> DiffList for Member<'input> {
     ) -> Result<()> {
         let bit_size_a = a.bit_size(state.a.hash);
         let bit_size_b = b.bit_size(state.b.hash);
-        state.line(
-            w,
-            (a, bit_size_a),
-            (b, bit_size_b),
-            |w, state, (x, bit_size)| x.print_name(w, state, bit_size),
-        )?;
+        state
+            .line(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+                x.print_name(w, state, bit_size)
+            })?;
 
         let ty_a = if a.is_inline(state.a.hash) {
             a.ty(state.a.hash)
@@ -2297,12 +2276,9 @@ impl<'input> DiffList for Member<'input> {
         };
         Type::diff_members(false, w, state, unit_a, ty_a, unit_b, ty_b)?;
 
-        state.line_option(
-            w,
-            (a, bit_size_a),
-            (b, bit_size_b),
-            |w, state, (x, bit_size)| x.print_padding(w, state, bit_size),
-        )
+        state.line_option(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+            x.print_padding(w, state, bit_size)
+        })
     }
 }
 
@@ -2878,8 +2854,8 @@ impl<'input> Subprogram<'input> {
                 variables_b.sort_by(|x, y| Variable::cmp_id(x, y));
                 state.list(true, w, unit_a, &variables_a, unit_b, &variables_b)?;
             }
-            state.inline(
-                |state| {
+            state
+                .inline(|state| {
                     state.list(
                         true,
                         w,
@@ -2888,8 +2864,7 @@ impl<'input> Subprogram<'input> {
                         unit_b,
                         &b.inlined_subroutines,
                     )
-                },
-            )?;
+                })?;
             // TODO
             if false && state.flags.calls {
                 let calls_a = a.calls(state.a.file);
@@ -3188,18 +3163,9 @@ impl<'input> DiffList for InlinedSubroutine<'input> {
         )?;
 
         state
-            .inline(
-                |state| {
-                    state.list(
-                        false,
-                        w,
-                        unit_a,
-                        &a.inlined_subroutines,
-                        unit_b,
-                        &b.inlined_subroutines,
-                    )
-                },
-            )?;
+            .inline(|state| {
+                state.list(false, w, unit_a, &a.inlined_subroutines, unit_b, &b.inlined_subroutines)
+            })?;
 
         Ok(())
     }
@@ -3447,14 +3413,15 @@ where
 
             for instruction in &mnemonic.instructions {
                 match *instruction {
-                    panopticon::Statement { op: panopticon::Operation::Call(ref call), .. } => {
-                        match *call {
-                            panopticon::Rvalue::Constant { ref value, .. } => {
-                                calls.push(*value);
-                            }
-                            _ => {}
+                    panopticon::Statement {
+                        op: panopticon::Operation::Call(ref call),
+                        ..
+                    } => match *call {
+                        panopticon::Rvalue::Constant { ref value, .. } => {
+                            calls.push(*value);
                         }
-                    }
+                        _ => {}
+                    },
                     _ => {}
                 }
             }

@@ -122,10 +122,9 @@ fn main() {
         let path_b = &matches.free[1];
 
         if let Err(e) = ddbug::parse_file(path_a, &mut |file_a| {
-            if let Err(e) = ddbug::parse_file(
-                path_b,
-                &mut |file_b| diff_file(file_a, file_b, &flags),
-            ) {
+            if let Err(e) =
+                ddbug::parse_file(path_b, &mut |file_b| diff_file(file_a, file_b, &flags))
+            {
                 error!("{}: {}", path_b, e);
             }
             Ok(())

@@ -5,10 +5,9 @@ fn diff(name: &str, expect: &str) {
     flags.unit("src/diff.c").name(name);
     let mut diff = Vec::new();
     ddbug::parse_file("tests/bin/diff1", &mut |output_1| {
-        ddbug::parse_file(
-            "tests/bin/diff2",
-            &mut |output_2| ddbug::diff_file(&mut diff, output_1, output_2, &flags),
-        )
+        ddbug::parse_file("tests/bin/diff2", &mut |output_2| {
+            ddbug::diff_file(&mut diff, output_1, output_2, &flags)
+        })
     }).unwrap();
     let diff = String::from_utf8(diff).unwrap();
     if !equal(&diff, expect) {

@@ -6,9 +6,9 @@ use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
 use super::Result;
-use super::{File, Unit, Namespace, SubprogramOffset, Subprogram, TypeOffset, Type, TypeKind,
-            BaseType, StructType, UnionType, EnumerationType, Enumerator, ArrayType,
-            SubroutineType, TypeModifier, TypeModifierKind, Member, Parameter};
+use super::{ArrayType, BaseType, EnumerationType, Enumerator, File, Member, Namespace, Parameter,
+            StructType, Subprogram, SubprogramOffset, SubroutineType, Type, TypeKind,
+            TypeModifier, TypeModifierKind, TypeOffset, UnionType, Unit};
 
 pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let mut cursor = io::Cursor::new(input);
@@ -234,28 +234,28 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     let mut symbol_index = 0;
     while let Some(symbol) = symbols.next()? {
         match symbol.parse()? {
-            pdb::SymbolData::PublicSymbol { function, offset, .. } => {
-                if function {
-                    unit.subprograms.insert(
-                        SubprogramOffset(symbol_index),
-                        Subprogram {
-                            namespace: namespace.clone(),
-                            name: Some(symbol.name()?.as_bytes()),
-                            linkage_name: None,
-                            low_pc: Some(offset as u64),
-                            high_pc: None,
-                            size: None,
-                            inline: false,
-                            declaration: false,
-                            parameters: Vec::new(),
-                            return_type: None,
-                            inlined_subroutines: Vec::new(),
-                            variables: Vec::new(),
-                        },
-                    );
-                    symbol_index += 1;
-                }
-            }
+            pdb::SymbolData::PublicSymbol {
+                function, offset, ..
+            } => if function {
+                unit.subprograms.insert(
+                    SubprogramOffset(symbol_index),
+                    Subprogram {
+                        namespace: namespace.clone(),
+                        name: Some(symbol.name()?.as_bytes()),
+                        linkage_name: None,
+                        low_pc: Some(offset as u64),
+                        high_pc: None,
+                        size: None,
+                        inline: false,
+                        declaration: false,
+                        parameters: Vec::new(),
+                        return_type: None,
+                        inlined_subroutines: Vec::new(),
+                        variables: Vec::new(),
+                    },
+                );
+                symbol_index += 1;
+            },
             _ => {}
         }
     }
@@ -356,12 +356,10 @@ fn parse_class<'input>(
     let declaration = properties.forward_reference();
     let byte_size = if declaration { None } else { Some(size as u64) };
     let mut members = match fields {
-        Some(ref fields) => {
-            match member_lists.get(&fields.0) {
-                Some(members) => members.clone(),
-                None => return Err(format!("Missing field list for index {}", fields.0).into()),
-            }
-        }
+        Some(ref fields) => match member_lists.get(&fields.0) {
+            Some(members) => members.clone(),
+            None => return Err(format!("Missing field list for index {}", fields.0).into()),
+        },
         None => Vec::new(),
     };
     let mut bit_offset = byte_size.map(|v| v * 8);
@@ -398,12 +396,10 @@ fn parse_union<'input>(
     let declaration = properties.forward_reference();
     let byte_size = if declaration { None } else { Some(size as u64) };
     let mut members = match fields {
-        Some(fields) => {
-            match member_lists.get(&fields.0) {
-                Some(members) => members.clone(),
-                None => return Err(format!("Missing field list for index {}", fields.0).into()),
-            }
-        }
+        Some(fields) => match member_lists.get(&fields.0) {
+            Some(members) => members.clone(),
+            None => return Err(format!("Missing field list for index {}", fields.0).into()),
+        },
         None => Vec::new(),
     };
     let mut bit_offset = byte_size.map(|v| v * 8);
@@ -439,12 +435,10 @@ fn parse_enumeration<'input>(
 ) -> Result<()> {
     let declaration = properties.forward_reference();
     let enumerators = match fields {
-        Some(ref fields) => {
-            match enumerator_lists.get(&fields.0) {
-                Some(enumerators) => enumerators.clone(),
-                None => return Err(format!("Missing field list for index {}", fields.0).into()),
-            }
-        }
+        Some(ref fields) => match enumerator_lists.get(&fields.0) {
+            Some(enumerators) => enumerators.clone(),
+            None => return Err(format!("Missing field list for index {}", fields.0).into()),
+        },
         None => Vec::new(),
     };
     unit.types.insert(
@@ -474,29 +468,23 @@ fn parse_procedure<'input>(
     argument_list: Option<TypeOffset>,
 ) -> Result<()> {
     let parameters = match argument_list {
-        Some(ref argument_list) => {
-            match argument_lists.get(&argument_list.0) {
-                Some(arguments) => {
-                    if arguments.len() != parameter_count as usize {
-                        debug!(
-                            "PDB parameter count mismatch {}, {}",
-                            arguments.len(),
-                            parameter_count
-                        );
-                    }
-                    arguments
-                        .iter()
-                        .map(|argument| {
-                            Parameter {
-                                name: None,
-                                ty: parse_type_index(*argument),
-                            }
-                        })
-                        .collect()
+        Some(ref argument_list) => match argument_lists.get(&argument_list.0) {
+            Some(arguments) => {
+                if arguments.len() != parameter_count as usize {
+                    debug!("PDB parameter count mismatch {}, {}", arguments.len(), parameter_count);
                 }
-                None => return Err(format!("Missing argument list {}", argument_list.0).into()),
+                arguments
+                    .iter()
+                    .map(|argument| {
+                        Parameter {
+                            name: None,
+                            ty: parse_type_index(*argument),
+                        }
+                    })
+                    .collect()
             }
-        }
+            None => return Err(format!("Missing argument list {}", argument_list.0).into()),
+        },
         None => Vec::new(),
     };
 
@@ -529,8 +517,7 @@ fn parse_member_function<'input>(
 ) -> Result<()> {
     let mut parameters = Vec::with_capacity(parameter_count as usize + 1);
     match this_pointer_type {
-        None |
-        Some(TypeOffset(3)) => {}
+        None | Some(TypeOffset(3)) => {}
         ty => {
             parameters.push(Parameter { name: None, ty: ty });
         }
