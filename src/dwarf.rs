@@ -16,6 +16,7 @@ where
     endian: Endian,
     debug_abbrev: gimli::DebugAbbrev<gimli::EndianBuf<'input, Endian>>,
     debug_info: gimli::DebugInfo<gimli::EndianBuf<'input, Endian>>,
+    debug_line: gimli::DebugLine<gimli::EndianBuf<'input, Endian>>,
     debug_str: gimli::DebugStr<gimli::EndianBuf<'input, Endian>>,
     debug_ranges: gimli::DebugRanges<gimli::EndianBuf<'input, Endian>>,
 }
@@ -27,8 +28,6 @@ where
 {
     header: &'state gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
     abbrev: &'state gimli::Abbreviations,
-    line: Option<gimli::DebugLineOffset>,
-    ranges: Option<gimli::DebugRangesOffset>,
     subprograms: Vec<DwarfSubprogram<'input>>,
     variables: Vec<DwarfVariable<'input>>,
 }
@@ -54,6 +53,8 @@ where
     let debug_abbrev = gimli::DebugAbbrev::new(debug_abbrev, endian);
     let debug_info = get_section(".debug_info");
     let debug_info = gimli::DebugInfo::new(debug_info, endian);
+    let debug_line = get_section(".debug_line");
+    let debug_line = gimli::DebugLine::new(debug_line, endian);
     let debug_str = get_section(".debug_str");
     let debug_str = gimli::DebugStr::new(debug_str, endian);
     let debug_ranges = get_section(".debug_ranges");
@@ -63,6 +64,7 @@ where
         endian: endian,
         debug_abbrev: debug_abbrev,
         debug_info: debug_info,
+        debug_line: debug_line,
         debug_str: debug_str,
         debug_ranges: debug_ranges,
     };
@@ -86,8 +88,6 @@ where
     let mut dwarf_unit = DwarfUnitState {
         header: unit_header,
         abbrev: abbrev,
-        line: None,
-        ranges: None,
         subprograms: Vec::new(),
         variables: Vec::new(),
     };
@@ -103,6 +103,8 @@ where
             return Err(format!("unknown CU tag: {}", entry.tag()).into());
         }
         let mut attrs = entry.attrs();
+        let mut stmt_list = None;
+        let mut ranges = None;
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
@@ -125,13 +127,13 @@ where
                     _ => {}
                 },
                 gimli::DW_AT_stmt_list => {
-                    if let gimli::AttributeValue::DebugLineRef(line) = attr.value() {
-                        dwarf_unit.line = Some(line);
+                    if let gimli::AttributeValue::DebugLineRef(val) = attr.value() {
+                        stmt_list = Some(val);
                     }
                 }
                 gimli::DW_AT_ranges => {
-                    if let gimli::AttributeValue::DebugRangesRef(ranges) = attr.value() {
-                        dwarf_unit.ranges = Some(ranges);
+                    if let gimli::AttributeValue::DebugRangesRef(val) = attr.value() {
+                        ranges = Some(val);
                     }
                 }
                 gimli::DW_AT_producer |
@@ -142,7 +144,54 @@ where
                 _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
-        debug!("{:?}", unit);
+
+        if let Some(low_pc) = unit.low_pc {
+            if let Some(high_pc) = unit.high_pc {
+                unit.size = high_pc.checked_sub(low_pc);
+            } else if let Some(size) = unit.size {
+                unit.high_pc = low_pc.checked_add(size);
+            }
+        }
+
+        if let Some(offset) = ranges {
+            let mut size = 0;
+            let low_pc = unit.low_pc.unwrap_or(0);
+            let mut ranges =
+                dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
+            while let Some(range) = ranges.next()? {
+                size += range.end.wrapping_sub(range.begin);
+            }
+            if size != 0 {
+                unit.range_size = Some(size);
+            }
+        }
+
+        if let Some(offset) = stmt_list {
+            let comp_name = unit.name.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
+            let comp_dir = unit.dir.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
+            let mut rows = dwarf
+                .debug_line
+                .program(offset, dwarf_unit.header.address_size(), comp_name, comp_dir)?
+                .rows();
+            let mut size = 0;
+            let mut prev_addr = None;
+            while let Some((_, row)) = rows.next_row()? {
+                let addr = row.address();
+                if let Some(prev_addr) = prev_addr {
+                    if addr > prev_addr {
+                        size += addr - prev_addr;
+                    }
+                }
+                if row.end_sequence() {
+                    prev_addr = None;
+                } else {
+                    prev_addr = Some(addr);
+                }
+            }
+            if size != 0 {
+                unit.line_size = Some(size);
+            }
+        }
     };
 
     let namespace = None;
@@ -150,6 +199,23 @@ where
 
     fixup_subprogram_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
     fixup_variable_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
+
+    let mut size = 0;
+    for (_, ref subprogram) in &unit.subprograms {
+        if let Some(val) = subprogram.size {
+            size += val;
+        }
+    }
+    if size != 0 {
+        unit.subprogram_size = Some(size);
+    }
+    /*
+    for (_, ref variable) in &unit.variables {
+        if let Some(val) = variable.size {
+            size += val;
+        }
+    }
+    */
     Ok(unit)
 }
 

@@ -551,12 +551,6 @@ pub fn print_file(w: &mut Write, file: &File, flags: &Flags) -> Result<()> {
     let hash = FileHash::new(file);
     for unit in &file.filter_units(flags, false) {
         let mut state = PrintState::new(file, &hash, flags);
-        if flags.unit.is_none() {
-            state.line(w, |w, _state| {
-                write!(w, "Unit: ")?;
-                unit.print_ref(w)
-            })?;
-        }
         unit.print(w, &mut state, flags)?;
     }
     Ok(())
@@ -933,16 +927,6 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> 
             |_state| file_b.filter_units(flags, true),
             |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b),
             |w, state, a, b| {
-                if flags.unit.is_none() {
-                    state
-                        .a
-                        .line(
-                            w, |w, _state| {
-                                write!(w, "Unit: ")?;
-                                a.print_ref(w)
-                            }
-                        )?;
-                }
                 Unit::diff(a, b, w, state, flags)
             },
             |w, state, a| {
@@ -1113,6 +1097,9 @@ pub struct Unit<'input> {
     low_pc: Option<u64>,
     high_pc: Option<u64>,
     size: Option<u64>,
+    range_size: Option<u64>,
+    line_size: Option<u64>,
+    subprogram_size: Option<u64>,
     types: BTreeMap<TypeOffset, Type<'input>>,
     subprograms: BTreeMap<SubprogramOffset, Subprogram<'input>>,
     variables: BTreeMap<VariableOffset, Variable<'input>>,
@@ -1218,7 +1205,49 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
+    fn print_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.size {
+            write!(w, "size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_range_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.range_size {
+            write!(w, "range size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_line_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.line_size {
+            write!(w, "line size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_subprogram_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.subprogram_size {
+            write!(w, "fn size: {}", size)?;
+        }
+        Ok(())
+    }
+
     fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
+        if flags.name.is_none() {
+            state.line(w, |w, _state| {
+                write!(w, "unit ")?;
+                self.print_ref(w)
+            })?;
+            state.indent(|state| {
+                state.line_option(w, |w, _state| self.print_size(w))?;
+                state.line_option(w, |w, _state| self.print_range_size(w))?;
+                state.line_option(w, |w, _state| self.print_line_size(w))?;
+                state.line_option(w, |w, _state| self.print_subprogram_size(w))
+            })?;
+            writeln!(w, "")?;
+        }
+
         for ty in &self.filter_types(state, flags, false) {
             ty.print(w, state, self)?;
             writeln!(w, "")?;
@@ -1253,6 +1282,21 @@ impl<'input> Unit<'input> {
         state: &mut DiffState,
         flags: &Flags,
     ) -> Result<()> {
+        if flags.name.is_none() {
+            state.line(w, unit_a, unit_b, |w, _state, unit| {
+                write!(w, "unit ")?;
+                unit.print_ref(w)
+            })?;
+            state.indent(|state| {
+                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_size(w))?;
+                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_range_size(w))?;
+                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_line_size(w))?;
+                state
+                    .line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_subprogram_size(w))
+            })?;
+            writeln!(w, "")?;
+        }
+
         state
             .merge(
                 w,
