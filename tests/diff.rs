@@ -29,6 +29,9 @@ fn flags<'a>() -> ddbug::Flags<'a> {
         unit: None,
         name: None,
         namespace: Vec::new(),
+        filter_type: true,
+        filter_function: true,
+        filter_variable: true,
         ..Default::default()
     }
 }

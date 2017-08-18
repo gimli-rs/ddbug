@@ -50,6 +50,10 @@ fn main() {
     opts.optopt("", "unit", "print only entries within the given unit", "UNIT");
     opts.optopt("", "name", "print only entries with the given name", "NAME");
     opts.optopt("", "namespace", "print only entries within the given namespace", "NAMESPACE");
+    opts.optflag("", "filter-unit", "print only units");
+    opts.optflag("", "filter-type", "print only types");
+    opts.optflag("", "filter-function", "print only functions");
+    opts.optflag("", "filter-variable", "print only variables");
 
     let matches = match opts.parse(env::args().skip(1)) {
         Ok(m) => m,
@@ -94,20 +98,36 @@ fn main() {
         Some(ref namespace) => namespace.split("::").collect(),
         None => Vec::new(),
     };
+    let mut filter_unit = matches.opt_present("filter-unit");
+    let mut filter_type = matches.opt_present("filter-type");
+    let mut filter_function = matches.opt_present("filter-function");
+    let mut filter_variable = matches.opt_present("filter-variable");
+    if !filter_unit && !filter_type && !filter_function && !filter_variable {
+        if name.is_none() {
+            filter_unit = true;
+        }
+        filter_type = true;
+        filter_function = true;
+        filter_variable = true;
+    }
 
     let flags = ddbug::Flags {
-        calls: calls,
-        sort: sort,
-        ignore_added: ignore_added,
+        calls,
+        sort,
+        ignore_added,
         ignore_deleted: ignore_deleted,
-        ignore_function_address: ignore_function_address,
-        ignore_function_size: ignore_function_size,
-        ignore_function_inline: ignore_function_inline,
-        ignore_variable_address: ignore_variable_address,
-        inline_depth: inline_depth,
-        unit: unit,
-        name: name,
-        namespace: namespace,
+        ignore_function_address,
+        ignore_function_size,
+        ignore_function_inline,
+        ignore_variable_address,
+        inline_depth,
+        unit,
+        name,
+        namespace,
+        filter_unit,
+        filter_type,
+        filter_function,
+        filter_variable,
     };
 
     if diff {

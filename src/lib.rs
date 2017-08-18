@@ -109,6 +109,10 @@ pub struct Flags<'a> {
     pub unit: Option<&'a str>,
     pub name: Option<&'a str>,
     pub namespace: Vec<&'a str>,
+    pub filter_unit: bool,
+    pub filter_type: bool,
+    pub filter_function: bool,
+    pub filter_variable: bool,
 }
 
 impl<'a> Flags<'a> {
@@ -1224,7 +1228,7 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
-        if flags.name.is_none() {
+        if flags.filter_unit {
             state.line(w, |w, _state| {
                 write!(w, "unit ")?;
                 self.print_ref(w)
@@ -1238,17 +1242,23 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        for ty in &self.filter_types(state, flags, false) {
-            ty.print(w, state, self)?;
-            writeln!(w, "")?;
+        if flags.filter_type {
+            for ty in &self.filter_types(state, flags, false) {
+                ty.print(w, state, self)?;
+                writeln!(w, "")?;
+            }
         }
-        for subprogram in &self.filter_subprograms(flags, false) {
-            subprogram.print(w, state, self)?;
-            writeln!(w, "")?;
+        if flags.filter_function {
+            for subprogram in &self.filter_subprograms(flags, false) {
+                subprogram.print(w, state, self)?;
+                writeln!(w, "")?;
+            }
         }
-        for variable in &self.filter_variables(state, flags, false) {
-            variable.print(w, state)?;
-            writeln!(w, "")?;
+        if flags.filter_variable {
+            for variable in &self.filter_variables(state, flags, false) {
+                variable.print(w, state)?;
+                writeln!(w, "")?;
+            }
         }
         Ok(())
     }
@@ -1272,7 +1282,7 @@ impl<'input> Unit<'input> {
         state: &mut DiffState,
         flags: &Flags,
     ) -> Result<()> {
-        if flags.name.is_none() {
+        if flags.filter_unit {
             state.line(w, unit_a, unit_b, |w, _state, unit| {
                 write!(w, "unit ")?;
                 unit.print_ref(w)
@@ -1287,7 +1297,8 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        state
+        if flags.filter_type {
+            state
             .merge(
                 w,
                 |state| unit_a.filter_types(state, flags, true),
@@ -1317,7 +1328,9 @@ impl<'input> Unit<'input> {
                     Ok(())
                 },
             )?;
-        state
+        }
+        if flags.filter_function {
+            state
             .merge(
                 w,
                 |_state| unit_a.filter_subprograms(flags, true),
@@ -1347,7 +1360,9 @@ impl<'input> Unit<'input> {
                     Ok(())
                 },
             )?;
-        state
+        }
+        if flags.filter_variable {
+            state
             .merge(
                 w,
                 |state| unit_a.filter_variables(state, flags, true),
@@ -1377,6 +1392,7 @@ impl<'input> Unit<'input> {
                     Ok(())
                 },
             )?;
+        }
         Ok(())
     }
 }
