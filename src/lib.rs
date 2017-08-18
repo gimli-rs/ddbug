@@ -2787,7 +2787,7 @@ struct Function<'input> {
     declaration: bool,
     parameters: Vec<Parameter<'input>>,
     return_type: Option<TypeOffset>,
-    inlined_subroutines: Vec<InlinedSubroutine<'input>>,
+    inlined_functions: Vec<InlinedFunction<'input>>,
     variables: Vec<Variable<'input>>,
 }
 
@@ -2850,7 +2850,7 @@ impl<'input> Function<'input> {
                 .indent(|state| state.line_option(w, |w, state| self.print_return_type(w, state)))?;
             state.list(true, w, unit, &self.parameters)?;
             state.list(true, w, unit, &self.variables)?;
-            state.inline(|state| state.list(true, w, unit, &self.inlined_subroutines))?;
+            state.inline(|state| state.list(true, w, unit, &self.inlined_functions))?;
             if state.flags.calls {
                 let calls = self.calls(state.file);
                 if !calls.is_empty() {
@@ -2904,14 +2904,7 @@ impl<'input> Function<'input> {
             }
             state
                 .inline(|state| {
-                    state.list(
-                        true,
-                        w,
-                        unit_a,
-                        &a.inlined_subroutines,
-                        unit_b,
-                        &b.inlined_subroutines,
-                    )
+                    state.list(true, w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
                 })?;
             // TODO
             if false && state.flags.calls {
@@ -3141,14 +3134,14 @@ impl<'input> DiffList for Parameter<'input> {
 }
 
 #[derive(Debug, Default)]
-struct InlinedSubroutine<'input> {
+struct InlinedFunction<'input> {
     abstract_origin: Option<FunctionOffset>,
     size: Option<u64>,
-    inlined_subroutines: Vec<InlinedSubroutine<'input>>,
+    inlined_functions: Vec<InlinedFunction<'input>>,
     variables: Vec<Variable<'input>>,
 }
 
-impl<'input> InlinedSubroutine<'input> {
+impl<'input> InlinedFunction<'input> {
     fn print_size_and_decl(&self, w: &mut Write, _state: &PrintState, unit: &Unit) -> Result<()> {
         match self.size {
             Some(size) => write!(w, "[{}]", size)?,
@@ -3163,19 +3156,19 @@ impl<'input> InlinedSubroutine<'input> {
     }
 }
 
-impl<'input> PrintList for InlinedSubroutine<'input> {
+impl<'input> PrintList for InlinedFunction<'input> {
     fn list_label() -> &'static str {
-        "inlined subroutines"
+        "inlined functions"
     }
 
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
-        state.inline(|state| state.list(false, w, unit, &self.inlined_subroutines))?;
+        state.inline(|state| state.list(false, w, unit, &self.inlined_functions))?;
         Ok(())
     }
 }
 
-impl<'input> DiffList for InlinedSubroutine<'input> {
+impl<'input> DiffList for InlinedFunction<'input> {
     fn step_cost() -> usize {
         1
     }
@@ -3210,7 +3203,7 @@ impl<'input> DiffList for InlinedSubroutine<'input> {
 
         state
             .inline(|state| {
-                state.list(false, w, unit_a, &a.inlined_subroutines, unit_b, &b.inlined_subroutines)
+                state.list(false, w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
             })?;
 
         Ok(())

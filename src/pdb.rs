@@ -250,7 +250,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
                         declaration: false,
                         parameters: Vec::new(),
                         return_type: None,
-                        inlined_subroutines: Vec::new(),
+                        inlined_functions: Vec::new(),
                         variables: Vec::new(),
                     },
                 );

@@ -4,7 +4,7 @@ use std::mem;
 use gimli;
 
 use super::Result;
-use super::{ArrayType, BaseType, EnumerationType, Enumerator, Function, InlinedSubroutine, Member,
+use super::{ArrayType, BaseType, EnumerationType, Enumerator, Function, InlinedFunction, Member,
             Namespace, NamespaceKind, Parameter, PointerToMemberType, StructType, SubroutineType,
             Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType, Unit,
             UnspecifiedType, Variable};
@@ -1204,7 +1204,7 @@ where
         declaration: false,
         parameters: Vec::new(),
         return_type: None,
-        inlined_subroutines: Vec::new(),
+        inlined_functions: Vec::new(),
         variables: Vec::new(),
     };
 
@@ -1348,7 +1348,7 @@ where
             }
             gimli::DW_TAG_inlined_subroutine => {
                 function
-                    .inlined_subroutines
+                    .inlined_functions
                     .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
@@ -1363,7 +1363,7 @@ where
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
-                    &mut function.inlined_subroutines,
+                    &mut function.inlined_functions,
                     &mut function.variables,
                     unit,
                     dwarf,
@@ -1438,7 +1438,7 @@ where
 }
 
 fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
-    inlined_subroutines: &mut Vec<InlinedSubroutine<'input>>,
+    inlined_functions: &mut Vec<InlinedFunction<'input>>,
     variables: &mut Vec<Variable<'input>>,
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
@@ -1466,7 +1466,7 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                inlined_subroutines.push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
+                inlined_functions.push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
                 let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
@@ -1480,7 +1480,7 @@ where
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
-                    inlined_subroutines,
+                    inlined_functions,
                     variables,
                     unit,
                     dwarf,
@@ -1513,11 +1513,11 @@ fn parse_inlined_subroutine<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, gimli::EndianBuf<'input, Endian>>,
-) -> Result<InlinedSubroutine<'input>>
+) -> Result<InlinedFunction<'input>>
 where
     Endian: gimli::Endianity,
 {
-    let mut subroutine = InlinedSubroutine::default();
+    let mut function = InlinedFunction::default();
     let mut low_pc = None;
     let mut high_pc = None;
     let mut size = None;
@@ -1529,7 +1529,7 @@ where
                 gimli::DW_AT_abstract_origin => {
                     if let gimli::AttributeValue::UnitRef(offset) = attr.value() {
                         let offset = offset.to_debug_info_offset(dwarf_unit.header);
-                        subroutine.abstract_origin = Some(offset.into());
+                        function.abstract_origin = Some(offset.into());
                     } else {
                         debug!(
                             "unknown inlined_subroutine attribute: {} {:?}",
@@ -1572,11 +1572,11 @@ where
         while let Some(range) = ranges.next()? {
             size += range.end.wrapping_sub(range.begin);
         }
-        subroutine.size = Some(size);
+        function.size = Some(size);
     } else if let Some(size) = size {
-        subroutine.size = Some(size);
+        function.size = Some(size);
     } else if let (Some(low_pc), Some(high_pc)) = (low_pc, high_pc) {
-        subroutine.size = Some(high_pc.wrapping_sub(low_pc));
+        function.size = Some(high_pc.wrapping_sub(low_pc));
     } else {
         debug!("unknown inlined_subroutine size");
     }
@@ -1589,18 +1589,18 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_inlined_subroutine => {
-                subroutine
-                    .inlined_subroutines
+                function
+                    .inlined_functions
                     .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
                 let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
-                subroutine.variables.push(variable.variable);
+                function.variables.push(variable.variable);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
-                    &mut subroutine.inlined_subroutines,
-                    &mut subroutine.variables,
+                    &mut function.inlined_functions,
+                    &mut function.variables,
                     unit,
                     dwarf,
                     dwarf_unit,
@@ -1614,7 +1614,7 @@ where
             }
         }
     }
-    Ok(subroutine)
+    Ok(function)
 }
 
 fn parse_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(

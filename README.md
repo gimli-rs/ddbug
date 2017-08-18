@@ -90,7 +90,7 @@ fn ddbug::main
         linkage name: _ZN5ddbug4mainE
         address: 0x601f0-0x629d9
         size: 10218
-        inlined subroutines:
+        inlined functions:
                 [30]    log::__static_max_level
                 [59]    log::max_log_level
         calls:
