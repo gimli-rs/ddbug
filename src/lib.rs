@@ -547,15 +547,6 @@ trait PrintListWithArg<Arg: Copy, MutArg> {
     ) -> Result<()>;
 }
 
-pub fn print_file(w: &mut Write, file: &File, flags: &Flags) -> Result<()> {
-    let hash = FileHash::new(file);
-    for unit in &file.filter_units(flags, false) {
-        let mut state = PrintState::new(file, &hash, flags);
-        unit.print(w, &mut state, flags)?;
-    }
-    Ok(())
-}
-
 enum MergeResult<T> {
     Left(T),
     Right(T),
@@ -916,6 +907,15 @@ trait DiffListWithArg<Arg: Copy, MutArg>: PrintListWithArg<Arg, MutArg> {
     ) -> Result<()>;
 }
 
+pub fn print_file(w: &mut Write, file: &File, flags: &Flags) -> Result<()> {
+    let hash = FileHash::new(file);
+    for unit in &file.filter_units(flags, false) {
+        let mut state = PrintState::new(file, &hash, flags);
+        unit.print(w, &mut state, flags)?;
+    }
+    Ok(())
+}
+
 pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> Result<()> {
     let hash_a = FileHash::new(file_a);
     let hash_b = FileHash::new(file_b);
@@ -930,20 +930,10 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> 
                 Unit::diff(a, b, w, state, flags)
             },
             |w, state, a| {
-                state.line(
-                    w, |w, _state| {
-                        write!(w, "Unit: ")?;
-                        a.print_ref(w)
-                    }
-                )
+                a.print(w, state, flags)
             },
             |w, state, b| {
-                state.line(
-                    w, |w, _state| {
-                        write!(w, "Unit: ")?;
-                        b.print_ref(w)
-                    }
-                )
+                b.print(w, state, flags)
             },
         )?;
     Ok(())
