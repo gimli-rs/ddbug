@@ -46,7 +46,7 @@ fn main() {
         "ignore-variable-address",
         "don't display variable differences due to address changes",
     );
-    opts.optopt("", "inline-depth", "depth of inlined subroutine calls (0 to disable)", "DEPTH");
+    opts.optopt("", "inline-depth", "depth of inlined function calls (0 to disable)", "DEPTH");
     opts.optopt("", "unit", "print only entries within the given unit", "UNIT");
     opts.optopt("", "name", "print only entries with the given name", "NAME");
     opts.optopt("", "namespace", "print only entries within the given namespace", "NAMESPACE");

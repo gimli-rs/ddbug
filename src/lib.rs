@@ -1147,7 +1147,7 @@ impl<'input> Unit<'input> {
                 TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
                 TypeKind::Base(..) |
                 TypeKind::Array(..) |
-                TypeKind::Subroutine(..) |
+                TypeKind::Function(..) |
                 TypeKind::Unspecified(..) |
                 TypeKind::PointerToMember(..) |
                 TypeKind::Modifier(..) => return false,
@@ -1403,7 +1403,7 @@ enum TypeKind<'input> {
     Union(UnionType<'input>),
     Enumeration(EnumerationType<'input>),
     Array(ArrayType<'input>),
-    Subroutine(SubroutineType<'input>),
+    Function(FunctionType<'input>),
     Unspecified(UnspecifiedType<'input>),
     PointerToMember(PointerToMemberType),
     Modifier(TypeModifier<'input>),
@@ -1418,7 +1418,7 @@ impl<'input> TypeKind<'input> {
             TypeKind::Union(..) => 3,
             TypeKind::Enumeration(..) => 4,
             TypeKind::Array(..) => 5,
-            TypeKind::Subroutine(..) => 6,
+            TypeKind::Function(..) => 6,
             TypeKind::Unspecified(..) => 7,
             TypeKind::PointerToMember(..) => 8,
             TypeKind::Modifier(..) => 9,
@@ -1469,7 +1469,7 @@ impl<'input> Type<'input> {
             TypeKind::Union(ref val) => val.byte_size(),
             TypeKind::Enumeration(ref val) => val.byte_size(hash),
             TypeKind::Array(ref val) => val.byte_size(hash),
-            TypeKind::Subroutine(ref val) => val.byte_size(),
+            TypeKind::Function(ref val) => val.byte_size(),
             TypeKind::Unspecified(..) => None,
             TypeKind::PointerToMember(ref val) => val.byte_size(hash),
             TypeKind::Modifier(ref val) => val.byte_size(hash),
@@ -1484,7 +1484,7 @@ impl<'input> Type<'input> {
             TypeKind::Def(..) |
             TypeKind::Base(..) |
             TypeKind::Array(..) |
-            TypeKind::Subroutine(..) |
+            TypeKind::Function(..) |
             TypeKind::Unspecified(..) |
             TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => {}
@@ -1500,7 +1500,7 @@ impl<'input> Type<'input> {
             TypeKind::Unspecified(ref val) => val.filter(flags),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
-            TypeKind::Subroutine(..) |
+            TypeKind::Function(..) |
             TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => flags.name.is_none(),
         }
@@ -1514,7 +1514,7 @@ impl<'input> Type<'input> {
             TypeKind::Enumeration(ref val) => val.print(w, state, unit),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
-            TypeKind::Subroutine(..) |
+            TypeKind::Function(..) |
             TypeKind::Unspecified(..) |
             TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
@@ -1529,7 +1529,7 @@ impl<'input> Type<'input> {
             TypeKind::Union(ref val) => val.print_ref(w),
             TypeKind::Enumeration(ref val) => val.print_ref(w),
             TypeKind::Array(ref val) => val.print_ref(w, state),
-            TypeKind::Subroutine(ref val) => val.print_ref(w, state),
+            TypeKind::Function(ref val) => val.print_ref(w, state),
             TypeKind::Unspecified(ref val) => val.print_ref(w),
             TypeKind::PointerToMember(ref val) => val.print_ref(w, state),
             TypeKind::Modifier(ref val) => val.print_ref(w, state),
@@ -1559,22 +1559,22 @@ impl<'input> Type<'input> {
             TypeKind::Def(..) |
             TypeKind::Enumeration(..) |
             TypeKind::Array(..) |
-            TypeKind::Subroutine(..) |
+            TypeKind::Function(..) |
             TypeKind::Unspecified(..) |
             TypeKind::PointerToMember(..) |
             TypeKind::Modifier(..) => false,
         }
     }
 
-    fn is_subroutine(&self, hash: &FileHash) -> bool {
+    fn is_function(&self, hash: &FileHash) -> bool {
         match self.kind {
-            TypeKind::Subroutine(..) => true,
+            TypeKind::Function(..) => true,
             TypeKind::Def(ref val) => match val.ty(hash) {
-                Some(ty) => ty.is_subroutine(hash),
+                Some(ty) => ty.is_function(hash),
                 None => false,
             },
             TypeKind::Modifier(ref val) => match val.ty(hash) {
-                Some(ty) => ty.is_subroutine(hash),
+                Some(ty) => ty.is_function(hash),
                 None => false,
             },
             TypeKind::Struct(..) |
@@ -1600,9 +1600,7 @@ impl<'input> Type<'input> {
             (&Union(ref a), &Union(ref b)) => UnionType::cmp_id(a, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_id(a, b),
             (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(hash_a, a, hash_b, b),
-            (&Subroutine(ref a), &Subroutine(ref b)) => {
-                SubroutineType::cmp_id(hash_a, a, hash_b, b)
-            }
+            (&Function(ref a), &Function(ref b)) => FunctionType::cmp_id(hash_a, a, hash_b, b),
             (&Unspecified(ref a), &Unspecified(ref b)) => UnspecifiedType::cmp_id(a, b),
             (&PointerToMember(ref a), &PointerToMember(ref b)) => {
                 PointerToMemberType::cmp_id(hash_a, a, hash_b, b)
@@ -2571,13 +2569,13 @@ impl<'input> ArrayType<'input> {
 }
 
 #[derive(Debug, Default)]
-struct SubroutineType<'input> {
+struct FunctionType<'input> {
     parameters: Vec<Parameter<'input>>,
     return_type: Option<TypeOffset>,
     byte_size: Option<u64>,
 }
 
-impl<'input> SubroutineType<'input> {
+impl<'input> FunctionType<'input> {
     fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
@@ -2614,9 +2612,9 @@ impl<'input> SubroutineType<'input> {
     /// (even if there are differences in the definitions).
     fn cmp_id(
         hash_a: &FileHash,
-        a: &SubroutineType,
+        a: &FunctionType,
         hash_b: &FileHash,
-        b: &SubroutineType,
+        b: &FunctionType,
     ) -> cmp::Ordering {
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
             let ord = Parameter::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
@@ -2709,7 +2707,7 @@ impl PointerToMemberType {
             return self.byte_size;
         }
         // TODO: this probably depends on the ABI
-        self.ty(hash).and_then(|ty| if ty.is_subroutine(hash) {
+        self.ty(hash).and_then(|ty| if ty.is_function(hash) {
             self.address_size.map(|v| v * 2)
         } else {
             self.address_size

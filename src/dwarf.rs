@@ -4,10 +4,10 @@ use std::mem;
 use gimli;
 
 use super::Result;
-use super::{ArrayType, BaseType, EnumerationType, Enumerator, Function, InlinedFunction, Member,
-            Namespace, NamespaceKind, Parameter, PointerToMemberType, StructType, SubroutineType,
-            Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType, Unit,
-            UnspecifiedType, Variable};
+use super::{ArrayType, BaseType, EnumerationType, Enumerator, Function, FunctionType,
+            InlinedFunction, Member, Namespace, NamespaceKind, Parameter, PointerToMemberType,
+            StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset,
+            UnionType, Unit, UnspecifiedType, Variable};
 
 struct DwarfFileState<'input, Endian>
 where
@@ -456,7 +456,7 @@ where
             TypeKind::Array(parse_array_type(dwarf, dwarf_unit, namespace, node)?)
         }
         gimli::DW_TAG_subroutine_type => {
-            TypeKind::Subroutine(parse_subroutine_type(dwarf, dwarf_unit, namespace, node)?)
+            TypeKind::Function(parse_subroutine_type(dwarf, dwarf_unit, namespace, node)?)
         }
         gimli::DW_TAG_unspecified_type => {
             TypeKind::Unspecified(parse_unspecified_type(dwarf, dwarf_unit, namespace, node)?)
@@ -1061,11 +1061,11 @@ fn parse_subroutine_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
     _namespace: &Option<Rc<Namespace<'input>>>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, gimli::EndianBuf<'input, Endian>>,
-) -> Result<SubroutineType<'input>>
+) -> Result<FunctionType<'input>>
 where
     Endian: gimli::Endianity,
 {
-    let mut subroutine = SubroutineType {
+    let mut function = FunctionType {
         // Go treats subroutine types as pointers.
         // Not sure if this is valid for all languages.
         byte_size: Some(dwarf_unit.header.address_size() as u64),
@@ -1077,7 +1077,7 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    subroutine.return_type = Some(offset);
+                    function.return_type = Some(offset);
                 },
                 gimli::DW_AT_name | gimli::DW_AT_prototyped | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown subroutine attribute: {} {:?}", attr.name(), attr.value()),
@@ -1089,14 +1089,14 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_formal_parameter => {
-                subroutine.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
+                function.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
             }
             tag => {
                 debug!("unknown subroutine child tag: {}", tag);
             }
         }
     }
-    Ok(subroutine)
+    Ok(function)
 }
 
 fn parse_unspecified_type<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(

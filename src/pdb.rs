@@ -7,8 +7,8 @@ use crate_pdb::FallibleIterator;
 
 use super::Result;
 use super::{ArrayType, BaseType, EnumerationType, Enumerator, File, Function, FunctionOffset,
-            Member, Namespace, Parameter, StructType, SubroutineType, Type, TypeKind,
-            TypeModifier, TypeModifierKind, TypeOffset, UnionType, Unit};
+            FunctionType, Member, Namespace, Parameter, StructType, Type, TypeKind, TypeModifier,
+            TypeModifierKind, TypeOffset, UnionType, Unit};
 
 pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let mut cursor = io::Cursor::new(input);
@@ -493,7 +493,7 @@ fn parse_procedure<'input>(
         // TODO: attributes
         Type {
             offset: TypeOffset(index),
-            kind: TypeKind::Subroutine(SubroutineType {
+            kind: TypeKind::Function(FunctionType {
                 parameters: parameters,
                 return_type: return_type,
                 byte_size: None,
@@ -544,7 +544,7 @@ fn parse_member_function<'input>(
         // TODO: class_type, attributes, this_adjustment
         Type {
             offset: TypeOffset(index),
-            kind: TypeKind::Subroutine(SubroutineType {
+            kind: TypeKind::Function(FunctionType {
                 parameters: parameters,
                 return_type: return_type,
                 byte_size: None,
