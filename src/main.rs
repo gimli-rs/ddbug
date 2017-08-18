@@ -12,7 +12,7 @@ fn main() {
     env_logger::init().ok();
 
     let mut opts = getopts::Options::new();
-    opts.optflag("", "calls", "print subprogram calls");
+    opts.optflag("", "calls", "print function calls");
     opts.optflag("", "diff", "print difference between two files");
     opts.optflag("", "sort-name", "sort entries by type and name");
     opts.optflag("", "sort-size", "sort entries by size");

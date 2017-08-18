@@ -339,8 +339,8 @@ struct FileHash<'a, 'input>
 where
     'input: 'a,
 {
-    // All subprograms by address.
-    subprograms: HashMap<u64, &'a Subprogram<'input>>,
+    // All functions by address.
+    functions: HashMap<u64, &'a Function<'input>>,
     // All types by offset.
     types: HashMap<TypeOffset, &'a Type<'input>>,
 }
@@ -348,24 +348,24 @@ where
 impl<'a, 'input> FileHash<'a, 'input> {
     fn new(file: &'a File<'input>) -> Self {
         FileHash {
-            subprograms: Self::subprograms(file),
+            functions: Self::functions(file),
             types: Self::types(file),
         }
     }
 
-    /// Returns a map from address to subprogram for all subprograms in the file.
-    fn subprograms(file: &'a File<'input>) -> HashMap<u64, &'a Subprogram<'input>> {
-        let mut subprograms = HashMap::new();
+    /// Returns a map from address to function for all functions in the file.
+    fn functions(file: &'a File<'input>) -> HashMap<u64, &'a Function<'input>> {
+        let mut functions = HashMap::new();
         // TODO: insert symbol table names too
         for unit in &file.units {
-            for subprogram in unit.subprograms.values() {
-                if let Some(low_pc) = subprogram.low_pc {
+            for function in unit.functions.values() {
+                if let Some(low_pc) = function.low_pc {
                     // TODO: handle duplicate addresses
-                    subprograms.insert(low_pc, subprogram);
+                    functions.insert(low_pc, function);
                 }
             }
         }
-        subprograms
+        functions
     }
 
     /// Returns a map from offset to type for all types in the file.
@@ -946,7 +946,7 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> 
 #[derive(Debug, PartialEq, Eq)]
 enum NamespaceKind {
     Namespace,
-    Subprogram,
+    Function,
     Type,
 }
 
@@ -1093,9 +1093,9 @@ pub struct Unit<'input> {
     size: Option<u64>,
     range_size: Option<u64>,
     line_size: Option<u64>,
-    subprogram_size: Option<u64>,
+    function_size: Option<u64>,
     types: BTreeMap<TypeOffset, Type<'input>>,
-    subprograms: BTreeMap<SubprogramOffset, Subprogram<'input>>,
+    functions: BTreeMap<FunctionOffset, Function<'input>>,
     variables: BTreeMap<VariableOffset, Variable<'input>>,
 }
 
@@ -1164,17 +1164,16 @@ impl<'input> Unit<'input> {
         types
     }
 
-    /// Filter and sort the list of subprograms using the options in the flags.
+    /// Filter and sort the list of functions using the options in the flags.
     /// Always sort when diffing.
-    fn filter_subprograms(&self, flags: &Flags, diff: bool) -> Vec<&Subprogram> {
-        let mut subprograms: Vec<_> =
-            self.subprograms.values().filter(|a| a.filter(flags)).collect();
+    fn filter_functions(&self, flags: &Flags, diff: bool) -> Vec<&Function> {
+        let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(flags)).collect();
         match flags.sort.with_diff(diff) {
             Sort::None => {}
-            Sort::Name => subprograms.sort_by(|a, b| Subprogram::cmp_id(a, b)),
-            Sort::Size => subprograms.sort_by(|a, b| Subprogram::cmp_size(a, b)),
+            Sort::Name => functions.sort_by(|a, b| Function::cmp_id(a, b)),
+            Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
         }
-        subprograms
+        functions
     }
 
     /// Filter and sort the list of variables using the options in the flags.
@@ -1220,8 +1219,8 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn print_subprogram_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.subprogram_size {
+    fn print_function_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.function_size {
             write!(w, "fn size: {}", size)?;
         }
         Ok(())
@@ -1237,7 +1236,7 @@ impl<'input> Unit<'input> {
                 state.line_option(w, |w, _state| self.print_size(w))?;
                 state.line_option(w, |w, _state| self.print_range_size(w))?;
                 state.line_option(w, |w, _state| self.print_line_size(w))?;
-                state.line_option(w, |w, _state| self.print_subprogram_size(w))
+                state.line_option(w, |w, _state| self.print_function_size(w))
             })?;
             writeln!(w, "")?;
         }
@@ -1249,8 +1248,8 @@ impl<'input> Unit<'input> {
             }
         }
         if flags.filter_function {
-            for subprogram in &self.filter_subprograms(flags, false) {
-                subprogram.print(w, state, self)?;
+            for function in &self.filter_functions(flags, false) {
+                function.print(w, state, self)?;
                 writeln!(w, "")?;
             }
         }
@@ -1291,8 +1290,7 @@ impl<'input> Unit<'input> {
                 state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_size(w))?;
                 state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_range_size(w))?;
                 state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_line_size(w))?;
-                state
-                    .line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_subprogram_size(w))
+                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_function_size(w))
             })?;
             writeln!(w, "")?;
         }
@@ -1333,13 +1331,13 @@ impl<'input> Unit<'input> {
             state
             .merge(
                 w,
-                |_state| unit_a.filter_subprograms(flags, true),
-                |_state| unit_b.filter_subprograms(flags, true),
-                |_hash_a, a, _hash_b, b| Subprogram::cmp_id(a, b),
+                |_state| unit_a.filter_functions(flags, true),
+                |_state| unit_b.filter_functions(flags, true),
+                |_hash_a, a, _hash_b, b| Function::cmp_id(a, b),
                 |w, state, a, b| {
                     state.diff(
                         w, |w, state| {
-                            Subprogram::diff(w, state, unit_a, a, unit_b, b)?;
+                            Function::diff(w, state, unit_a, a, unit_b, b)?;
                             writeln!(w, "")?;
                             Ok(())
                         }
@@ -2769,16 +2767,16 @@ impl PointerToMemberType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct SubprogramOffset(usize);
+struct FunctionOffset(usize);
 
-impl From<gimli::DebugInfoOffset> for SubprogramOffset {
-    fn from(o: gimli::DebugInfoOffset) -> SubprogramOffset {
-        SubprogramOffset(o.0)
+impl From<gimli::DebugInfoOffset> for FunctionOffset {
+    fn from(o: gimli::DebugInfoOffset) -> FunctionOffset {
+        FunctionOffset(o.0)
     }
 }
 
 #[derive(Debug)]
-struct Subprogram<'input> {
+struct Function<'input> {
     namespace: Option<Rc<Namespace<'input>>>,
     name: Option<&'input [u8]>,
     linkage_name: Option<&'input [u8]>,
@@ -2793,12 +2791,12 @@ struct Subprogram<'input> {
     variables: Vec<Variable<'input>>,
 }
 
-impl<'input> Subprogram<'input> {
+impl<'input> Function<'input> {
     fn from_offset<'a>(
         unit: &'a Unit<'input>,
-        offset: SubprogramOffset,
-    ) -> Option<&'a Subprogram<'input>> {
-        unit.subprograms.get(&offset)
+        offset: FunctionOffset,
+    ) -> Option<&'a Function<'input>> {
+        unit.functions.get(&offset)
     }
 
     fn filter(&self, flags: &Flags) -> bool {
@@ -2816,15 +2814,15 @@ impl<'input> Subprogram<'input> {
         Vec::new()
     }
 
-    /// Compare the identifying information of two subprograms.
-    /// This can be used to sort, and to determine if two subprograms refer to the same definition
+    /// Compare the identifying information of two functions.
+    /// This can be used to sort, and to determine if two functions refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+    fn cmp_id(a: &Function, b: &Function) -> cmp::Ordering {
         cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
-    /// Compare the size of two subprograms.
-    fn cmp_size(a: &Subprogram, b: &Subprogram) -> cmp::Ordering {
+    /// Compare the size of two functions.
+    fn cmp_size(a: &Function, b: &Function) -> cmp::Ordering {
         a.size.cmp(&b.size)
     }
 
@@ -2868,9 +2866,9 @@ impl<'input> Subprogram<'input> {
         w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
-        a: &Subprogram,
+        a: &Function,
         unit_b: &Unit,
-        b: &Subprogram,
+        b: &Function,
     ) -> Result<()> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
@@ -2925,7 +2923,7 @@ impl<'input> Subprogram<'input> {
                     }
                     Ok(())
                 })?;
-                state.indent(|state| Subprogram::diff_calls(w, state, &calls_a, &calls_b))?;
+                state.indent(|state| Function::diff_calls(w, state, &calls_a, &calls_b))?;
             }
             Ok(())
         })
@@ -2960,7 +2958,7 @@ impl<'input> Subprogram<'input> {
         } else if let Some(low_pc) = self.low_pc {
             write!(w, "address: 0x{:x}", low_pc)?;
         } else if !self.inline && !self.declaration {
-            debug!("non-inline subprogram with no address");
+            debug!("non-inline function with no address");
         }
         Ok(())
     }
@@ -3014,9 +3012,9 @@ impl<'input> Subprogram<'input> {
         for call in calls {
             state.line(w, |w, state| {
                 write!(w, "0x{:x}", call)?;
-                if let Some(subprogram) = state.hash.subprograms.get(call) {
+                if let Some(function) = state.hash.functions.get(call) {
                     write!(w, " ")?;
-                    subprogram.print_ref(w)?;
+                    function.print_ref(w)?;
                 }
                 Ok(())
             })?;
@@ -3144,7 +3142,7 @@ impl<'input> DiffList for Parameter<'input> {
 
 #[derive(Debug, Default)]
 struct InlinedSubroutine<'input> {
-    abstract_origin: Option<SubprogramOffset>,
+    abstract_origin: Option<FunctionOffset>,
     size: Option<u64>,
     inlined_subroutines: Vec<InlinedSubroutine<'input>>,
     variables: Vec<Variable<'input>>,
@@ -3157,8 +3155,8 @@ impl<'input> InlinedSubroutine<'input> {
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        match self.abstract_origin.and_then(|v| Subprogram::from_offset(unit, v)) {
-            Some(subprogram) => subprogram.print_ref(w)?,
+        match self.abstract_origin.and_then(|v| Function::from_offset(unit, v)) {
+            Some(function) => function.print_ref(w)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
@@ -3184,11 +3182,9 @@ impl<'input> DiffList for InlinedSubroutine<'input> {
 
     fn diff_cost(_state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        let subprogram_a =
-            a.abstract_origin.and_then(|v| Subprogram::from_offset(unit_a, v)).unwrap();
-        let subprogram_b =
-            b.abstract_origin.and_then(|v| Subprogram::from_offset(unit_b, v)).unwrap();
-        if Subprogram::cmp_id(subprogram_a, subprogram_b) != cmp::Ordering::Equal {
+        let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v)).unwrap();
+        let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v)).unwrap();
+        if Function::cmp_id(function_a, function_b) != cmp::Ordering::Equal {
             cost += 1;
         }
         if a.size != b.size {

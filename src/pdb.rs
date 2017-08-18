@@ -6,8 +6,8 @@ use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
 use super::Result;
-use super::{ArrayType, BaseType, EnumerationType, Enumerator, File, Member, Namespace, Parameter,
-            StructType, Subprogram, SubprogramOffset, SubroutineType, Type, TypeKind,
+use super::{ArrayType, BaseType, EnumerationType, Enumerator, File, Function, FunctionOffset,
+            Member, Namespace, Parameter, StructType, SubroutineType, Type, TypeKind,
             TypeModifier, TypeModifierKind, TypeOffset, UnionType, Unit};
 
 pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
@@ -237,9 +237,9 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
             pdb::SymbolData::PublicSymbol {
                 function, offset, ..
             } => if function {
-                unit.subprograms.insert(
-                    SubprogramOffset(symbol_index),
-                    Subprogram {
+                unit.functions.insert(
+                    FunctionOffset(symbol_index),
+                    Function {
                         namespace: namespace.clone(),
                         name: Some(symbol.name()?.as_bytes()),
                         linkage_name: None,
