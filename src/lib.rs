@@ -1136,11 +1136,11 @@ impl<'input> Unit<'input> {
 
     /// Filter and sort the list of functions using the options in the flags.
     /// Always sort when diffing.
-    fn filter_functions(&self, flags: &Flags, diff: bool) -> Vec<&Function> {
+    fn filter_functions(&self, state: &PrintState, flags: &Flags, diff: bool) -> Vec<&Function> {
         let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(flags)).collect();
         match flags.sort.with_diff(diff) {
             Sort::None => {}
-            Sort::Name => functions.sort_by(|a, b| Function::cmp_id(a, b)),
+            Sort::Name => functions.sort_by(|a, b| Function::cmp_id(state.hash, a, state.hash, b)),
             Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
         }
         functions
@@ -1218,7 +1218,7 @@ impl<'input> Unit<'input> {
             }
         }
         if flags.filter_function {
-            for function in &self.filter_functions(flags, false) {
+            for function in &self.filter_functions(state, flags, false) {
                 function.print(w, state, self)?;
                 writeln!(w, "")?;
             }
@@ -1301,9 +1301,9 @@ impl<'input> Unit<'input> {
             state
             .merge(
                 w,
-                |_state| unit_a.filter_functions(flags, true),
-                |_state| unit_b.filter_functions(flags, true),
-                |_hash_a, a, _hash_b, b| Function::cmp_id(a, b),
+                |state| unit_a.filter_functions(state, flags, true),
+                |state| unit_b.filter_functions(state, flags, true),
+                |hash_a, a, hash_b, b| Function::cmp_id(hash_a, a, hash_b, b),
                 |w, state, a, b| {
                     state.diff(
                         w, |w, state| {
@@ -2759,6 +2759,13 @@ impl<'input> Function<'input> {
         unit.functions.get(&offset)
     }
 
+    fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+    where
+        'input: 'a,
+    {
+        self.return_type.and_then(|v| Type::from_offset(hash, v))
+    }
+
     fn filter(&self, flags: &Flags) -> bool {
         flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
@@ -2777,8 +2784,20 @@ impl<'input> Function<'input> {
     /// Compare the identifying information of two functions.
     /// This can be used to sort, and to determine if two functions refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &Function, b: &Function) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    fn cmp_id(hash_a: &FileHash, a: &Function, hash_b: &FileHash, b: &Function) -> cmp::Ordering {
+        let ord = cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name);
+        if ord != cmp::Ordering::Equal {
+            return ord;
+        }
+
+        for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
+            let ord = Parameter::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
+            if ord != cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+
+        a.parameters.len().cmp(&b.parameters.len())
     }
 
     /// Compare the size of two functions.
@@ -2952,8 +2971,8 @@ impl<'input> Function<'input> {
     }
 
     fn print_return_type(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if let Some(return_type) = self.return_type {
-            match Type::from_offset(state.hash, return_type).and_then(|t| t.byte_size(state.hash)) {
+        if self.return_type.is_some() {
+            match self.return_type(state.hash).and_then(|t| t.byte_size(state.hash)) {
                 Some(byte_size) => write!(w, "[{}]", byte_size)?,
                 None => write!(w, "[??]")?,
             }
@@ -3132,11 +3151,13 @@ impl<'input> DiffList for InlinedFunction<'input> {
         1
     }
 
-    fn diff_cost(_state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
+    fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
         let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v)).unwrap();
         let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v)).unwrap();
-        if Function::cmp_id(function_a, function_b) != cmp::Ordering::Equal {
+        if Function::cmp_id(state.a.hash, function_a, state.b.hash, function_b) !=
+            cmp::Ordering::Equal
+        {
             cost += 1;
         }
         if a.size != b.size {
