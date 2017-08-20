@@ -494,7 +494,7 @@ where
 
     fn list<T: PrintList>(
         &mut self,
-        label: bool,
+        label: &str,
         w: &mut Write,
         unit: &Unit,
         list: &[T],
@@ -503,9 +503,9 @@ where
             return Ok(());
         }
 
-        if label {
+        if !label.is_empty() {
             self.line(w, |w, _state| {
-                write!(w, "{}:", T::list_label())?;
+                write!(w, "{}:", label)?;
                 Ok(())
             })?;
         }
@@ -520,8 +520,6 @@ where
 }
 
 trait PrintList {
-    fn list_label() -> &'static str;
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()>;
 }
 
@@ -529,26 +527,9 @@ impl<'a, T> PrintList for &'a T
 where
     T: PrintList,
 {
-    fn list_label() -> &'static str {
-        T::list_label()
-    }
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         T::print_list(*self, w, state, unit)
     }
-}
-
-trait PrintListWithArg<Arg: Copy, MutArg> {
-    fn list_label() -> &'static str;
-
-    fn print_list(
-        &self,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-        arg: Arg,
-        mut_arg: &mut MutArg,
-    ) -> Result<()>;
 }
 
 enum MergeResult<T> {
@@ -827,7 +808,7 @@ where
 
     fn list<T: DiffList>(
         &mut self,
-        label: bool,
+        label: &str,
         w: &mut Write,
         unit_a: &Unit,
         list_a: &[T],
@@ -838,10 +819,10 @@ where
             return Ok(());
         }
 
-        if label {
+        if !label.is_empty() {
             self.line(w, list_a, list_b, |w, _state, list| {
                 if !list.is_empty() {
-                    write!(w, "{}:", T::list_label())?;
+                    write!(w, "{}:", label)?;
                 }
                 Ok(())
             })?;
@@ -889,25 +870,6 @@ trait DiffList: PrintList {
         a: &Self,
         unit_b: &Unit,
         b: &Self,
-    ) -> Result<()>;
-}
-
-trait DiffListWithArg<Arg: Copy, MutArg>: PrintListWithArg<Arg, MutArg> {
-    fn step_cost() -> usize;
-
-    fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize;
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Self,
-        arg_a: Arg,
-        mut_arg_a: &mut MutArg,
-        unit_b: &Unit,
-        b: &Self,
-        arg_b: Arg,
-        mut_arg_b: &mut MutArg,
     ) -> Result<()>;
 }
 
@@ -1647,7 +1609,7 @@ impl<'input> Type<'input> {
     }
 
     fn print_members(
-        label: bool,
+        label: &str,
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
@@ -1664,7 +1626,7 @@ impl<'input> Type<'input> {
     }
 
     fn diff_members(
-        label: bool,
+        label: &str,
         w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
@@ -1893,7 +1855,7 @@ impl<'input> TypeDef<'input> {
             state.line(w, |w, state| self.print_byte_size(w, state))?;
             if let Some(ty) = ty {
                 if ty.is_anon() {
-                    Type::print_members(true, w, state, unit, Some(ty))?;
+                    Type::print_members("members", w, state, unit, Some(ty))?;
                 }
             }
             Ok(())
@@ -1921,7 +1883,7 @@ impl<'input> TypeDef<'input> {
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
             let ty_b = filter_option(b.ty(state.b.hash), Type::is_anon);
-            Type::diff_members(true, w, state, unit_a, ty_a, unit_b, ty_b)
+            Type::diff_members("members", w, state, unit_a, ty_a, unit_b, ty_b)
         })
     }
 }
@@ -1955,7 +1917,7 @@ impl<'input> StructType<'input> {
         state.indent(|state| {
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            self.print_members(true, w, state, unit)
+            self.print_members("members", w, state, unit)
         })
     }
 
@@ -1972,7 +1934,7 @@ impl<'input> StructType<'input> {
         state.indent(|state| {
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            Self::diff_members(true, w, state, unit_a, a, unit_b, b)
+            Self::diff_members("members", w, state, unit_a, a, unit_b, b)
         })?;
 
         Ok(())
@@ -1996,7 +1958,7 @@ impl<'input> StructType<'input> {
 
     fn print_members(
         &self,
-        label: bool,
+        label: &str,
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
@@ -2005,7 +1967,7 @@ impl<'input> StructType<'input> {
     }
 
     fn diff_members(
-        label: bool,
+        label: &str,
         w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
@@ -2069,7 +2031,7 @@ impl<'input> UnionType<'input> {
         state.indent(|state| {
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            self.print_members(true, w, state, unit)
+            self.print_members("members", w, state, unit)
         })
     }
 
@@ -2086,7 +2048,7 @@ impl<'input> UnionType<'input> {
         state.indent(|state| {
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            Self::diff_members(true, w, state, unit_a, a, unit_b, b)
+            Self::diff_members("members", w, state, unit_a, a, unit_b, b)
         })?;
 
         Ok(())
@@ -2110,7 +2072,7 @@ impl<'input> UnionType<'input> {
 
     fn print_members(
         &self,
-        label: bool,
+        label: &str,
         w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
@@ -2119,7 +2081,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn diff_members(
-        label: bool,
+        label: &str,
         w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
@@ -2251,10 +2213,6 @@ impl<'input> Member<'input> {
 
 // Print members without padding
 impl<'input> PrintList for Member<'input> {
-    fn list_label() -> &'static str {
-        "members"
-    }
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let bit_size = self.bit_size(state.hash);
         state.line(w, |w, state| self.print_name(w, state, bit_size))?;
@@ -2264,7 +2222,7 @@ impl<'input> PrintList for Member<'input> {
             } else {
                 None
             };
-            Type::print_members(false, w, state, unit, ty)
+            Type::print_members("", w, state, unit, ty)
         })?;
         state.line_option(w, |w, state| self.print_padding(w, state, bit_size))
     }
@@ -2320,7 +2278,7 @@ impl<'input> DiffList for Member<'input> {
         } else {
             None
         };
-        Type::diff_members(false, w, state, unit_a, ty_a, unit_b, ty_b)?;
+        Type::diff_members("", w, state, unit_a, ty_a, unit_b, ty_b)?;
 
         state.line_option(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_padding(w, state, bit_size)
@@ -2383,7 +2341,7 @@ impl<'input> EnumerationType<'input> {
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_declaration(w))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            state.list(true, w, unit, &self.enumerators)
+            state.list("enumerators", w, unit, &self.enumerators)
         })
     }
 
@@ -2401,7 +2359,7 @@ impl<'input> EnumerationType<'input> {
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             // TODO: handle reordering better
-            state.list(true, w, unit_a, &a.enumerators, unit_b, &b.enumerators)
+            state.list("enumerators", w, unit_a, &a.enumerators, unit_b, &b.enumerators)
         })?;
         Ok(())
     }
@@ -2460,10 +2418,6 @@ impl<'input> Enumerator<'input> {
 }
 
 impl<'input> PrintList for Enumerator<'input> {
-    fn list_label() -> &'static str {
-        "enumerators"
-    }
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_name_value(w))
     }
@@ -2846,9 +2800,10 @@ impl<'input> Function<'input> {
             state.line_option(w, |w, _state| self.print_return_type_label(w))?;
             state
                 .indent(|state| state.line_option(w, |w, state| self.print_return_type(w, state)))?;
-            state.list(true, w, unit, &self.parameters)?;
-            state.list(true, w, unit, &self.variables)?;
-            state.inline(|state| state.list(true, w, unit, &self.inlined_functions))?;
+            state.list("parameters", w, unit, &self.parameters)?;
+            state.list("variables", w, unit, &self.variables)?;
+            state
+                .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
             if state.flags.calls {
                 let calls = self.calls(state.file);
                 if !calls.is_empty() {
@@ -2892,18 +2847,24 @@ impl<'input> Function<'input> {
                 .indent(
                     |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
                 )?;
-            state.list(true, w, unit_a, &a.parameters, unit_b, &b.parameters)?;
+            state.list("parameters", w, unit_a, &a.parameters, unit_b, &b.parameters)?;
             {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
                 variables_a.sort_by(|x, y| Variable::cmp_id(x, y));
                 let mut variables_b: Vec<_> = b.variables.iter().collect();
                 variables_b.sort_by(|x, y| Variable::cmp_id(x, y));
-                state.list(true, w, unit_a, &variables_a, unit_b, &variables_b)?;
+                state.list("variables", w, unit_a, &variables_a, unit_b, &variables_b)?;
             }
-            state
-                .inline(|state| {
-                    state.list(true, w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
-                })?;
+            state.inline(|state| {
+                state.list(
+                    "inlined functions",
+                    w,
+                    unit_a,
+                    &a.inlined_functions,
+                    unit_b,
+                    &b.inlined_functions,
+                )
+            })?;
             // TODO
             if false && state.flags.calls {
                 let calls_a = a.calls(state.a.file);
@@ -3086,10 +3047,6 @@ impl<'input> Parameter<'input> {
 }
 
 impl<'input> PrintList for Parameter<'input> {
-    fn list_label() -> &'static str {
-        "parameters"
-    }
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state))
     }
@@ -3155,13 +3112,9 @@ impl<'input> InlinedFunction<'input> {
 }
 
 impl<'input> PrintList for InlinedFunction<'input> {
-    fn list_label() -> &'static str {
-        "inlined functions"
-    }
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
-        state.inline(|state| state.list(false, w, unit, &self.inlined_functions))?;
+        state.inline(|state| state.list("", w, unit, &self.inlined_functions))?;
         Ok(())
     }
 }
@@ -3201,7 +3154,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
 
         state
             .inline(|state| {
-                state.list(false, w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
+                state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
             })?;
 
         Ok(())
@@ -3347,10 +3300,6 @@ impl<'input> Variable<'input> {
 }
 
 impl<'input> PrintList for Variable<'input> {
-    fn list_label() -> &'static str {
-        "variables"
-    }
-
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state))
     }
