@@ -635,6 +635,8 @@ where
         }
     }
 
+    // This is similar to `list`, but because the items are ordered
+    // we can do a greedy search.
     fn merge<T, I, FIterA, FIterB, FCmp, FEqual, FLess, FGreater>(
         &mut self,
         w: &mut Write,
@@ -896,10 +898,16 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> 
                 Unit::diff(a, b, w, state, flags)
             },
             |w, state, a| {
-                a.print(w, state, flags)
+                if !flags.ignore_deleted {
+                    a.print(w, state, flags)?;
+                }
+                Ok(())
             },
             |w, state, b| {
-                b.print(w, state, flags)
+                if !flags.ignore_added {
+                    b.print(w, state, flags)?;
+                }
+                Ok(())
             },
         )?;
     Ok(())
