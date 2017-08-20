@@ -126,14 +126,6 @@ where
         }
         node[index].done = true;
 
-        if index1 > 0 {
-            let next1 = index1 - 1;
-            let next = index - 1;
-            if !node[next].done {
-                let cost = node[index].cost + step_cost;
-                push(&mut node[next], &mut heap, next1, index2, cost, Direction::Horizontal);
-            }
-        }
         if index2 > 0 {
             let next2 = index2 - 1;
             let next = index - len1;
@@ -142,13 +134,24 @@ where
                 push(&mut node[next], &mut heap, index1, next2, cost, Direction::Vertical);
             }
         }
+        if index1 > 0 {
+            let next1 = index1 - 1;
+            let next = index - 1;
+            if !node[next].done {
+                let cost = node[index].cost + step_cost;
+                push(&mut node[next], &mut heap, next1, index2, cost, Direction::Horizontal);
+            }
+        }
         if index1 > 0 && index2 > 0 {
             let next1 = index1 - 1;
             let next2 = index2 - 1;
             let next = index - len1 - 1;
             if !node[next].done {
-                let cost = node[index].cost + diff_cost(&item1[next1], &item2[next2]);
-                push(&mut node[next], &mut heap, next1, next2, cost, Direction::Diagonal);
+                let diff_cost = diff_cost(&item1[next1], &item2[next2]);
+                if diff_cost < 2 * step_cost {
+                    let cost = node[index].cost + diff_cost;
+                    push(&mut node[next], &mut heap, next1, next2, cost, Direction::Diagonal);
+                }
             }
         }
     }
