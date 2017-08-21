@@ -1,9 +1,9 @@
+#[macro_use]
+extern crate clap;
 extern crate env_logger;
-extern crate getopts;
 #[macro_use]
 extern crate log;
 
-use std::env;
 use std::io::{self, Write};
 
 extern crate ddbug;
@@ -11,97 +11,135 @@ extern crate ddbug;
 fn main() {
     env_logger::init().ok();
 
-    let mut opts = getopts::Options::new();
-    opts.optflag("", "calls", "print function calls");
-    opts.optflag("", "diff", "print difference between two files");
-    opts.optflag("", "sort-name", "sort entries by type and name");
-    opts.optflag("", "sort-size", "sort entries by size");
-    opts.optflag(
-        "",
-        "ignore-added",
-        "don't display differences due to added functions/types/variables",
-    );
-    opts.optflag(
-        "",
-        "ignore-deleted",
-        "don't display differences due to deleted functions/types/variables",
-    );
-    opts.optflag(
-        "",
-        "ignore-function-address",
-        "don't display function differences due to address changes",
-    );
-    opts.optflag(
-        "",
-        "ignore-function-size",
-        "don't display function differences due to size changes",
-    );
-    opts.optflag(
-        "",
-        "ignore-function-inline",
-        "don't display function differences due to inline changes",
-    );
-    opts.optflag(
-        "",
-        "ignore-variable-address",
-        "don't display variable differences due to address changes",
-    );
-    opts.optopt("", "inline-depth", "depth of inlined function calls (0 to disable)", "DEPTH");
-    opts.optopt("", "unit", "print only entries within the given unit", "UNIT");
-    opts.optopt("", "name", "print only entries with the given name", "NAME");
-    opts.optopt("", "namespace", "print only entries within the given namespace", "NAMESPACE");
-    opts.optflag("", "filter-unit", "print only units");
-    opts.optflag("", "filter-type", "print only types");
-    opts.optflag("", "filter-function", "print only functions");
-    opts.optflag("", "filter-variable", "print only variables");
+    let matches = clap::App::new("ddbug")
+        .version(crate_version!())
+        .arg(
+            clap::Arg::with_name("file")
+                .help("path of file to print")
+                .value_name("FILE")
+                .index(1)
+                .required_unless("diff")
+                .conflicts_with("diff"),
+        )
+        .arg(
+            clap::Arg::with_name("diff")
+                .long("diff")
+                .help("print difference between two files")
+                .value_names(&["FILE", "FILE"]),
+        )
+        .arg(clap::Arg::with_name("calls").long("calls").help("print function calls"))
+        .arg(
+            clap::Arg::with_name("sort-name")
+                .long("sort-name")
+                .help("sort entries by type and name"),
+        )
+        .arg(clap::Arg::with_name("sort-size").long("sort-size").help("sort entries by size"))
+        .arg(
+            clap::Arg::with_name("ignore-added")
+                .long("ignore-added")
+                .help("don't display differences due to added functions/types/variables"),
+        )
+        .arg(
+            clap::Arg::with_name("ignore-deleted")
+                .long("ignore-deleted")
+                .help("don't display differences due to deleted functions/types/variables"),
+        )
+        .arg(
+            clap::Arg::with_name("ignore-function-address")
+                .long("ignore-function-address")
+                .help("don't display function differences due to address changes"),
+        )
+        .arg(
+            clap::Arg::with_name("ignore-function-size")
+                .long("ignore-function-size")
+                .help("don't display function differences due to size changes"),
+        )
+        .arg(
+            clap::Arg::with_name("ignore-function-inline")
+                .long("ignore-function-inline")
+                .help("don't display function differences due to inline changes"),
+        )
+        .arg(
+            clap::Arg::with_name("ignore-variable-address")
+                .long("ignore-variable-address")
+                .help("don't display variable differences due to address changes"),
+        )
+        .arg(
+            clap::Arg::with_name("inline-depth")
+                .long("inline-depth")
+                .help("depth of inlined function calls (0 to disable)")
+                .value_name("DEPTH"),
+        )
+        .arg(
+            clap::Arg::with_name("unit")
+                .long("unit")
+                .help("print only entries within the given unit")
+                .value_name("UNIT"),
+        )
+        .arg(
+            clap::Arg::with_name("name")
+                .long("name")
+                .help("print only entries with the given name")
+                .value_name("NAME"),
+        )
+        .arg(
+            clap::Arg::with_name("namespace")
+                .long("namespace")
+                .help("print only entries within the given namespace")
+                .value_name("NAMESPACE"),
+        )
+        .arg(clap::Arg::with_name("filter-unit").long("filter-unit").help("print only units"))
+        .arg(clap::Arg::with_name("filter-type").long("filter-type").help("print only types"))
+        .arg(
+            clap::Arg::with_name("filter-function")
+                .long("filter-function")
+                .help("print only functions"),
+        )
+        .arg(
+            clap::Arg::with_name("filter-variable")
+                .long("filter-variable")
+                .help("print only variables"),
+        )
+        .get_matches();
 
-    let matches = match opts.parse(env::args().skip(1)) {
-        Ok(m) => m,
-        Err(e) => {
-            error!("{}", e);
-            print_usage(&opts);
-        }
-    };
-
-    let calls = matches.opt_present("calls");
-    let diff = matches.opt_present("diff");
-    let sort = if matches.opt_present("sort-name") {
+    let calls = matches.is_present("calls");
+    let sort = if matches.is_present("sort-name") {
         ddbug::Sort::Name
-    } else if matches.opt_present("sort-size") {
+    } else if matches.is_present("sort-size") {
         ddbug::Sort::Size
     } else {
         ddbug::Sort::None
     };
-    let ignore_added = matches.opt_present("ignore-added");
-    let ignore_deleted = matches.opt_present("ignore-deleted");
-    let ignore_function_address = matches.opt_present("ignore-function-address");
-    let ignore_function_size = matches.opt_present("ignore-function-size");
-    let ignore_function_inline = matches.opt_present("ignore-function-inline");
-    let ignore_variable_address = matches.opt_present("ignore-variable-address");
-    let inline_depth = if let Some(inline_depth) = matches.opt_str("inline-depth") {
+    let ignore_added = matches.is_present("ignore-added");
+    let ignore_deleted = matches.is_present("ignore-deleted");
+    let ignore_function_address = matches.is_present("ignore-function-address");
+    let ignore_function_size = matches.is_present("ignore-function-size");
+    let ignore_function_inline = matches.is_present("ignore-function-inline");
+    let ignore_variable_address = matches.is_present("ignore-variable-address");
+    let inline_depth = if let Some(inline_depth) = matches.value_of("inline-depth") {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
             Err(e) => {
                 error!("Invalid argument '{}' to option 'inline-depth': {}", inline_depth, e);
-                print_usage(&opts);
+                print_usage(&matches);
             }
         }
     } else {
         1
     };
-    let unit = matches.opt_str("unit");
+    let unit = matches.value_of("unit");
     let unit = unit.as_ref().map(|s| &s[..]);
-    let name = matches.opt_str("name");
+    let name = matches.value_of("name");
     let name = name.as_ref().map(|s| &s[..]);
-    let namespace = matches.opt_str("namespace");
+    let namespace = matches.value_of("namespace");
     let namespace = match namespace {
         Some(ref namespace) => namespace.split("::").collect(),
         None => Vec::new(),
     };
-    let mut filter_unit = matches.opt_present("filter-unit");
-    let mut filter_type = matches.opt_present("filter-type");
-    let mut filter_function = matches.opt_present("filter-function");
-    let mut filter_variable = matches.opt_present("filter-variable");
+    let mut filter_unit = matches.is_present("filter-unit");
+    let mut filter_type = matches.is_present("filter-type");
+    let mut filter_function = matches.is_present("filter-function");
+    let mut filter_variable = matches.is_present("filter-variable");
     if !filter_unit && !filter_type && !filter_function && !filter_variable {
         if name.is_none() {
             filter_unit = true;
@@ -130,16 +168,9 @@ fn main() {
         filter_variable,
     };
 
-    if diff {
-        if matches.free.len() != 2 {
-            error!(
-                "Invalid filename arguments (expected 2 filenames, found {})",
-                matches.free.len()
-            );
-            print_usage(&opts);
-        }
-        let path_a = &matches.free[0];
-        let path_b = &matches.free[1];
+    if let Some(mut paths) = matches.values_of("diff") {
+        let path_a = paths.next().unwrap();
+        let path_b = paths.next().unwrap();
 
         if let Err(e) = ddbug::parse_file(path_a, &mut |file_a| {
             if let Err(e) =
@@ -152,14 +183,7 @@ fn main() {
             error!("{}: {}", path_a, e);
         }
     } else {
-        if matches.free.len() != 1 {
-            error!(
-                "Invalid filename arguments (expected 1 filename, found {})",
-                matches.free.len()
-            );
-            print_usage(&opts);
-        }
-        let path = &matches.free[0];
+        let path = matches.value_of("file").unwrap();
 
         if let Err(e) = ddbug::parse_file(path, &mut |file| print_file(file, &flags)) {
             error!("{}: {}", path, e);
@@ -186,8 +210,7 @@ fn print_file(file: &mut ddbug::File, flags: &ddbug::Flags) -> ddbug::Result<()>
     ddbug::print_file(&mut writer, file, flags)
 }
 
-fn print_usage(opts: &getopts::Options) -> ! {
-    let brief = format!("Usage: {} <options> <file>", env::args().next().unwrap());
-    write!(&mut io::stderr(), "{}", opts.usage(&brief)).ok();
+fn print_usage(matches: &clap::ArgMatches) -> ! {
+    write!(&mut io::stderr(), "{}", matches.usage()).ok();
     std::process::exit(1);
 }
