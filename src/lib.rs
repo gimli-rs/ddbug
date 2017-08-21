@@ -1063,7 +1063,6 @@ pub struct Unit<'input> {
     size: Option<u64>,
     range_size: Option<u64>,
     line_size: Option<u64>,
-    function_size: Option<u64>,
     types: BTreeMap<TypeOffset, Type<'input>>,
     functions: BTreeMap<FunctionOffset, Function<'input>>,
     variables: BTreeMap<VariableOffset, Variable<'input>>,
@@ -1190,8 +1189,27 @@ impl<'input> Unit<'input> {
     }
 
     fn print_function_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.function_size {
+        let mut size = 0;
+        for function in self.functions.values() {
+            if function.low_pc.is_some() {
+                size += function.size.unwrap_or(0);
+            }
+        }
+        if size != 0 {
             write!(w, "fn size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_variable_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        let mut size = 0;
+        for variable in self.variables.values() {
+            if variable.address.is_some() {
+                size += variable.byte_size(hash).unwrap_or(0);
+            }
+        }
+        if size != 0 {
+            write!(w, "var size: {}", size)?;
         }
         Ok(())
     }
@@ -1206,7 +1224,8 @@ impl<'input> Unit<'input> {
                 state.line_option(w, |w, _state| self.print_size(w))?;
                 state.line_option(w, |w, _state| self.print_range_size(w))?;
                 state.line_option(w, |w, _state| self.print_line_size(w))?;
-                state.line_option(w, |w, _state| self.print_function_size(w))
+                state.line_option(w, |w, _state| self.print_function_size(w))?;
+                state.line_option(w, |w, state| self.print_variable_size(w, state.hash))
             })?;
             writeln!(w, "")?;
         }
@@ -1260,7 +1279,14 @@ impl<'input> Unit<'input> {
                 state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_size(w))?;
                 state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_range_size(w))?;
                 state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_line_size(w))?;
-                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_function_size(w))
+                state
+                    .line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_function_size(w))?;
+                state.line_option(
+                    w,
+                    unit_a,
+                    unit_b,
+                    |w, state, unit| unit.print_variable_size(w, state.hash),
+                )
             })?;
             writeln!(w, "")?;
         }

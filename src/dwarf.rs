@@ -159,7 +159,9 @@ where
             let mut ranges =
                 dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
             while let Some(range) = ranges.next()? {
-                size += range.end.wrapping_sub(range.begin);
+                if range.begin != 0 {
+                    size += range.end.wrapping_sub(range.begin);
+                }
             }
             if size != 0 {
                 unit.range_size = Some(size);
@@ -175,17 +177,22 @@ where
                 .rows();
             let mut size = 0;
             let mut prev_addr = None;
+            let mut seq_addr = None;
             while let Some((_, row)) = rows.next_row()? {
                 let addr = row.address();
                 if let Some(prev_addr) = prev_addr {
-                    if addr > prev_addr {
+                    if addr > prev_addr && seq_addr.unwrap_or(0) != 0 {
                         size += addr - prev_addr;
                     }
                 }
                 if row.end_sequence() {
                     prev_addr = None;
+                    seq_addr = None;
                 } else {
                     prev_addr = Some(addr);
+                    if seq_addr.is_none() {
+                        seq_addr = Some(addr);
+                    }
                 }
             }
             if size != 0 {
@@ -200,22 +207,6 @@ where
     fixup_subprogram_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
     fixup_variable_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
 
-    let mut size = 0;
-    for (_, ref function) in &unit.functions {
-        if let Some(val) = function.size {
-            size += val;
-        }
-    }
-    if size != 0 {
-        unit.function_size = Some(size);
-    }
-    /*
-    for (_, ref variable) in &unit.variables {
-        if let Some(val) = variable.size {
-            size += val;
-        }
-    }
-    */
     Ok(unit)
 }
 
@@ -1230,7 +1221,10 @@ where
                     }
                 },
                 gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    function.low_pc = Some(addr);
+                    // TODO: is address 0 ever valid?
+                    if addr != 0 {
+                        function.low_pc = Some(addr);
+                    }
                 },
                 gimli::DW_AT_high_pc => match attr.value() {
                     gimli::AttributeValue::Addr(addr) => function.high_pc = Some(addr),
