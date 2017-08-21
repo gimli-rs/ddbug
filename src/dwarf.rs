@@ -1718,24 +1718,29 @@ where
 {
     let mut evaluation = expression.evaluation(unit.address_size(), unit.format());
     evaluation.set_initial_value(0);
-    let result = evaluation.evaluate();
-    match result {
-        Ok(gimli::EvaluationResult::Complete) => {
-            let pieces = evaluation.result();
-            if pieces.len() == 1 {
-                Some(pieces[0].location)
-            } else {
-                debug!("unsupported number of evaluation pieces: {}", pieces.len());
-                None
+    let mut result = evaluation.evaluate();
+    loop {
+        match result {
+            Ok(gimli::EvaluationResult::Complete) => {
+                let pieces = evaluation.result();
+                if pieces.len() == 1 {
+                    return Some(pieces[0].location);
+                } else {
+                    debug!("unsupported number of evaluation pieces: {}", pieces.len());
+                    return None;
+                }
             }
-        }
-        Ok(_) => {
-            //debug!("incomplete evaluation");
-            None
-        }
-        Err(e) => {
-            debug!("evaluation failed: {}", e);
-            None
+            Ok(gimli::EvaluationResult::RequiresTextBase) => {
+                result = evaluation.resume_with_text_base(0);
+            }
+            Ok(_) => {
+                //debug!("incomplete evaluation");
+                return None;
+            }
+            Err(e) => {
+                debug!("evaluation failed: {}", e);
+                return None;
+            }
         }
     }
 }
