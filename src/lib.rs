@@ -2793,6 +2793,10 @@ impl<'input> Function<'input> {
     }
 
     fn filter(&self, flags: &Flags) -> bool {
+        if !self.inline && self.low_pc.is_none() {
+            // TODO: make this configurable?
+            return false;
+        }
         flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
     }
 
