@@ -12,11 +12,11 @@ extern crate ddbug;
 const OPT_FILE: &'static str = "file";
 const OPT_DIFF: &'static str = "diff";
 
-// Display options
+// Print options
 const OPT_CALLS: &'static str = "calls";
 const OPT_INLINE_DEPTH: &'static str = "inline-depth";
 
-// Display categories
+// Print categories
 const OPT_CATEGORY: &'static str = "category";
 const OPT_CATEGORY_UNIT: &'static str = "unit";
 const OPT_CATEGORY_TYPE: &'static str = "type";
@@ -67,14 +67,14 @@ fn main() {
         .arg(
             clap::Arg::with_name(OPT_INLINE_DEPTH)
                 .long("inline-depth")
-                .help("Depth of inlined function calls (defaults to 1, 0 to disable)")
+                .help("Depth of inlined function calls to print (defaults to 1, 0 to disable)")
                 .value_name("DEPTH"),
         )
         .arg(
             clap::Arg::with_name(OPT_CATEGORY)
                 .short("c")
                 .long("category")
-                .help("Categories of entries to display (defaults to all)")
+                .help("Categories of entries to print (defaults to all)")
                 .takes_value(true)
                 .multiple(true)
                 .require_delimiter(true)
@@ -117,7 +117,7 @@ fn main() {
             clap::Arg::with_name(OPT_IGNORE)
                 .short("i")
                 .long("ignore")
-                .help("Don't display differences due to the given types of changes")
+                .help("Don't print differences due to the given types of changes")
                 .requires(OPT_DIFF)
                 .takes_value(true)
                 .multiple(true)
