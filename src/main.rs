@@ -129,11 +129,11 @@ fn main() {
         )
         .get_matches();
 
-    let mut flags = ddbug::Flags::default();
+    let mut options = ddbug::Options::default();
 
-    flags.calls = matches.is_present(OPT_CALLS);
+    options.calls = matches.is_present(OPT_CALLS);
 
-    flags.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
+    options.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
             Err(e) => {
@@ -148,28 +148,28 @@ fn main() {
     if let Some(values) = matches.values_of(OPT_CATEGORY) {
         for value in values {
             match value {
-                OPT_CATEGORY_UNIT => flags.category_unit = true,
-                OPT_CATEGORY_TYPE => flags.category_type = true,
-                OPT_CATEGORY_FUNCTION => flags.category_function = true,
-                OPT_CATEGORY_VARIABLE => flags.category_variable = true,
+                OPT_CATEGORY_UNIT => options.category_unit = true,
+                OPT_CATEGORY_TYPE => options.category_type = true,
+                OPT_CATEGORY_FUNCTION => options.category_function = true,
+                OPT_CATEGORY_VARIABLE => options.category_variable = true,
                 _ => panic!("unrecognized category value: {}", value),
             }
         }
     } else {
-        flags.category_unit = true;
-        flags.category_type = true;
-        flags.category_function = true;
-        flags.category_variable = true;
+        options.category_unit = true;
+        options.category_type = true;
+        options.category_function = true;
+        options.category_variable = true;
     }
 
-    flags.unit = matches.value_of(OPT_UNIT);
-    flags.name = matches.value_of(OPT_NAME);
-    flags.namespace = match matches.value_of(OPT_NAMESPACE) {
+    options.unit = matches.value_of(OPT_UNIT);
+    options.name = matches.value_of(OPT_NAME);
+    options.namespace = match matches.value_of(OPT_NAMESPACE) {
         Some(ref namespace) => namespace.split("::").collect(),
         None => Vec::new(),
     };
 
-    flags.sort = match matches.value_of(OPT_SORT) {
+    options.sort = match matches.value_of(OPT_SORT) {
         Some(OPT_SORT_NAME) => ddbug::Sort::Name,
         Some(OPT_SORT_SIZE) => ddbug::Sort::Size,
         Some(value) => panic!("unrecognized sort value: {}", value),
@@ -179,12 +179,12 @@ fn main() {
     if let Some(values) = matches.values_of(OPT_IGNORE) {
         for value in values {
             match value {
-                OPT_IGNORE_ADDED => flags.ignore_added = true,
-                OPT_IGNORE_DELETED => flags.ignore_deleted = true,
-                OPT_IGNORE_FUNCTION_ADDRESS => flags.ignore_function_address = true,
-                OPT_IGNORE_FUNCTION_SIZE => flags.ignore_function_size = true,
-                OPT_IGNORE_FUNCTION_INLINE => flags.ignore_function_inline = true,
-                OPT_IGNORE_VARIABLE_ADDRESS => flags.ignore_variable_address = true,
+                OPT_IGNORE_ADDED => options.ignore_added = true,
+                OPT_IGNORE_DELETED => options.ignore_deleted = true,
+                OPT_IGNORE_FUNCTION_ADDRESS => options.ignore_function_address = true,
+                OPT_IGNORE_FUNCTION_SIZE => options.ignore_function_size = true,
+                OPT_IGNORE_FUNCTION_INLINE => options.ignore_function_inline = true,
+                OPT_IGNORE_VARIABLE_ADDRESS => options.ignore_variable_address = true,
                 _ => panic!("unrecognized ignore value: {}", value),
             }
         }
@@ -196,7 +196,7 @@ fn main() {
 
         if let Err(e) = ddbug::parse_file(path_a, &mut |file_a| {
             if let Err(e) =
-                ddbug::parse_file(path_b, &mut |file_b| diff_file(file_a, file_b, &flags))
+                ddbug::parse_file(path_b, &mut |file_b| diff_file(file_a, file_b, &options))
             {
                 error!("{}: {}", path_b, e);
             }
@@ -207,7 +207,7 @@ fn main() {
     } else {
         let path = matches.value_of(OPT_FILE).unwrap();
 
-        if let Err(e) = ddbug::parse_file(path, &mut |file| print_file(file, &flags)) {
+        if let Err(e) = ddbug::parse_file(path, &mut |file| print_file(file, &options)) {
             error!("{}: {}", path, e);
         }
     }
@@ -216,20 +216,20 @@ fn main() {
 fn diff_file(
     file_a: &mut ddbug::File,
     file_b: &mut ddbug::File,
-    flags: &ddbug::Flags,
+    options: &ddbug::Options,
 ) -> ddbug::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    if let Err(e) = ddbug::diff_file(&mut writer, file_a, file_b, flags) {
+    if let Err(e) = ddbug::diff_file(&mut writer, file_a, file_b, options) {
         error!("{}", e);
     }
     Ok(())
 }
 
-fn print_file(file: &mut ddbug::File, flags: &ddbug::Flags) -> ddbug::Result<()> {
+fn print_file(file: &mut ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    ddbug::print_file(&mut writer, file, flags)
+    ddbug::print_file(&mut writer, file, options)
 }
 
 fn print_usage(matches: &clap::ArgMatches) -> ! {

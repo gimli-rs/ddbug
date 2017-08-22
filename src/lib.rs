@@ -96,7 +96,7 @@ impl Default for Sort {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Flags<'a> {
+pub struct Options<'a> {
     pub calls: bool,
     pub inline_depth: usize,
 
@@ -119,7 +119,7 @@ pub struct Flags<'a> {
     pub ignore_variable_address: bool,
 }
 
-impl<'a> Flags<'a> {
+impl<'a> Options<'a> {
     pub fn unit(&mut self, unit: &'a str) -> &mut Self {
         self.unit = Some(unit);
         self
@@ -187,9 +187,9 @@ pub struct File<'input> {
 }
 
 impl<'input> File<'input> {
-    fn filter_units(&self, flags: &Flags, diff: bool) -> Vec<&Unit> {
-        let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(flags)).collect();
-        match flags.sort.with_diff(diff) {
+    fn filter_units(&self, options: &Options, diff: bool) -> Vec<&Unit> {
+        let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(options)).collect();
+        match options.sort.with_diff(diff) {
             Sort::None => {}
             Sort::Name => units.sort_by(|a, b| Unit::cmp_id(a, b)),
             Sort::Size => units.sort_by(|a, b| Unit::cmp_size(a, b)),
@@ -405,22 +405,26 @@ where
     // The remaining fields contain information that is commonly needed in print methods.
     file: &'a File<'input>,
     hash: &'a FileHash<'a, 'input>,
-    flags: &'a Flags<'a>,
+    options: &'a Options<'a>,
 }
 
 impl<'a, 'input> PrintState<'a, 'input>
 where
     'input: 'a,
 {
-    fn new(file: &'a File<'input>, hash: &'a FileHash<'a, 'input>, flags: &'a Flags<'a>) -> Self {
+    fn new(
+        file: &'a File<'input>,
+        hash: &'a FileHash<'a, 'input>,
+        options: &'a Options<'a>,
+    ) -> Self {
         PrintState {
             indent: 0,
             prefix: DiffPrefix::None,
             diff: false,
-            inline_depth: flags.inline_depth,
+            inline_depth: options.inline_depth,
             file: file,
             hash: hash,
-            flags: flags,
+            options: options,
         }
     }
 
@@ -488,7 +492,7 @@ where
         F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
     {
         let mut buf = Vec::new();
-        let mut state = PrintState::new(self.file, self.hash, self.flags);
+        let mut state = PrintState::new(self.file, self.hash, self.options);
         f(&mut buf, &mut state)?;
         if !buf.is_empty() {
             self.line(w, |w, _state| w.write_all(&*buf).map_err(From::from))?;
@@ -618,7 +622,7 @@ where
 {
     a: PrintState<'a, 'input>,
     b: PrintState<'a, 'input>,
-    flags: &'a Flags<'a>,
+    options: &'a Options<'a>,
 }
 
 impl<'a, 'input> DiffState<'a, 'input>
@@ -630,12 +634,12 @@ where
         hash_a: &'a FileHash<'a, 'input>,
         file_b: &'a File<'input>,
         hash_b: &'a FileHash<'a, 'input>,
-        flags: &'a Flags<'a>,
+        options: &'a Options<'a>,
     ) -> Self {
         DiffState {
-            a: PrintState::new(file_a, hash_a, flags),
-            b: PrintState::new(file_b, hash_b, flags),
-            flags: flags,
+            a: PrintState::new(file_a, hash_a, options),
+            b: PrintState::new(file_b, hash_b, options),
+            options: options,
         }
     }
 
@@ -777,11 +781,11 @@ where
         F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
         let mut a = Vec::new();
-        let mut state = PrintState::new(self.a.file, self.a.hash, self.a.flags);
+        let mut state = PrintState::new(self.a.file, self.a.hash, self.a.options);
         f(&mut a, &mut state, arg_a)?;
 
         let mut b = Vec::new();
-        let mut state = PrintState::new(self.b.file, self.b.hash, self.b.flags);
+        let mut state = PrintState::new(self.b.file, self.b.hash, self.b.options);
         f(&mut b, &mut state, arg_b)?;
 
         if a == b {
@@ -879,37 +883,37 @@ trait DiffList: PrintList {
     ) -> Result<()>;
 }
 
-pub fn print_file(w: &mut Write, file: &File, flags: &Flags) -> Result<()> {
+pub fn print_file(w: &mut Write, file: &File, options: &Options) -> Result<()> {
     let hash = FileHash::new(file);
-    for unit in &file.filter_units(flags, false) {
-        let mut state = PrintState::new(file, &hash, flags);
-        unit.print(w, &mut state, flags)?;
+    for unit in &file.filter_units(options, false) {
+        let mut state = PrintState::new(file, &hash, options);
+        unit.print(w, &mut state, options)?;
     }
     Ok(())
 }
 
-pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, flags: &Flags) -> Result<()> {
+pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
     let hash_a = FileHash::new(file_a);
     let hash_b = FileHash::new(file_b);
-    let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, flags);
+    let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
     state
         .merge(
             w,
-            |_state| file_a.filter_units(flags, true),
-            |_state| file_b.filter_units(flags, true),
+            |_state| file_a.filter_units(options, true),
+            |_state| file_b.filter_units(options, true),
             |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b),
             |w, state, a, b| {
-                Unit::diff(a, b, w, state, flags)
+                Unit::diff(a, b, w, state, options)
             },
             |w, state, a| {
-                if !flags.ignore_deleted {
-                    a.print(w, state, flags)?;
+                if !options.ignore_deleted {
+                    a.print(w, state, options)?;
                 }
                 Ok(())
             },
             |w, state, b| {
-                if !flags.ignore_added {
-                    b.print(w, state, flags)?;
+                if !options.ignore_added {
+                    b.print(w, state, options)?;
                 }
                 Ok(())
             },
@@ -1073,9 +1077,9 @@ pub struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
-    /// Return true if this unit matches the filter options in the flags.
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_unit(self.name)
+    /// Return true if this unit matches the filter options.
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_unit(self.name)
     }
 
     /// The offsets of types that should be printed inline.
@@ -1099,13 +1103,13 @@ impl<'input> Unit<'input> {
         inline_types
     }
 
-    /// Filter and sort the list of types using the options in the flags.
+    /// Filter and sort the list of types using the options.
     /// Perform additional filtering and always sort when diffing.
-    fn filter_types(&self, state: &PrintState, flags: &Flags, diff: bool) -> Vec<&Type> {
+    fn filter_types(&self, state: &PrintState, options: &Options, diff: bool) -> Vec<&Type> {
         let inline_types = self.inline_types(state);
         let filter_type = |t: &Type| {
             // Filter by user options.
-            if !t.filter(flags) {
+            if !t.filter(options) {
                 return false;
             }
             match t.kind {
@@ -1129,7 +1133,7 @@ impl<'input> Unit<'input> {
             !inline_types.contains(&t.offset.0)
         };
         let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
-        match flags.sort.with_diff(diff) {
+        match options.sort.with_diff(diff) {
             Sort::None => {}
             Sort::Name => types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b)),
             Sort::Size => types.sort_by(|a, b| Type::cmp_size(state.hash, a, state.hash, b)),
@@ -1137,11 +1141,16 @@ impl<'input> Unit<'input> {
         types
     }
 
-    /// Filter and sort the list of functions using the options in the flags.
+    /// Filter and sort the list of functions using the options.
     /// Always sort when diffing.
-    fn filter_functions(&self, state: &PrintState, flags: &Flags, diff: bool) -> Vec<&Function> {
-        let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(flags)).collect();
-        match flags.sort.with_diff(diff) {
+    fn filter_functions(
+        &self,
+        state: &PrintState,
+        options: &Options,
+        diff: bool,
+    ) -> Vec<&Function> {
+        let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(options)).collect();
+        match options.sort.with_diff(diff) {
             Sort::None => {}
             Sort::Name => functions.sort_by(|a, b| Function::cmp_id(state.hash, a, state.hash, b)),
             Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
@@ -1149,11 +1158,16 @@ impl<'input> Unit<'input> {
         functions
     }
 
-    /// Filter and sort the list of variables using the options in the flags.
+    /// Filter and sort the list of variables using the options.
     /// Always sort when diffing.
-    fn filter_variables(&self, state: &PrintState, flags: &Flags, diff: bool) -> Vec<&Variable> {
-        let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(flags)).collect();
-        match flags.sort.with_diff(diff) {
+    fn filter_variables(
+        &self,
+        state: &PrintState,
+        options: &Options,
+        diff: bool,
+    ) -> Vec<&Variable> {
+        let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(options)).collect();
+        match options.sort.with_diff(diff) {
             Sort::None => {}
             Sort::Name => variables.sort_by(|a, b| Variable::cmp_id(a, b)),
             Sort::Size => {
@@ -1218,8 +1232,8 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
-        if flags.category_unit {
+    fn print(&self, w: &mut Write, state: &mut PrintState, options: &Options) -> Result<()> {
+        if options.category_unit {
             state.line(w, |w, _state| {
                 write!(w, "unit ")?;
                 self.print_ref(w)
@@ -1234,20 +1248,20 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if flags.category_type {
-            for ty in &self.filter_types(state, flags, false) {
+        if options.category_type {
+            for ty in &self.filter_types(state, options, false) {
                 ty.print(w, state, self)?;
                 writeln!(w, "")?;
             }
         }
-        if flags.category_function {
-            for function in &self.filter_functions(state, flags, false) {
+        if options.category_function {
+            for function in &self.filter_functions(state, options, false) {
                 function.print(w, state, self)?;
                 writeln!(w, "")?;
             }
         }
-        if flags.category_variable {
-            for variable in &self.filter_variables(state, flags, false) {
+        if options.category_variable {
+            for variable in &self.filter_variables(state, options, false) {
                 variable.print(w, state)?;
                 writeln!(w, "")?;
             }
@@ -1272,9 +1286,9 @@ impl<'input> Unit<'input> {
         unit_b: &Unit,
         w: &mut Write,
         state: &mut DiffState,
-        flags: &Flags,
+        options: &Options,
     ) -> Result<()> {
-        if flags.category_unit {
+        if options.category_unit {
             state.line(w, unit_a, unit_b, |w, _state, unit| {
                 write!(w, "unit ")?;
                 unit.print_ref(w)
@@ -1295,12 +1309,12 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if flags.category_type {
+        if options.category_type {
             state
             .merge(
                 w,
-                |state| unit_a.filter_types(state, flags, true),
-                |state| unit_b.filter_types(state, flags, true),
+                |state| unit_a.filter_types(state, options, true),
+                |state| unit_b.filter_types(state, options, true),
                 |hash_a, a, hash_b, b| Type::cmp_id(hash_a, a, hash_b, b),
                 |w, state, a, b| {
                     state.diff(
@@ -1312,14 +1326,14 @@ impl<'input> Unit<'input> {
                     )
                 },
                 |w, state, a| {
-                    if !flags.ignore_deleted {
+                    if !options.ignore_deleted {
                         a.print(w, state, unit_a)?;
                         writeln!(w, "")?;
                     }
                     Ok(())
                 },
                 |w, state, b| {
-                    if !flags.ignore_added {
+                    if !options.ignore_added {
                         b.print(w, state, unit_b)?;
                         writeln!(w, "")?;
                     }
@@ -1327,12 +1341,12 @@ impl<'input> Unit<'input> {
                 },
             )?;
         }
-        if flags.category_function {
+        if options.category_function {
             state
             .merge(
                 w,
-                |state| unit_a.filter_functions(state, flags, true),
-                |state| unit_b.filter_functions(state, flags, true),
+                |state| unit_a.filter_functions(state, options, true),
+                |state| unit_b.filter_functions(state, options, true),
                 |hash_a, a, hash_b, b| Function::cmp_id(hash_a, a, hash_b, b),
                 |w, state, a, b| {
                     state.diff(
@@ -1344,14 +1358,14 @@ impl<'input> Unit<'input> {
                     )
                 },
                 |w, state, a| {
-                    if !flags.ignore_deleted {
+                    if !options.ignore_deleted {
                         a.print(w, state, unit_a)?;
                         writeln!(w, "")?;
                     }
                     Ok(())
                 },
                 |w, state, b| {
-                    if !flags.ignore_added {
+                    if !options.ignore_added {
                         b.print(w, state, unit_b)?;
                         writeln!(w, "")?;
                     }
@@ -1359,12 +1373,12 @@ impl<'input> Unit<'input> {
                 },
             )?;
         }
-        if flags.category_variable {
+        if options.category_variable {
             state
             .merge(
                 w,
-                |state| unit_a.filter_variables(state, flags, true),
-                |state| unit_b.filter_variables(state, flags, true),
+                |state| unit_a.filter_variables(state, options, true),
+                |state| unit_b.filter_variables(state, options, true),
                 |_hash_a, a, _hash_b, b| Variable::cmp_id(a, b),
                 |w, state, a, b| {
                     state.diff(
@@ -1376,14 +1390,14 @@ impl<'input> Unit<'input> {
                     )
                 },
                 |w, state, a| {
-                    if !flags.ignore_deleted {
+                    if !options.ignore_deleted {
                         a.print(w, state)?;
                         writeln!(w, "")?;
                     }
                     Ok(())
                 },
                 |w, state, b| {
-                    if !flags.ignore_added {
+                    if !options.ignore_added {
                         b.print(w, state)?;
                         writeln!(w, "")?;
                     }
@@ -1491,18 +1505,18 @@ impl<'input> Type<'input> {
         }
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
+    fn filter(&self, options: &Options) -> bool {
         match self.kind {
-            TypeKind::Def(ref val) => val.filter(flags),
-            TypeKind::Struct(ref val) => val.filter(flags),
-            TypeKind::Union(ref val) => val.filter(flags),
-            TypeKind::Enumeration(ref val) => val.filter(flags),
-            TypeKind::Unspecified(ref val) => val.filter(flags),
+            TypeKind::Def(ref val) => val.filter(options),
+            TypeKind::Struct(ref val) => val.filter(options),
+            TypeKind::Union(ref val) => val.filter(options),
+            TypeKind::Enumeration(ref val) => val.filter(options),
+            TypeKind::Unspecified(ref val) => val.filter(options),
             TypeKind::Base(..) |
             TypeKind::Array(..) |
             TypeKind::Function(..) |
             TypeKind::PointerToMember(..) |
-            TypeKind::Modifier(..) => flags.name.is_none(),
+            TypeKind::Modifier(..) => options.name.is_none(),
         }
     }
 
@@ -1882,8 +1896,8 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -1946,8 +1960,8 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -2060,8 +2074,8 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -2363,8 +2377,8 @@ impl<'input> EnumerationType<'input> {
         }
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
@@ -2647,8 +2661,8 @@ struct UnspecifiedType<'input> {
 }
 
 impl<'input> UnspecifiedType<'input> {
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -2796,12 +2810,12 @@ impl<'input> Function<'input> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
+    fn filter(&self, options: &Options) -> bool {
         if !self.inline && self.low_pc.is_none() {
             // TODO: make this configurable?
             return false;
         }
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     fn calls(&self, file: &File) -> Vec<u64> {
@@ -2865,7 +2879,7 @@ impl<'input> Function<'input> {
             state.list("variables", w, unit, &self.variables)?;
             state
                 .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
-            if state.flags.calls {
+            if state.options.calls {
                 let calls = self.calls(state.file);
                 if !calls.is_empty() {
                     state.line(w, |w, _state| self.print_calls_label(w))?;
@@ -2887,17 +2901,17 @@ impl<'input> Function<'input> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
-            let flag = state.flags.ignore_function_address;
+            let flag = state.options.ignore_function_address;
             state.ignore_diff(
                 flag,
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_address(w)),
             )?;
-            let flag = state.flags.ignore_function_size;
+            let flag = state.options.ignore_function_size;
             state.ignore_diff(
                 flag,
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_size(w)),
             )?;
-            let flag = state.flags.ignore_function_inline;
+            let flag = state.options.ignore_function_inline;
             state.ignore_diff(
                 flag,
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_inline(w)),
@@ -2927,7 +2941,7 @@ impl<'input> Function<'input> {
                 )
             })?;
             // TODO
-            if false && state.flags.calls {
+            if false && state.options.calls {
                 let calls_a = a.calls(state.a.file);
                 let calls_b = b.calls(state.b.file);
                 state.line_option(w, (a, &calls_a), (b, &calls_b), |w, _state, (x, calls)| {
@@ -3255,8 +3269,8 @@ impl<'input> Variable<'input> {
         self.ty(hash).and_then(|t| t.byte_size(hash))
     }
 
-    fn filter(&self, flags: &Flags) -> bool {
-        flags.filter_name(self.name) && flags.filter_namespace(&self.namespace)
+    fn filter(&self, options: &Options) -> bool {
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two variables.
@@ -3313,7 +3327,7 @@ impl<'input> Variable<'input> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
-            let flag = state.flags.ignore_variable_address;
+            let flag = state.options.ignore_variable_address;
             state.ignore_diff(
                 flag,
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_address(w)),

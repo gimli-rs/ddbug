@@ -1,12 +1,12 @@
 extern crate ddbug;
 
 fn diff(name: &str, expect: &str) {
-    let mut flags = flags();
-    flags.unit("src/diff.c").name(name);
+    let mut options = options();
+    options.unit("src/diff.c").name(name);
     let mut diff = Vec::new();
     ddbug::parse_file("tests/bin/diff1", &mut |output_1| {
         ddbug::parse_file("tests/bin/diff2", &mut |output_2| {
-            ddbug::diff_file(&mut diff, output_1, output_2, &flags)
+            ddbug::diff_file(&mut diff, output_1, output_2, &options)
         })
     }).unwrap();
     let diff = String::from_utf8(diff).unwrap();
@@ -19,8 +19,8 @@ fn diff(name: &str, expect: &str) {
     }
 }
 
-fn flags<'a>() -> ddbug::Flags<'a> {
-    ddbug::Flags {
+fn options<'a>() -> ddbug::Options<'a> {
+    ddbug::Options {
         calls: false,
         inline_depth: 1,
 
