@@ -22,16 +22,21 @@ fn diff(name: &str, expect: &str) {
 fn flags<'a>() -> ddbug::Flags<'a> {
     ddbug::Flags {
         calls: false,
-        sort: ddbug::Sort::None,
-        ignore_function_address: true,
-        ignore_variable_address: true,
         inline_depth: 1,
+
+        category_unit: false,
+        category_type: true,
+        category_function: true,
+        category_variable: true,
+
         unit: None,
         name: None,
         namespace: Vec::new(),
-        filter_type: true,
-        filter_function: true,
-        filter_variable: true,
+
+        sort: ddbug::Sort::None,
+
+        ignore_function_address: true,
+        ignore_variable_address: true,
         ..Default::default()
     }
 }

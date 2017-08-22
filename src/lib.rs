@@ -98,21 +98,25 @@ impl Default for Sort {
 #[derive(Debug, Default, Clone)]
 pub struct Flags<'a> {
     pub calls: bool,
+    pub inline_depth: usize,
+
+    pub category_unit: bool,
+    pub category_type: bool,
+    pub category_function: bool,
+    pub category_variable: bool,
+
+    pub unit: Option<&'a str>,
+    pub name: Option<&'a str>,
+    pub namespace: Vec<&'a str>,
+
     pub sort: Sort,
+
     pub ignore_added: bool,
     pub ignore_deleted: bool,
     pub ignore_function_address: bool,
     pub ignore_function_size: bool,
     pub ignore_function_inline: bool,
     pub ignore_variable_address: bool,
-    pub inline_depth: usize,
-    pub unit: Option<&'a str>,
-    pub name: Option<&'a str>,
-    pub namespace: Vec<&'a str>,
-    pub filter_unit: bool,
-    pub filter_type: bool,
-    pub filter_function: bool,
-    pub filter_variable: bool,
 }
 
 impl<'a> Flags<'a> {
@@ -1215,7 +1219,7 @@ impl<'input> Unit<'input> {
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, flags: &Flags) -> Result<()> {
-        if flags.filter_unit {
+        if flags.category_unit {
             state.line(w, |w, _state| {
                 write!(w, "unit ")?;
                 self.print_ref(w)
@@ -1230,19 +1234,19 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if flags.filter_type {
+        if flags.category_type {
             for ty in &self.filter_types(state, flags, false) {
                 ty.print(w, state, self)?;
                 writeln!(w, "")?;
             }
         }
-        if flags.filter_function {
+        if flags.category_function {
             for function in &self.filter_functions(state, flags, false) {
                 function.print(w, state, self)?;
                 writeln!(w, "")?;
             }
         }
-        if flags.filter_variable {
+        if flags.category_variable {
             for variable in &self.filter_variables(state, flags, false) {
                 variable.print(w, state)?;
                 writeln!(w, "")?;
@@ -1270,7 +1274,7 @@ impl<'input> Unit<'input> {
         state: &mut DiffState,
         flags: &Flags,
     ) -> Result<()> {
-        if flags.filter_unit {
+        if flags.category_unit {
             state.line(w, unit_a, unit_b, |w, _state, unit| {
                 write!(w, "unit ")?;
                 unit.print_ref(w)
@@ -1291,7 +1295,7 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if flags.filter_type {
+        if flags.category_type {
             state
             .merge(
                 w,
@@ -1323,7 +1327,7 @@ impl<'input> Unit<'input> {
                 },
             )?;
         }
-        if flags.filter_function {
+        if flags.category_function {
             state
             .merge(
                 w,
@@ -1355,7 +1359,7 @@ impl<'input> Unit<'input> {
                 },
             )?;
         }
-        if flags.filter_variable {
+        if flags.category_variable {
             state
             .merge(
                 w,

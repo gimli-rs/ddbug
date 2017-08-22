@@ -8,25 +8,39 @@ use std::io::{self, Write};
 
 extern crate ddbug;
 
+// Mode
 const OPT_FILE: &'static str = "file";
 const OPT_DIFF: &'static str = "diff";
+
+// Display options
 const OPT_CALLS: &'static str = "calls";
-const OPT_SORT_NAME: &'static str = "sort-name";
-const OPT_SORT_SIZE: &'static str = "sort-size";
-const OPT_IGNORE_ADDED: &'static str = "ignore-added";
-const OPT_IGNORE_DELETED: &'static str = "ignore-deleted";
-const OPT_IGNORE_FUNCTION_ADDRESS: &'static str = "ignore-function-address";
-const OPT_IGNORE_FUNCTION_SIZE: &'static str = "ignore-function-size";
-const OPT_IGNORE_FUNCTION_INLINE: &'static str = "ignore-function-inline";
-const OPT_IGNORE_VARIABLE_ADDRESS: &'static str = "ignore-variable-address";
 const OPT_INLINE_DEPTH: &'static str = "inline-depth";
+
+// Display categories
+const OPT_CATEGORY: &'static str = "category";
+const OPT_CATEGORY_UNIT: &'static str = "unit";
+const OPT_CATEGORY_TYPE: &'static str = "type";
+const OPT_CATEGORY_FUNCTION: &'static str = "function";
+const OPT_CATEGORY_VARIABLE: &'static str = "variable";
+
+// Filters
 const OPT_UNIT: &'static str = "unit";
 const OPT_NAME: &'static str = "name";
 const OPT_NAMESPACE: &'static str = "namespace";
-const OPT_FILTER_UNIT: &'static str = "filter-unit";
-const OPT_FILTER_TYPE: &'static str = "filter-type";
-const OPT_FILTER_FUNCTION: &'static str = "filter-function";
-const OPT_FILTER_VARIABLE: &'static str = "filter-variable";
+
+// Sorting
+const OPT_SORT: &'static str = "sort";
+const OPT_SORT_SIZE: &'static str = "size";
+const OPT_SORT_NAME: &'static str = "name";
+
+// Diff options
+const OPT_IGNORE: &'static str = "ignore";
+const OPT_IGNORE_ADDED: &'static str = "added";
+const OPT_IGNORE_DELETED: &'static str = "deleted";
+const OPT_IGNORE_FUNCTION_ADDRESS: &'static str = "function-address";
+const OPT_IGNORE_FUNCTION_SIZE: &'static str = "function-size";
+const OPT_IGNORE_FUNCTION_INLINE: &'static str = "function-inline";
+const OPT_IGNORE_VARIABLE_ADDRESS: &'static str = "variable-address";
 
 fn main() {
     env_logger::init().ok();
@@ -35,7 +49,7 @@ fn main() {
         .version(crate_version!())
         .arg(
             clap::Arg::with_name(OPT_FILE)
-                .help("path of file to print")
+                .help("Path of file to print")
                 .value_name("FILE")
                 .index(1)
                 .required_unless(OPT_DIFF)
@@ -44,99 +58,82 @@ fn main() {
         .arg(
             clap::Arg::with_name(OPT_DIFF)
                 .long("diff")
-                .help("print difference between two files")
+                .help("Print difference between two files")
                 .value_names(&["FILE", "FILE"]),
         )
-        .arg(clap::Arg::with_name(OPT_CALLS).long("calls").help("print function calls"))
-        .arg(
-            clap::Arg::with_name(OPT_SORT_NAME)
-                .long("sort-name")
-                .help("sort entries by type and name"),
-        )
-        .arg(clap::Arg::with_name(OPT_SORT_SIZE).long("sort-size").help("sort entries by size"))
-        .arg(
-            clap::Arg::with_name(OPT_IGNORE_ADDED)
-                .long("ignore-added")
-                .help("don't display differences due to added functions/types/variables"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_IGNORE_DELETED)
-                .long("ignore-deleted")
-                .help("don't display differences due to deleted functions/types/variables"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_IGNORE_FUNCTION_ADDRESS)
-                .long("ignore-function-address")
-                .help("don't display function differences due to address changes"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_IGNORE_FUNCTION_SIZE)
-                .long("ignore-function-size")
-                .help("don't display function differences due to size changes"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_IGNORE_FUNCTION_INLINE)
-                .long("ignore-function-inline")
-                .help("don't display function differences due to inline changes"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_IGNORE_VARIABLE_ADDRESS)
-                .long("ignore-variable-address")
-                .help("don't display variable differences due to address changes"),
-        )
+        .arg(clap::Arg::with_name(OPT_CALLS).long("calls").help("Print function calls"))
         .arg(
             clap::Arg::with_name(OPT_INLINE_DEPTH)
                 .long("inline-depth")
-                .help("depth of inlined function calls (0 to disable)")
+                .help("Depth of inlined function calls (defaults to 1, 0 to disable)")
                 .value_name("DEPTH"),
+        )
+        .arg(
+            clap::Arg::with_name(OPT_CATEGORY)
+                .long("category")
+                .help("Categories of entries to display (defaults to all)")
+                .takes_value(true)
+                .multiple(true)
+                .require_delimiter(true)
+                .value_name("CATEGORY")
+                .possible_values(&[
+                    OPT_CATEGORY_UNIT,
+                    OPT_CATEGORY_TYPE,
+                    OPT_CATEGORY_FUNCTION,
+                    OPT_CATEGORY_VARIABLE,
+                ]),
         )
         .arg(
             clap::Arg::with_name(OPT_UNIT)
                 .long("unit")
-                .help("print only entries within the given unit")
+                .help("Print only entries within the given unit")
                 .value_name("UNIT"),
         )
         .arg(
             clap::Arg::with_name(OPT_NAME)
                 .long("name")
-                .help("print only entries with the given name")
+                .help("Print only entries with the given name")
                 .value_name("NAME"),
         )
         .arg(
             clap::Arg::with_name(OPT_NAMESPACE)
                 .long("namespace")
-                .help("print only entries within the given namespace")
+                .help("Print only entries within the given namespace")
                 .value_name("NAMESPACE"),
         )
-        .arg(clap::Arg::with_name(OPT_FILTER_UNIT).long("filter-unit").help("print only units"))
-        .arg(clap::Arg::with_name(OPT_FILTER_TYPE).long("filter-type").help("print only types"))
         .arg(
-            clap::Arg::with_name(OPT_FILTER_FUNCTION)
-                .long("filter-function")
-                .help("print only functions"),
+            clap::Arg::with_name(OPT_SORT)
+                .long("sort")
+                .help("Sort entries by the given key")
+                .takes_value(true)
+                .value_name("KEY")
+                .possible_values(&[OPT_SORT_NAME, OPT_SORT_SIZE]),
         )
         .arg(
-            clap::Arg::with_name(OPT_FILTER_VARIABLE)
-                .long("filter-variable")
-                .help("print only variables"),
+            clap::Arg::with_name(OPT_IGNORE)
+                .long("ignore")
+                .help("Don't display differences due to the given types of changes")
+                .requires(OPT_DIFF)
+                .takes_value(true)
+                .multiple(true)
+                .require_delimiter(true)
+                .value_name("CHANGE")
+                .possible_values(&[
+                    OPT_IGNORE_ADDED,
+                    OPT_IGNORE_DELETED,
+                    OPT_IGNORE_FUNCTION_ADDRESS,
+                    OPT_IGNORE_FUNCTION_SIZE,
+                    OPT_IGNORE_FUNCTION_INLINE,
+                    OPT_IGNORE_VARIABLE_ADDRESS,
+                ]),
         )
         .get_matches();
 
-    let calls = matches.is_present(OPT_CALLS);
-    let sort = if matches.is_present(OPT_SORT_NAME) {
-        ddbug::Sort::Name
-    } else if matches.is_present(OPT_SORT_SIZE) {
-        ddbug::Sort::Size
-    } else {
-        ddbug::Sort::None
-    };
-    let ignore_added = matches.is_present(OPT_IGNORE_ADDED);
-    let ignore_deleted = matches.is_present(OPT_IGNORE_DELETED);
-    let ignore_function_address = matches.is_present(OPT_IGNORE_FUNCTION_ADDRESS);
-    let ignore_function_size = matches.is_present(OPT_IGNORE_FUNCTION_SIZE);
-    let ignore_function_inline = matches.is_present(OPT_IGNORE_FUNCTION_INLINE);
-    let ignore_variable_address = matches.is_present(OPT_IGNORE_VARIABLE_ADDRESS);
-    let inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
+    let mut flags = ddbug::Flags::default();
+
+    flags.calls = matches.is_present(OPT_CALLS);
+
+    flags.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
             Err(e) => {
@@ -147,46 +144,51 @@ fn main() {
     } else {
         1
     };
-    let unit = matches.value_of(OPT_UNIT);
-    let unit = unit.as_ref().map(|s| &s[..]);
-    let name = matches.value_of(OPT_NAME);
-    let name = name.as_ref().map(|s| &s[..]);
-    let namespace = matches.value_of(OPT_NAMESPACE);
-    let namespace = match namespace {
+
+    if let Some(values) = matches.values_of(OPT_CATEGORY) {
+        for value in values {
+            match value {
+                OPT_CATEGORY_UNIT => flags.category_unit = true,
+                OPT_CATEGORY_TYPE => flags.category_type = true,
+                OPT_CATEGORY_FUNCTION => flags.category_function = true,
+                OPT_CATEGORY_VARIABLE => flags.category_variable = true,
+                _ => panic!("unrecognized category value: {}", value),
+            }
+        }
+    } else {
+        flags.category_unit = true;
+        flags.category_type = true;
+        flags.category_function = true;
+        flags.category_variable = true;
+    }
+
+    flags.unit = matches.value_of(OPT_UNIT);
+    flags.name = matches.value_of(OPT_NAME);
+    flags.namespace = match matches.value_of(OPT_NAMESPACE) {
         Some(ref namespace) => namespace.split("::").collect(),
         None => Vec::new(),
     };
-    let mut filter_unit = matches.is_present(OPT_FILTER_UNIT);
-    let mut filter_type = matches.is_present(OPT_FILTER_TYPE);
-    let mut filter_function = matches.is_present(OPT_FILTER_FUNCTION);
-    let mut filter_variable = matches.is_present(OPT_FILTER_VARIABLE);
-    if !filter_unit && !filter_type && !filter_function && !filter_variable {
-        if name.is_none() {
-            filter_unit = true;
-        }
-        filter_type = true;
-        filter_function = true;
-        filter_variable = true;
-    }
 
-    let flags = ddbug::Flags {
-        calls,
-        sort,
-        ignore_added,
-        ignore_deleted: ignore_deleted,
-        ignore_function_address,
-        ignore_function_size,
-        ignore_function_inline,
-        ignore_variable_address,
-        inline_depth,
-        unit,
-        name,
-        namespace,
-        filter_unit,
-        filter_type,
-        filter_function,
-        filter_variable,
+    flags.sort = match matches.value_of(OPT_SORT) {
+        Some(OPT_SORT_NAME) => ddbug::Sort::Name,
+        Some(OPT_SORT_SIZE) => ddbug::Sort::Size,
+        Some(value) => panic!("unrecognized sort value: {}", value),
+        _ => ddbug::Sort::None,
     };
+
+    if let Some(values) = matches.values_of(OPT_IGNORE) {
+        for value in values {
+            match value {
+                OPT_IGNORE_ADDED => flags.ignore_added = true,
+                OPT_IGNORE_DELETED => flags.ignore_deleted = true,
+                OPT_IGNORE_FUNCTION_ADDRESS => flags.ignore_function_address = true,
+                OPT_IGNORE_FUNCTION_SIZE => flags.ignore_function_size = true,
+                OPT_IGNORE_FUNCTION_INLINE => flags.ignore_function_inline = true,
+                OPT_IGNORE_VARIABLE_ADDRESS => flags.ignore_variable_address = true,
+                _ => panic!("unrecognized ignore value: {}", value),
+            }
+        }
+    }
 
     if let Some(mut paths) = matches.values_of(OPT_DIFF) {
         let path_a = paths.next().unwrap();
