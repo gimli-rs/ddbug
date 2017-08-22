@@ -58,6 +58,7 @@ fn main() {
         )
         .arg(
             clap::Arg::with_name(OPT_DIFF)
+                .short("d")
                 .long("diff")
                 .help("Print difference between two files")
                 .value_names(&["FILE", "FILE"]),
@@ -71,6 +72,7 @@ fn main() {
         )
         .arg(
             clap::Arg::with_name(OPT_CATEGORY)
+                .short("c")
                 .long("category")
                 .help("Categories of entries to display (defaults to all)")
                 .takes_value(true)
@@ -104,6 +106,7 @@ fn main() {
         )
         .arg(
             clap::Arg::with_name(OPT_SORT)
+                .short("s")
                 .long("sort")
                 .help("Sort entries by the given key")
                 .takes_value(true)
@@ -112,6 +115,7 @@ fn main() {
         )
         .arg(
             clap::Arg::with_name(OPT_IGNORE)
+                .short("i")
                 .long("ignore")
                 .help("Don't display differences due to the given types of changes")
                 .requires(OPT_DIFF)
