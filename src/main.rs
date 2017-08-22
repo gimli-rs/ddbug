@@ -47,6 +47,7 @@ fn main() {
 
     let matches = clap::App::new("ddbug")
         .version(crate_version!())
+        .setting(clap::AppSettings::UnifiedHelpMessage)
         .arg(
             clap::Arg::with_name(OPT_FILE)
                 .help("Path of file to print")
