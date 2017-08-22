@@ -105,6 +105,7 @@ pub struct Options<'a> {
     pub category_function: bool,
     pub category_variable: bool,
 
+    pub filter_function_inline: Option<bool>,
     pub filter_name: Option<&'a str>,
     pub filter_namespace: Vec<&'a str>,
     pub filter_unit: Option<&'a str>,
@@ -130,12 +131,8 @@ impl<'a> Options<'a> {
         self
     }
 
-    fn filter_unit(&self, unit: Option<&[u8]>) -> bool {
-        if let Some(filter) = self.filter_unit {
-            filter_name(unit, filter)
-        } else {
-            true
-        }
+    fn filter_function_inline(&self, inline: bool) -> bool {
+        self.filter_function_inline.is_none() || self.filter_function_inline == Some(inline)
     }
 
     fn filter_name(&self, name: Option<&[u8]>) -> bool {
@@ -152,6 +149,14 @@ impl<'a> Options<'a> {
                 Some(ref namespace) => namespace.filter(&self.filter_namespace),
                 None => false,
             }
+        } else {
+            true
+        }
+    }
+
+    fn filter_unit(&self, unit: Option<&[u8]>) -> bool {
+        if let Some(filter) = self.filter_unit {
+            filter_name(unit, filter)
         } else {
             true
         }
@@ -2815,7 +2820,8 @@ impl<'input> Function<'input> {
             // TODO: make this configurable?
             return false;
         }
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace) &&
+            options.filter_function_inline(self.inline)
     }
 
     fn calls(&self, file: &File) -> Vec<u64> {

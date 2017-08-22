@@ -23,6 +23,8 @@ const OPT_CATEGORY_VARIABLE: &'static str = "variable";
 
 // Filters
 const OPT_FILTER: &'static str = "filter";
+const OPT_FILTER_INLINE: &'static str = "inline";
+const OPT_FILTER_FUNCTION_INLINE: &'static str = "function-inline";
 const OPT_FILTER_NAME: &'static str = "name";
 const OPT_FILTER_NAMESPACE: &'static str = "namespace";
 const OPT_FILTER_UNIT: &'static str = "unit";
@@ -125,9 +127,10 @@ fn main() {
         )
         .after_help(concat!(
             "FILTERS:\n",
-            "    name=<string>          Match entries with the given name\n",
-            "    namespace=<string>     Match entries within the given namespace\n",
-            "    unit=<string>          Match entries within the given unit\n"
+            "    function-inline=<yes|no>        Match function 'inline' value\n",
+            "    name=<string>                   Match entries with the given name\n",
+            "    namespace=<string>              Match entries within the given namespace\n",
+            "    unit=<string>                   Match entries within the given unit\n"
         ))
         .get_matches();
 
@@ -175,6 +178,16 @@ fn main() {
                 let key = &value[..index];
                 let value = &value[index + 1..];
                 match key {
+                    OPT_FILTER_INLINE | OPT_FILTER_FUNCTION_INLINE => {
+                        options.filter_function_inline = match value {
+                            "y" | "yes" => Some(true),
+                            "n" | "no" => Some(false),
+                            _ => clap::Error::with_description(
+                                &format!("invalid {} {} value: {}", OPT_FILTER, key, value),
+                                clap::ErrorKind::InvalidValue,
+                            ).exit(),
+                        };
+                    }
                     OPT_FILTER_NAME => options.filter_name = Some(value),
                     OPT_FILTER_NAMESPACE => options.filter_namespace = value.split("::").collect(),
                     OPT_FILTER_UNIT => options.filter_unit = Some(value),
