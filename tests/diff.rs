@@ -29,9 +29,9 @@ fn options<'a>() -> ddbug::Options<'a> {
         category_function: true,
         category_variable: true,
 
-        unit: None,
-        name: None,
-        namespace: Vec::new(),
+        filter_name: None,
+        filter_namespace: Vec::new(),
+        filter_unit: None,
 
         sort: ddbug::Sort::None,
 

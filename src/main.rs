@@ -4,8 +4,6 @@ extern crate env_logger;
 #[macro_use]
 extern crate log;
 
-use std::io::{self, Write};
-
 extern crate ddbug;
 
 // Mode
@@ -24,9 +22,10 @@ const OPT_CATEGORY_FUNCTION: &'static str = "function";
 const OPT_CATEGORY_VARIABLE: &'static str = "variable";
 
 // Filters
-const OPT_UNIT: &'static str = "unit";
-const OPT_NAME: &'static str = "name";
-const OPT_NAMESPACE: &'static str = "namespace";
+const OPT_FILTER: &'static str = "filter";
+const OPT_FILTER_NAME: &'static str = "name";
+const OPT_FILTER_NAMESPACE: &'static str = "namespace";
+const OPT_FILTER_UNIT: &'static str = "unit";
 
 // Sorting
 const OPT_SORT: &'static str = "sort";
@@ -59,21 +58,21 @@ fn main() {
         .arg(
             clap::Arg::with_name(OPT_DIFF)
                 .short("d")
-                .long("diff")
+                .long(OPT_DIFF)
                 .help("Print difference between two files")
                 .value_names(&["FILE", "FILE"]),
         )
         .arg(clap::Arg::with_name(OPT_CALLS).long("calls").help("Print function calls"))
         .arg(
             clap::Arg::with_name(OPT_INLINE_DEPTH)
-                .long("inline-depth")
+                .long(OPT_INLINE_DEPTH)
                 .help("Depth of inlined function calls to print (defaults to 1, 0 to disable)")
                 .value_name("DEPTH"),
         )
         .arg(
             clap::Arg::with_name(OPT_CATEGORY)
                 .short("c")
-                .long("category")
+                .long(OPT_CATEGORY)
                 .help("Categories of entries to print (defaults to all)")
                 .takes_value(true)
                 .multiple(true)
@@ -87,27 +86,19 @@ fn main() {
                 ]),
         )
         .arg(
-            clap::Arg::with_name(OPT_UNIT)
-                .long("unit")
-                .help("Print only entries within the given unit")
-                .value_name("UNIT"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_NAME)
-                .long("name")
-                .help("Print only entries with the given name")
-                .value_name("NAME"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_NAMESPACE)
-                .long("namespace")
-                .help("Print only entries within the given namespace")
-                .value_name("NAMESPACE"),
+            clap::Arg::with_name(OPT_FILTER)
+                .short("f")
+                .long(OPT_FILTER)
+                .help("Print only entries that match the given filters")
+                .takes_value(true)
+                .multiple(true)
+                .require_delimiter(true)
+                .value_name("FILTER"),
         )
         .arg(
             clap::Arg::with_name(OPT_SORT)
                 .short("s")
-                .long("sort")
+                .long(OPT_SORT)
                 .help("Sort entries by the given key")
                 .takes_value(true)
                 .value_name("KEY")
@@ -116,7 +107,7 @@ fn main() {
         .arg(
             clap::Arg::with_name(OPT_IGNORE)
                 .short("i")
-                .long("ignore")
+                .long(OPT_IGNORE)
                 .help("Don't print differences due to the given types of changes")
                 .requires(OPT_DIFF)
                 .takes_value(true)
@@ -132,6 +123,12 @@ fn main() {
                     OPT_IGNORE_VARIABLE_ADDRESS,
                 ]),
         )
+        .after_help(concat!(
+            "FILTERS:\n",
+            "    name=<string>          Match entries with the given name\n",
+            "    namespace=<string>     Match entries within the given namespace\n",
+            "    unit=<string>          Match entries within the given unit\n"
+        ))
         .get_matches();
 
     let mut options = ddbug::Options::default();
@@ -141,9 +138,11 @@ fn main() {
     options.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
-            Err(e) => {
-                error!("Invalid argument '{}' to option 'inline-depth': {}", inline_depth, e);
-                print_usage(&matches);
+            Err(_) => {
+                clap::Error::with_description(
+                    &format!("invalid {} value: {}", OPT_INLINE_DEPTH, inline_depth),
+                    clap::ErrorKind::InvalidValue,
+                ).exit();
             }
         }
     } else {
@@ -157,7 +156,10 @@ fn main() {
                 OPT_CATEGORY_TYPE => options.category_type = true,
                 OPT_CATEGORY_FUNCTION => options.category_function = true,
                 OPT_CATEGORY_VARIABLE => options.category_variable = true,
-                _ => panic!("unrecognized category value: {}", value),
+                _ => clap::Error::with_description(
+                    &format!("invalid {} value: {}", OPT_CATEGORY, value),
+                    clap::ErrorKind::InvalidValue,
+                ).exit(),
             }
         }
     } else {
@@ -167,17 +169,36 @@ fn main() {
         options.category_variable = true;
     }
 
-    options.unit = matches.value_of(OPT_UNIT);
-    options.name = matches.value_of(OPT_NAME);
-    options.namespace = match matches.value_of(OPT_NAMESPACE) {
-        Some(ref namespace) => namespace.split("::").collect(),
-        None => Vec::new(),
-    };
+    if let Some(values) = matches.values_of(OPT_FILTER) {
+        for value in values {
+            if let Some(index) = value.bytes().position(|c| c == b'=') {
+                let key = &value[..index];
+                let value = &value[index + 1..];
+                match key {
+                    OPT_FILTER_NAME => options.filter_name = Some(value),
+                    OPT_FILTER_NAMESPACE => options.filter_namespace = value.split("::").collect(),
+                    OPT_FILTER_UNIT => options.filter_unit = Some(value),
+                    _ => clap::Error::with_description(
+                        &format!("invalid {} key: {}", OPT_FILTER, key),
+                        clap::ErrorKind::InvalidValue,
+                    ).exit(),
+                }
+            } else {
+                clap::Error::with_description(
+                    &format!("missing {} value for key: {}", OPT_FILTER, value),
+                    clap::ErrorKind::InvalidValue,
+                ).exit();
+            }
+        }
+    }
 
     options.sort = match matches.value_of(OPT_SORT) {
         Some(OPT_SORT_NAME) => ddbug::Sort::Name,
         Some(OPT_SORT_SIZE) => ddbug::Sort::Size,
-        Some(value) => panic!("unrecognized sort value: {}", value),
+        Some(value) => clap::Error::with_description(
+            &format!("invalid {} key: {}", OPT_SORT, value),
+            clap::ErrorKind::InvalidValue,
+        ).exit(),
         _ => ddbug::Sort::None,
     };
 
@@ -190,7 +211,10 @@ fn main() {
                 OPT_IGNORE_FUNCTION_SIZE => options.ignore_function_size = true,
                 OPT_IGNORE_FUNCTION_INLINE => options.ignore_function_inline = true,
                 OPT_IGNORE_VARIABLE_ADDRESS => options.ignore_variable_address = true,
-                _ => panic!("unrecognized ignore value: {}", value),
+                _ => clap::Error::with_description(
+                    &format!("invalid {} value: {}", OPT_IGNORE, value),
+                    clap::ErrorKind::InvalidValue,
+                ).exit(),
             }
         }
     }
@@ -235,9 +259,4 @@ fn print_file(file: &mut ddbug::File, options: &ddbug::Options) -> ddbug::Result
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
     ddbug::print_file(&mut writer, file, options)
-}
-
-fn print_usage(matches: &clap::ArgMatches) -> ! {
-    write!(&mut io::stderr(), "{}", matches.usage()).ok();
-    std::process::exit(1);
 }

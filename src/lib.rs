@@ -105,9 +105,9 @@ pub struct Options<'a> {
     pub category_function: bool,
     pub category_variable: bool,
 
-    pub unit: Option<&'a str>,
-    pub name: Option<&'a str>,
-    pub namespace: Vec<&'a str>,
+    pub filter_name: Option<&'a str>,
+    pub filter_namespace: Vec<&'a str>,
+    pub filter_unit: Option<&'a str>,
 
     pub sort: Sort,
 
@@ -121,17 +121,17 @@ pub struct Options<'a> {
 
 impl<'a> Options<'a> {
     pub fn unit(&mut self, unit: &'a str) -> &mut Self {
-        self.unit = Some(unit);
+        self.filter_unit = Some(unit);
         self
     }
 
     pub fn name(&mut self, name: &'a str) -> &mut Self {
-        self.name = Some(name);
+        self.filter_name = Some(name);
         self
     }
 
     fn filter_unit(&self, unit: Option<&[u8]>) -> bool {
-        if let Some(filter) = self.unit {
+        if let Some(filter) = self.filter_unit {
             filter_name(unit, filter)
         } else {
             true
@@ -139,7 +139,7 @@ impl<'a> Options<'a> {
     }
 
     fn filter_name(&self, name: Option<&[u8]>) -> bool {
-        if let Some(filter) = self.name {
+        if let Some(filter) = self.filter_name {
             filter_name(name, filter)
         } else {
             true
@@ -147,9 +147,9 @@ impl<'a> Options<'a> {
     }
 
     fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {
-        if !self.namespace.is_empty() {
+        if !self.filter_namespace.is_empty() {
             match *namespace {
-                Some(ref namespace) => namespace.filter(&self.namespace),
+                Some(ref namespace) => namespace.filter(&self.filter_namespace),
                 None => false,
             }
         } else {
@@ -1516,7 +1516,7 @@ impl<'input> Type<'input> {
             TypeKind::Array(..) |
             TypeKind::Function(..) |
             TypeKind::PointerToMember(..) |
-            TypeKind::Modifier(..) => options.name.is_none(),
+            TypeKind::Modifier(..) => options.filter_name.is_none(),
         }
     }
 
