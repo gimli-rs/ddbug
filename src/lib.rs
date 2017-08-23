@@ -1177,7 +1177,7 @@ impl<'input> Unit<'input> {
         let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(options)).collect();
         match options.sort.with_diff(diff) {
             Sort::None => {}
-            Sort::Name => functions.sort_by(|a, b| Function::cmp_id(state.hash, a, state.hash, b)),
+            Sort::Name => functions.sort_by(|a, b| Function::cmp_id_and_param(state.hash, a, state.hash, b)),
             Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
         }
         functions
@@ -2679,7 +2679,7 @@ impl<'input> FunctionType<'input> {
         b: &FunctionType,
     ) -> cmp::Ordering {
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
+            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -2889,14 +2889,22 @@ impl<'input> Function<'input> {
     /// Compare the identifying information of two functions.
     /// This can be used to sort, and to determine if two functions refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(hash_a: &FileHash, a: &Function, hash_b: &FileHash, b: &Function) -> cmp::Ordering {
-        let ord = cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name);
+    fn cmp_id(_hash_a: &FileHash, a: &Function, _hash_b: &FileHash, b: &Function) -> cmp::Ordering {
+        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    // This function is a bit of a hack. We use it for sorting, but not for
+    // equality, in the hopes that we'll get better results in the presence
+    // of overloading, while still coping with changed function signatures.
+    // TODO: do something smarter
+    fn cmp_id_and_param(hash_a: &FileHash, a: &Function, hash_b: &FileHash, b: &Function) -> cmp::Ordering {
+        let ord = Self::cmp_id(hash_a, a, hash_b, b);
         if ord != cmp::Ordering::Equal {
             return ord;
         }
 
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
+            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -3158,23 +3166,30 @@ impl<'input> Parameter<'input> {
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
+    #[allow(dead_code)]
     fn cmp_id(hash_a: &FileHash, a: &Parameter, hash_b: &FileHash, b: &Parameter) -> cmp::Ordering {
-        match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
-                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
-                if ord != cmp::Ordering::Equal {
-                    return ord;
-                }
-            }
-            (Some(_), None) => {
-                return cmp::Ordering::Less;
-            }
-            (None, Some(_)) => {
-                return cmp::Ordering::Greater;
-            }
-            (None, None) => {}
+        let ord = Self::cmp_type(hash_a, a, hash_b, b);
+        if ord != cmp::Ordering::Equal {
+            return ord;
         }
         a.name.cmp(&b.name)
+    }
+
+    fn cmp_type(hash_a: &FileHash, a: &Parameter, hash_b: &FileHash, b: &Parameter) -> cmp::Ordering {
+        match (a.ty(hash_a), b.ty(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
+                Type::cmp_id(hash_a, ty_a, hash_b, ty_b)
+            }
+            (Some(_), None) => {
+                cmp::Ordering::Less
+            }
+            (None, Some(_)) => {
+                cmp::Ordering::Greater
+            }
+            (None, None) => {
+                cmp::Ordering::Equal
+            }
+        }
     }
 }
 
