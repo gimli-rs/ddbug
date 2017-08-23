@@ -821,6 +821,25 @@ where
         self.line(w, arg_a, arg_b, f)
     }
 
+    fn line_option_u64(
+        &mut self,
+        w: &mut Write,
+        label: &str,
+        arg_a: Option<u64>,
+        arg_b: Option<u64>,
+    ) -> Result<()> {
+        let base = arg_a.unwrap_or(0);
+        self.line_option(w, arg_a, arg_b, |w, _state, arg| {
+            if let Some(arg) = arg {
+                write!(w, "{}: {}", label, arg)?;
+                if arg != base {
+                    write!(w, " ({:+})", arg as i64 - base as i64)?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     fn list<T: DiffList>(
         &mut self,
         label: &str,
@@ -1211,7 +1230,7 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn print_function_size(&self, w: &mut Write) -> Result<()> {
+    fn function_size(&self) -> Option<u64> {
         let mut size = 0;
         for function in self.functions.values() {
             if function.low_pc.is_some() {
@@ -1219,12 +1238,20 @@ impl<'input> Unit<'input> {
             }
         }
         if size != 0 {
+            Some(size)
+        } else {
+            None
+        }
+    }
+
+    fn print_function_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.function_size() {
             write!(w, "fn size: {}", size)?;
         }
         Ok(())
     }
 
-    fn print_variable_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn variable_size(&self, hash: &FileHash) -> Option<u64> {
         let mut size = 0;
         for variable in self.variables.values() {
             if variable.address.is_some() {
@@ -1232,6 +1259,14 @@ impl<'input> Unit<'input> {
             }
         }
         if size != 0 {
+            Some(size)
+        } else {
+            None
+        }
+    }
+
+    fn print_variable_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        if let Some(size) = self.variable_size(hash) {
             write!(w, "var size: {}", size)?;
         }
         Ok(())
@@ -1299,16 +1334,16 @@ impl<'input> Unit<'input> {
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
-                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_size(w))?;
-                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_range_size(w))?;
-                state.line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_line_size(w))?;
+                state.line_option_u64(w, "size", unit_a.size, unit_b.size)?;
+                state.line_option_u64(w, "range size", unit_a.range_size, unit_b.range_size)?;
+                state.line_option_u64(w, "line size", unit_a.line_size, unit_b.line_size)?;
                 state
-                    .line_option(w, unit_a, unit_b, |w, _state, unit| unit.print_function_size(w))?;
-                state.line_option(
+                    .line_option_u64(w, "fn size", unit_a.function_size(), unit_b.function_size())?;
+                state.line_option_u64(
                     w,
-                    unit_a,
-                    unit_b,
-                    |w, state, unit| unit.print_variable_size(w, state.hash),
+                    "var size",
+                    unit_a.variable_size(state.a.hash),
+                    unit_b.variable_size(state.b.hash),
                 )
             })?;
             writeln!(w, "")?;
