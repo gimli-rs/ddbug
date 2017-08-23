@@ -154,14 +154,6 @@ impl<'a> Options<'a> {
             true
         }
     }
-
-    fn filter_unit(&self, unit: Option<&[u8]>) -> bool {
-        if let Some(filter) = self.filter_unit {
-            filter_name(unit, filter)
-        } else {
-            true
-        }
-    }
 }
 
 fn filter_name(name: Option<&[u8]>, filter: &str) -> bool {
@@ -1102,9 +1094,25 @@ pub struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
+    fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {
+        let name = self.name.unwrap_or(&[]);
+        for &(old, new) in &options.prefix_map {
+            if name.starts_with(old.as_bytes()) {
+                return (new.as_bytes(), &name[old.len()..]);
+            }
+        }
+        (&[], name)
+    }
+
     /// Return true if this unit matches the filter options.
     fn filter(&self, options: &Options) -> bool {
-        options.filter_unit(self.name)
+        if let Some(filter) = options.filter_unit {
+            let (prefix, suffix) = self.prefix_map(options);
+            let iter = prefix.iter().chain(suffix);
+            iter.cmp(filter.as_bytes()) == cmp::Ordering::Equal
+        } else {
+            true
+        }
     }
 
     /// The offsets of types that should be printed inline.
@@ -1177,7 +1185,9 @@ impl<'input> Unit<'input> {
         let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(options)).collect();
         match options.sort.with_diff(diff) {
             Sort::None => {}
-            Sort::Name => functions.sort_by(|a, b| Function::cmp_id_and_param(state.hash, a, state.hash, b)),
+            Sort::Name => {
+                functions.sort_by(|a, b| Function::cmp_id_and_param(state.hash, a, state.hash, b))
+            }
             Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
         }
         functions
@@ -1313,22 +1323,10 @@ impl<'input> Unit<'input> {
     /// Compare the identifying information of two units.
     /// This can be used to sort, and to determine if two units refer to the same source.
     fn cmp_id(a: &Unit, b: &Unit, options: &Options) -> cmp::Ordering {
-        let mut prefix_a = "";
-        let mut suffix_a = a.name.unwrap_or(&[]);
-        let mut prefix_b = "";
-        let mut suffix_b = b.name.unwrap_or(&[]);
-        for &(old, new) in &options.prefix_map {
-            if prefix_a == "" && suffix_a.starts_with(old.as_bytes()) {
-                prefix_a = new;
-                suffix_a = &suffix_a[old.len()..];
-            }
-            if prefix_b == "" && suffix_b.starts_with(old.as_bytes()) {
-                prefix_b = new;
-                suffix_b = &suffix_b[old.len()..];
-            }
-        }
-        let iter_a = prefix_a.as_bytes().iter().chain(suffix_a);
-        let iter_b = prefix_b.as_bytes().iter().chain(suffix_b);
+        let (prefix_a, suffix_a) = a.prefix_map(options);
+        let (prefix_b, suffix_b) = b.prefix_map(options);
+        let iter_a = prefix_a.iter().chain(suffix_a);
+        let iter_b = prefix_b.iter().chain(suffix_b);
         iter_a.cmp(iter_b)
     }
 
@@ -2897,7 +2895,12 @@ impl<'input> Function<'input> {
     // equality, in the hopes that we'll get better results in the presence
     // of overloading, while still coping with changed function signatures.
     // TODO: do something smarter
-    fn cmp_id_and_param(hash_a: &FileHash, a: &Function, hash_b: &FileHash, b: &Function) -> cmp::Ordering {
+    fn cmp_id_and_param(
+        hash_a: &FileHash,
+        a: &Function,
+        hash_b: &FileHash,
+        b: &Function,
+    ) -> cmp::Ordering {
         let ord = Self::cmp_id(hash_a, a, hash_b, b);
         if ord != cmp::Ordering::Equal {
             return ord;
@@ -3175,20 +3178,17 @@ impl<'input> Parameter<'input> {
         a.name.cmp(&b.name)
     }
 
-    fn cmp_type(hash_a: &FileHash, a: &Parameter, hash_b: &FileHash, b: &Parameter) -> cmp::Ordering {
+    fn cmp_type(
+        hash_a: &FileHash,
+        a: &Parameter,
+        hash_b: &FileHash,
+        b: &Parameter,
+    ) -> cmp::Ordering {
         match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
-                Type::cmp_id(hash_a, ty_a, hash_b, ty_b)
-            }
-            (Some(_), None) => {
-                cmp::Ordering::Less
-            }
-            (None, Some(_)) => {
-                cmp::Ordering::Greater
-            }
-            (None, None) => {
-                cmp::Ordering::Equal
-            }
+            (Some(ty_a), Some(ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
+            (Some(_), None) => cmp::Ordering::Less,
+            (None, Some(_)) => cmp::Ordering::Greater,
+            (None, None) => cmp::Ordering::Equal,
         }
     }
 }
