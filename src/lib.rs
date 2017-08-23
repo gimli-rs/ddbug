@@ -3311,6 +3311,10 @@ impl<'input> Variable<'input> {
     }
 
     fn filter(&self, options: &Options) -> bool {
+        if !self.declaration && self.address.is_none() {
+            // TODO: make this configurable?
+            return false;
+        }
         options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 

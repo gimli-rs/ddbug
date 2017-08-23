@@ -1657,7 +1657,10 @@ where
                         gimli::AttributeValue::Exprloc(expr) => {
                             match evaluate(dwarf_unit.header, expr) {
                                 Some(gimli::Location::Address { address }) => {
-                                    variable.address = Some(address);
+                                    // TODO: is address 0 ever valid?
+                                    if address != 0 {
+                                        variable.address = Some(address);
+                                    }
                                 }
                                 Some(gimli::Location::Register { .. }) |
                                 Some(gimli::Location::Scalar { .. }) |
