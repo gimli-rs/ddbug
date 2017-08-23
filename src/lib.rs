@@ -118,6 +118,7 @@ pub struct Options<'a> {
     pub ignore_function_size: bool,
     pub ignore_function_inline: bool,
     pub ignore_variable_address: bool,
+    pub prefix_map: Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> Options<'a> {
@@ -196,7 +197,7 @@ impl<'input> File<'input> {
         let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(options)).collect();
         match options.sort.with_diff(diff) {
             Sort::None => {}
-            Sort::Name => units.sort_by(|a, b| Unit::cmp_id(a, b)),
+            Sort::Name => units.sort_by(|a, b| Unit::cmp_id(a, b, options)),
             Sort::Size => units.sort_by(|a, b| Unit::cmp_size(a, b)),
         }
         units
@@ -925,7 +926,7 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, options: &Options)
             w,
             |_state| file_a.filter_units(options, true),
             |_state| file_b.filter_units(options, true),
-            |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b),
+            |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b, options),
             |w, state, a, b| {
                 Unit::diff(a, b, w, state, options)
             },
@@ -1311,9 +1312,24 @@ impl<'input> Unit<'input> {
 
     /// Compare the identifying information of two units.
     /// This can be used to sort, and to determine if two units refer to the same source.
-    fn cmp_id(a: &Unit, b: &Unit) -> cmp::Ordering {
-        // TODO: ignore base paths
-        a.name.cmp(&b.name)
+    fn cmp_id(a: &Unit, b: &Unit, options: &Options) -> cmp::Ordering {
+        let mut prefix_a = "";
+        let mut suffix_a = a.name.unwrap_or(&[]);
+        let mut prefix_b = "";
+        let mut suffix_b = b.name.unwrap_or(&[]);
+        for &(old, new) in &options.prefix_map {
+            if prefix_a == "" && suffix_a.starts_with(old.as_bytes()) {
+                prefix_a = new;
+                suffix_a = &suffix_a[old.len()..];
+            }
+            if prefix_b == "" && suffix_b.starts_with(old.as_bytes()) {
+                prefix_b = new;
+                suffix_b = &suffix_b[old.len()..];
+            }
+        }
+        let iter_a = prefix_a.as_bytes().iter().chain(suffix_a);
+        let iter_b = prefix_b.as_bytes().iter().chain(suffix_b);
+        iter_a.cmp(iter_b)
     }
 
     /// Compare the size of two units.

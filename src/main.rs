@@ -42,6 +42,7 @@ const OPT_IGNORE_FUNCTION_ADDRESS: &'static str = "function-address";
 const OPT_IGNORE_FUNCTION_SIZE: &'static str = "function-size";
 const OPT_IGNORE_FUNCTION_INLINE: &'static str = "function-inline";
 const OPT_IGNORE_VARIABLE_ADDRESS: &'static str = "variable-address";
+const OPT_PREFIX_MAP: &'static str = "prefix-map";
 
 fn main() {
     env_logger::init().ok();
@@ -124,6 +125,16 @@ fn main() {
                     OPT_IGNORE_FUNCTION_INLINE,
                     OPT_IGNORE_VARIABLE_ADDRESS,
                 ]),
+        )
+        .arg(
+            clap::Arg::with_name(OPT_PREFIX_MAP)
+                .long(OPT_PREFIX_MAP)
+                .help("When comparing file paths, replace the 'old' prefix with the 'new' prefix")
+                .requires(OPT_DIFF)
+                .takes_value(true)
+                .multiple(true)
+                .require_delimiter(true)
+                .value_name("OLD>=<NEW"),
         )
         .after_help(concat!(
             "FILTERS:\n",
@@ -230,6 +241,22 @@ fn main() {
                 ).exit(),
             }
         }
+    }
+
+    if let Some(values) = matches.values_of(OPT_PREFIX_MAP) {
+        for value in values {
+            if let Some(index) = value.bytes().position(|c| c == b'=') {
+                let old = &value[..index];
+                let new = &value[index + 1..];
+                options.prefix_map.push((old, new));
+            } else {
+                clap::Error::with_description(
+                    &format!("invalid {} value: {}", OPT_PREFIX_MAP, value),
+                    clap::ErrorKind::InvalidValue,
+                ).exit();
+            }
+        }
+        options.prefix_map.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
     }
 
     if let Some(mut paths) = matches.values_of(OPT_DIFF) {
