@@ -543,23 +543,25 @@ impl RangeList {
     }
 
     // Append a range, combining with previous range if possible.
-    // Assumes range.end needs to be aligned if range.begin is aligned
-    // (which may be wrong, but how do we do better?).
     fn push(&mut self, mut range: Range) {
         // Ranges starting at 0 are probably invalid.
         // TODO: is this always desired?
         if range.begin == 0 || range.end <= range.begin {
             return;
         }
-        // TODO: make alignment configurable
-        if range.begin == range.begin & !15 {
-            range.end = (range.end + 15) & !15;
-        }
         if let Some(prev) = self.ranges.last_mut() {
+            // Assume up to 15 bytes of padding if range.begin is aligned.
+            // (This may be a wrong assumption, but does it matter and
+            // how do we do better?)
+            // TODO: make alignment configurable
+            let mut padding = 0;
+            if range.begin == range.begin & !15 {
+                padding = 15;
+            }
             // Merge ranges if new range begins in or after previous range.
             // We don't care about merging in opposite order (that'll happen
             // when sorting).
-            if range.begin >= prev.begin && range.begin <= prev.end {
+            if range.begin >= prev.begin && range.begin <= prev.end + padding {
                 if prev.end < range.end {
                     prev.end = range.end;
                 }
