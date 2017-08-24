@@ -6,8 +6,8 @@ use gimli;
 use super::Result;
 use super::{ArrayType, BaseType, EnumerationType, Enumerator, Function, FunctionType,
             InlinedFunction, Member, Namespace, NamespaceKind, Parameter, PointerToMemberType,
-            StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset,
-            UnionType, Unit, UnspecifiedType, Variable};
+            Range, StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind,
+            TypeOffset, UnionType, Unit, UnspecifiedType, Variable};
 
 struct DwarfFileState<'input, Endian>
 where
@@ -105,6 +105,8 @@ where
         let mut attrs = entry.attrs();
         let mut stmt_list = None;
         let mut ranges = None;
+        let mut high_pc = None;
+        let mut size = None;
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
@@ -119,12 +121,15 @@ where
                     }
                 }
                 gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    unit.low_pc = Some(addr);
+                    // TODO: is address 0 ever valid?
+                    if addr != 0 {
+                        unit.low_pc = Some(addr);
+                    }
                 },
                 gimli::DW_AT_high_pc => match attr.value() {
-                    gimli::AttributeValue::Addr(addr) => unit.high_pc = Some(addr),
-                    gimli::AttributeValue::Udata(size) => unit.size = Some(size),
-                    _ => {}
+                    gimli::AttributeValue::Addr(val) => high_pc = Some(val),
+                    gimli::AttributeValue::Udata(val) => size = Some(val),
+                    val => debug!("unknown CU DW_AT_high_pc: {:?}", val),
                 },
                 gimli::DW_AT_stmt_list => {
                     if let gimli::AttributeValue::DebugLineRef(val) = attr.value() {
@@ -145,29 +150,8 @@ where
             }
         }
 
-        if let Some(low_pc) = unit.low_pc {
-            if let Some(high_pc) = unit.high_pc {
-                unit.size = high_pc.checked_sub(low_pc);
-            } else if let Some(size) = unit.size {
-                unit.high_pc = low_pc.checked_add(size);
-            }
-        }
-
-        if let Some(offset) = ranges {
-            let mut size = 0;
-            let low_pc = unit.low_pc.unwrap_or(0);
-            let mut ranges =
-                dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
-            while let Some(range) = ranges.next()? {
-                if range.begin != 0 {
-                    size += range.end.wrapping_sub(range.begin);
-                }
-            }
-            if size != 0 {
-                unit.range_size = Some(size);
-            }
-        }
-
+        // Find ranges from attributes in order of preference:
+        // DW_AT_stmt_list, DW_AT_ranges, DW_AT_high_pc, DW_AT_size.
         if let Some(offset) = stmt_list {
             let comp_name = unit.name.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
             let comp_dir = unit.dir.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
@@ -175,30 +159,67 @@ where
                 .debug_line
                 .program(offset, dwarf_unit.header.address_size(), comp_name, comp_dir)?
                 .rows();
-            let mut size = 0;
-            let mut prev_addr = None;
             let mut seq_addr = None;
             while let Some((_, row)) = rows.next_row()? {
                 let addr = row.address();
-                if let Some(prev_addr) = prev_addr {
-                    if addr > prev_addr && seq_addr.unwrap_or(0) != 0 {
-                        size += addr - prev_addr;
-                    }
-                }
                 if row.end_sequence() {
-                    prev_addr = None;
-                    seq_addr = None;
-                } else {
-                    prev_addr = Some(addr);
-                    if seq_addr.is_none() {
-                        seq_addr = Some(addr);
+                    if let Some(seq_addr) = seq_addr {
+                        if seq_addr != 0 && addr > seq_addr {
+                            unit.ranges.push(Range {
+                                begin: seq_addr,
+                                end: addr,
+                            });
+                        }
                     }
+                    seq_addr = None;
+                } else if seq_addr.is_none() {
+                    seq_addr = Some(addr);
                 }
             }
-            if size != 0 {
-                unit.line_size = Some(size);
+        } else if let Some(offset) = ranges {
+            let low_pc = unit.low_pc.unwrap_or(0);
+            let mut ranges =
+                dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
+            while let Some(range) = ranges.next()? {
+                if range.begin != 0 && range.end > range.begin {
+                    unit.ranges.push(Range {
+                        begin: range.begin,
+                        end: range.end,
+                    });
+                }
+            }
+        } else if let Some(low_pc) = unit.low_pc {
+            if let Some(size) = size {
+                if high_pc.is_none() {
+                    high_pc = low_pc.checked_add(size);
+                }
+            }
+            if let Some(high_pc) = high_pc {
+                unit.ranges.push(Range {
+                    begin: low_pc,
+                    end: high_pc,
+                });
             }
         }
+        // Sort, align, and consolidate ranges.
+        // Assumes range.end needs to be aligned if range.begin is aligned (which may be wrong).
+        // TODO: make alignment configurable
+        unit.ranges.sort_by(|a, b| a.begin.cmp(&b.begin));
+        let mut ranges: Vec<Range> = Vec::new();
+        for range in &unit.ranges {
+            let mut range = *range;
+            if range.begin == range.begin & !15 {
+                range.end = (range.end + 15) & !15;
+            }
+            if let Some(prev) = ranges.last_mut() {
+                if prev.end >= range.begin {
+                    prev.end = range.end;
+                    continue;
+                }
+            }
+            ranges.push(range);
+        }
+        unit.ranges = ranges;
     };
 
     let namespace = None;

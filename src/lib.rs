@@ -938,6 +938,53 @@ pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, options: &Options)
     Ok(())
 }
 
+#[derive(Debug, Default, Clone, Copy)]
+struct Range {
+    begin: u64,
+    end: u64,
+}
+
+impl Range {
+    fn print(&self, w: &mut Write) -> Result<()> {
+        write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
+        Ok(())
+    }
+}
+
+impl PrintList for Range {
+    fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+        state.line(w, |w, _state| self.print(w))
+    }
+}
+
+impl DiffList for Range {
+    fn step_cost() -> usize {
+        3
+    }
+
+    fn diff_cost(_state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
+        let mut cost = 0;
+        if a.begin != b.begin {
+            cost += 4;
+        }
+        if a.end != b.end {
+            cost += 2;
+        }
+        cost
+    }
+
+    fn diff_list(
+        w: &mut Write,
+        state: &mut DiffState,
+        _unit_a: &Unit,
+        a: &Self,
+        _unit_b: &Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, _state, x| x.print(w))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 enum NamespaceKind {
     Namespace,
@@ -1084,10 +1131,7 @@ pub struct Unit<'input> {
     language: Option<gimli::DwLang>,
     address_size: Option<u64>,
     low_pc: Option<u64>,
-    high_pc: Option<u64>,
-    size: Option<u64>,
-    range_size: Option<u64>,
-    line_size: Option<u64>,
+    ranges: Vec<Range>,
     types: BTreeMap<TypeOffset, Type<'input>>,
     functions: BTreeMap<FunctionOffset, Function<'input>>,
     variables: BTreeMap<VariableOffset, Variable<'input>>,
@@ -1220,23 +1264,33 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        if self.ranges.is_empty() {
+            if let Some(low_pc) = self.low_pc {
+                write!(w, "address: 0x{:x}", low_pc)?;
+            }
+        } else if self.ranges.len() == 1 {
+            write!(w, "address: ")?;
+            self.ranges[0].print(w)?;
+        }
+        Ok(())
+    }
+
+    fn size(&self) -> Option<u64> {
+        let mut size = 0;
+        for range in &self.ranges {
+            size += range.end - range.begin;
+        }
+        if size != 0 {
+            Some(size)
+        } else {
+            None
+        }
+    }
+
     fn print_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.size {
+        if let Some(size) = self.size() {
             write!(w, "size: {}", size)?;
-        }
-        Ok(())
-    }
-
-    fn print_range_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.range_size {
-            write!(w, "range size: {}", size)?;
-        }
-        Ok(())
-    }
-
-    fn print_line_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.line_size {
-            write!(w, "line size: {}", size)?;
         }
         Ok(())
     }
@@ -1290,9 +1344,12 @@ impl<'input> Unit<'input> {
                 self.print_ref(w)
             })?;
             state.indent(|state| {
+                if self.ranges.len() > 1 {
+                    state.list("addresses", w, self, &self.ranges)?;
+                } else {
+                    state.line_option(w, |w, _state| self.print_address(w))?;
+                }
                 state.line_option(w, |w, _state| self.print_size(w))?;
-                state.line_option(w, |w, _state| self.print_range_size(w))?;
-                state.line_option(w, |w, _state| self.print_line_size(w))?;
                 state.line_option(w, |w, _state| self.print_function_size(w))?;
                 state.line_option(w, |w, state| self.print_variable_size(w, state.hash))
             })?;
@@ -1332,7 +1389,7 @@ impl<'input> Unit<'input> {
 
     /// Compare the size of two units.
     fn cmp_size(a: &Unit, b: &Unit) -> cmp::Ordering {
-        a.size.cmp(&b.size)
+        a.size().cmp(&b.size())
     }
 
     fn diff(
@@ -1348,9 +1405,12 @@ impl<'input> Unit<'input> {
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
-                state.line_option_u64(w, "size", unit_a.size, unit_b.size)?;
-                state.line_option_u64(w, "range size", unit_a.range_size, unit_b.range_size)?;
-                state.line_option_u64(w, "line size", unit_a.line_size, unit_b.line_size)?;
+                if unit_a.ranges.len() > 1 || unit_b.ranges.len() > 1 {
+                    state.list("addresses", w, unit_a, &unit_a.ranges, unit_b, &unit_b.ranges)?;
+                } else {
+                    state.line_option(w, unit_a, unit_b, |w, _state, x| x.print_address(w))?;
+                }
+                state.line_option_u64(w, "size", unit_a.size(), unit_b.size())?;
                 state
                     .line_option_u64(w, "fn size", unit_a.function_size(), unit_b.function_size())?;
                 state.line_option_u64(
