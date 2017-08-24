@@ -120,6 +120,16 @@ where
         Ok(())
     }
 
+    pub fn line_option_u64(&mut self, w: &mut Write, label: &str, arg: Option<u64>) -> Result<()> {
+        if let Some(arg) = arg {
+            self.line(w, |w, _state| {
+                write!(w, "{}: {}", label, arg)?;
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
     pub fn list<T: PrintList>(
         &mut self,
         label: &str,

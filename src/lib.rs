@@ -23,6 +23,7 @@ use std::fmt::{self, Debug};
 use std::fs;
 use std::io;
 use std::io::Write;
+use std::mem;
 use std::result;
 use std::rc::Rc;
 
@@ -341,10 +342,16 @@ impl<'a, 'input> File<'a, 'input> {
         let mut state = PrintState::new(self, &hash, options);
 
         if options.category_file {
+            let unit = Unit::default();
             state.line(w, |w, _state| {
                 write!(w, "file {}", self.path)?;
                 Ok(())
             })?;
+
+            // TODO: display ranges/size that aren't covered by debuginfo.
+            let ranges = self.ranges();
+            state.list("addresses", w, &unit, ranges.list())?;
+            state.line_option_u64(w, "size", ranges.size())?;
             writeln!(w, "")?;
         }
 
@@ -360,10 +367,15 @@ impl<'a, 'input> File<'a, 'input> {
         let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
 
         if options.category_file {
+            let unit = Unit::default();
             state.line(w, file_a, file_b, |w, _state, x| {
                 write!(w, "file {}", x.path)?;
                 Ok(())
             })?;
+            let ranges_a = file_a.ranges();
+            let ranges_b = file_b.ranges();
+            state.list("addresses", w, &unit, ranges_a.list(), &unit, ranges_b.list())?;
+            state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
             writeln!(w, "")?;
         }
 
@@ -400,6 +412,17 @@ impl<'a, 'input> File<'a, 'input> {
             Sort::Size => units.sort_by(|a, b| Unit::cmp_size(a, b)),
         }
         units
+    }
+
+    fn ranges(&self) -> RangeList {
+        let mut ranges = RangeList::default();
+        for unit in &self.units {
+            for range in unit.ranges.list() {
+                ranges.push(*range);
+            }
+        }
+        ranges.sort();
+        ranges
     }
 }
 
@@ -493,6 +516,67 @@ impl DiffList for Range {
         b: &Self,
     ) -> Result<()> {
         state.line(w, a, b, |w, _state, x| x.print(w))
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+struct RangeList {
+    ranges: Vec<Range>,
+}
+
+impl RangeList {
+    #[inline]
+    fn list(&self) -> &[Range] {
+        &self.ranges
+    }
+
+    fn size(&self) -> Option<u64> {
+        let mut size = 0;
+        for range in &self.ranges {
+            size += range.end - range.begin;
+        }
+        if size != 0 {
+            Some(size)
+        } else {
+            None
+        }
+    }
+
+    // Append a range, combining with previous range if possible.
+    // Assumes range.end needs to be aligned if range.begin is aligned
+    // (which may be wrong, but how do we do better?).
+    fn push(&mut self, mut range: Range) {
+        // Ranges starting at 0 are probably invalid.
+        // TODO: is this always desired?
+        if range.begin == 0 || range.end <= range.begin {
+            return;
+        }
+        // TODO: make alignment configurable
+        if range.begin == range.begin & !15 {
+            range.end = (range.end + 15) & !15;
+        }
+        if let Some(prev) = self.ranges.last_mut() {
+            // Merge ranges if new range begins in or after previous range.
+            // We don't care about merging in opposite order (that'll happen
+            // when sorting).
+            if range.begin >= prev.begin && range.begin <= prev.end {
+                if prev.end < range.end {
+                    prev.end = range.end;
+                }
+                return;
+            }
+        }
+        self.ranges.push(range);
+    }
+
+    fn sort(&mut self) {
+        self.ranges.sort_by(|a, b| a.begin.cmp(&b.begin));
+        // Combine ranges by adding to a new list.
+        let mut ranges = Vec::new();
+        mem::swap(&mut ranges, &mut self.ranges);
+        for range in ranges {
+            self.push(range);
+        }
     }
 }
 
@@ -642,7 +726,7 @@ pub struct Unit<'input> {
     language: Option<gimli::DwLang>,
     address_size: Option<u64>,
     low_pc: Option<u64>,
-    ranges: Vec<Range>,
+    ranges: RangeList,
     types: BTreeMap<TypeOffset, Type<'input>>,
     functions: BTreeMap<FunctionOffset, Function<'input>>,
     variables: BTreeMap<VariableOffset, Variable<'input>>,
@@ -776,27 +860,19 @@ impl<'input> Unit<'input> {
     }
 
     fn print_address(&self, w: &mut Write) -> Result<()> {
-        if self.ranges.is_empty() {
+        if self.ranges.list().is_empty() {
             if let Some(low_pc) = self.low_pc {
                 write!(w, "address: 0x{:x}", low_pc)?;
             }
-        } else if self.ranges.len() == 1 {
+        } else if self.ranges.list().len() == 1 {
             write!(w, "address: ")?;
-            self.ranges[0].print(w)?;
+            self.ranges.list()[0].print(w)?;
         }
         Ok(())
     }
 
     fn size(&self) -> Option<u64> {
-        let mut size = 0;
-        for range in &self.ranges {
-            size += range.end - range.begin;
-        }
-        if size != 0 {
-            Some(size)
-        } else {
-            None
-        }
+        self.ranges.size()
     }
 
     fn print_size(&self, w: &mut Write) -> Result<()> {
@@ -855,8 +931,8 @@ impl<'input> Unit<'input> {
                 self.print_ref(w)
             })?;
             state.indent(|state| {
-                if self.ranges.len() > 1 {
-                    state.list("addresses", w, self, &self.ranges)?;
+                if self.ranges.list().len() > 1 {
+                    state.list("addresses", w, self, self.ranges.list())?;
                 } else {
                     state.line_option(w, |w, _state| self.print_address(w))?;
                 }
@@ -916,8 +992,15 @@ impl<'input> Unit<'input> {
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
-                if unit_a.ranges.len() > 1 || unit_b.ranges.len() > 1 {
-                    state.list("addresses", w, unit_a, &unit_a.ranges, unit_b, &unit_b.ranges)?;
+                if unit_a.ranges.list().len() > 1 || unit_b.ranges.list().len() > 1 {
+                    state.list(
+                        "addresses",
+                        w,
+                        unit_a,
+                        unit_a.ranges.list(),
+                        unit_b,
+                        unit_b.ranges.list(),
+                    )?;
                 } else {
                     state.line_option(w, unit_a, unit_b, |w, _state, x| x.print_address(w))?;
                 }

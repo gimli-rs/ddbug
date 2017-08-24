@@ -152,6 +152,7 @@ where
 
         // Find ranges from attributes in order of preference:
         // DW_AT_stmt_list, DW_AT_ranges, DW_AT_high_pc, DW_AT_size.
+        // TODO: include variables in ranges.
         if let Some(offset) = stmt_list {
             let comp_name = unit.name.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
             let comp_dir = unit.dir.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
@@ -164,12 +165,10 @@ where
                 let addr = row.address();
                 if row.end_sequence() {
                     if let Some(seq_addr) = seq_addr {
-                        if seq_addr != 0 && addr > seq_addr {
-                            unit.ranges.push(Range {
-                                begin: seq_addr,
-                                end: addr,
-                            });
-                        }
+                        unit.ranges.push(Range {
+                            begin: seq_addr,
+                            end: addr,
+                        });
                     }
                     seq_addr = None;
                 } else if seq_addr.is_none() {
@@ -181,12 +180,10 @@ where
             let mut ranges =
                 dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
             while let Some(range) = ranges.next()? {
-                if range.begin != 0 && range.end > range.begin {
-                    unit.ranges.push(Range {
-                        begin: range.begin,
-                        end: range.end,
-                    });
-                }
+                unit.ranges.push(Range {
+                    begin: range.begin,
+                    end: range.end,
+                });
             }
         } else if let Some(low_pc) = unit.low_pc {
             if let Some(size) = size {
@@ -201,25 +198,7 @@ where
                 });
             }
         }
-        // Sort, align, and consolidate ranges.
-        // Assumes range.end needs to be aligned if range.begin is aligned (which may be wrong).
-        // TODO: make alignment configurable
-        unit.ranges.sort_by(|a, b| a.begin.cmp(&b.begin));
-        let mut ranges: Vec<Range> = Vec::new();
-        for range in &unit.ranges {
-            let mut range = *range;
-            if range.begin == range.begin & !15 {
-                range.end = (range.end + 15) & !15;
-            }
-            if let Some(prev) = ranges.last_mut() {
-                if prev.end >= range.begin {
-                    prev.end = range.end;
-                    continue;
-                }
-            }
-            ranges.push(range);
-        }
-        unit.ranges = ranges;
+        unit.ranges.sort();
     };
 
     let namespace = None;
