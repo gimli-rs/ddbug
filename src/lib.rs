@@ -1974,7 +1974,6 @@ impl<'input> Member<'input> {
     }
 }
 
-// Print members without padding
 impl<'input> PrintList for Member<'input> {
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let bit_size = self.bit_size(state.hash);
@@ -1991,7 +1990,6 @@ impl<'input> PrintList for Member<'input> {
     }
 }
 
-// Diff members without padding
 impl<'input> DiffList for Member<'input> {
     fn step_cost() -> usize {
         1
