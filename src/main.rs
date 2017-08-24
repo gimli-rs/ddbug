@@ -263,9 +263,9 @@ fn main() {
         let path_a = paths.next().unwrap();
         let path_b = paths.next().unwrap();
 
-        if let Err(e) = ddbug::parse_file(path_a, &mut |file_a| {
+        if let Err(e) = ddbug::File::parse(path_a, &mut |file_a| {
             if let Err(e) =
-                ddbug::parse_file(path_b, &mut |file_b| diff_file(file_a, file_b, &options))
+                ddbug::File::parse(path_b, &mut |file_b| diff_file(file_a, file_b, &options))
             {
                 error!("{}: {}", path_b, e);
             }
@@ -276,7 +276,7 @@ fn main() {
     } else {
         let path = matches.value_of(OPT_FILE).unwrap();
 
-        if let Err(e) = ddbug::parse_file(path, &mut |file| print_file(file, &options)) {
+        if let Err(e) = ddbug::File::parse(path, &mut |file| print_file(file, &options)) {
             error!("{}: {}", path, e);
         }
     }
@@ -289,7 +289,7 @@ fn diff_file(
 ) -> ddbug::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    if let Err(e) = ddbug::diff_file(&mut writer, file_a, file_b, options) {
+    if let Err(e) = ddbug::File::diff(&mut writer, file_a, file_b, options) {
         error!("{}", e);
     }
     Ok(())
@@ -298,5 +298,5 @@ fn diff_file(
 fn print_file(file: &mut ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
     let stdout = std::io::stdout();
     let mut writer = stdout.lock();
-    ddbug::print_file(&mut writer, file, options)
+    file.print(&mut writer, options)
 }

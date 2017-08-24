@@ -188,6 +188,178 @@ pub struct File<'input> {
 }
 
 impl<'input> File<'input> {
+    pub fn parse(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+        let file = match fs::File::open(path) {
+            Ok(file) => file,
+            Err(e) => {
+                return Err(format!("open failed: {}", e).into());
+            }
+        };
+
+        let file = match memmap::Mmap::open(&file, memmap::Protection::Read) {
+            Ok(file) => file,
+            Err(e) => {
+                return Err(format!("memmap failed: {}", e).into());
+            }
+        };
+
+        let input = unsafe { file.as_slice() };
+        if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
+            pdb::parse(input, cb)
+        } else {
+            let mut cursor = io::Cursor::new(input);
+            match goblin::peek(&mut cursor) {
+                Ok(goblin::Hint::Elf(_)) => Self::parse_elf(input, cb),
+                Ok(goblin::Hint::Mach(_)) => Self::parse_mach(input, cb),
+                Ok(_) => Err("unrecognized file format".into()),
+                Err(e) => Err(format!("file identification failed: {}", e).into()),
+            }
+        }
+    }
+
+    fn parse_elf(input: &'input [u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+        let elf = match goblin::elf::Elf::parse(&input) {
+            Ok(elf) => elf,
+            Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
+        };
+
+        let machine = elf.header.e_machine;
+        let region = match machine {
+            goblin::elf::header::EM_X86_64 => {
+                Some(panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF))
+            }
+            _ => None,
+        };
+
+        let mut code = None;
+        if let Some(mut region) = region {
+            for ph in &elf.program_headers {
+                if ph.p_type == goblin::elf::program_header::PT_LOAD {
+                    let offset = ph.p_offset;
+                    let size = ph.p_filesz;
+                    let addr = ph.p_vaddr;
+                    if offset as usize <= input.len() {
+                        let input = &input[offset as usize..];
+                        if size as usize <= input.len() {
+                            let bound = panopticon::Bound::new(addr, addr + size);
+                            let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
+                            region.cover(bound, layer);
+                            debug!("loaded program header addr {:#x} size {:#x}", addr, size);
+                        } else {
+                            debug!("invalid program header size {}", size);
+                        }
+                    } else {
+                        debug!("invalid program header offset {}", offset);
+                    }
+                }
+            }
+            code = Some(CodeRegion { machine, region });
+        }
+
+        // Code based on 'object' crate
+        let get_section = |section_name: &str| -> &'input [u8] {
+            for header in &elf.section_headers {
+                if let Ok(name) = elf.shdr_strtab.get(header.sh_name) {
+                    if name == section_name {
+                        return &input[header.sh_offset as usize..][..header.sh_size as usize];
+                    }
+                }
+            }
+            &[]
+        };
+
+        let units = match elf.header.e_ident[goblin::elf::header::EI_DATA] {
+            goblin::elf::header::ELFDATA2LSB => dwarf::parse(gimli::LittleEndian, get_section)?,
+            goblin::elf::header::ELFDATA2MSB => dwarf::parse(gimli::BigEndian, get_section)?,
+            _ => return Err("unknown endianity".into()),
+        };
+
+        let mut file = File { code, units };
+        cb(&mut file)
+    }
+
+    fn parse_mach(input: &'input [u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+        let macho = match goblin::mach::MachO::parse(&input, 0) {
+            Ok(macho) => macho,
+            Err(e) => return Err(format!("Mach-O parse failed: {}", e).into()),
+        };
+
+        // Code based on 'object' crate
+        let get_section = |section_name: &str| -> &'input [u8] {
+            let mut name = Vec::with_capacity(section_name.len() + 1);
+            name.push(b'_');
+            name.push(b'_');
+            for ch in &section_name.as_bytes()[1..] {
+                name.push(*ch);
+            }
+            let section_name = name;
+
+            for segment in &*macho.segments {
+                if let Ok(name) = segment.name() {
+                    if name == "__DWARF" {
+                        if let Ok(sections) = segment.sections() {
+                            for section in sections {
+                                if let Ok(name) = section.name() {
+                                    if name.as_bytes() == &*section_name {
+                                        return section.data;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            &[]
+        };
+
+        let units = if macho.header.is_little_endian() {
+            dwarf::parse(gimli::LittleEndian, get_section)?
+        } else {
+            dwarf::parse(gimli::BigEndian, get_section)?
+        };
+
+        let mut file = File { code: None, units };
+        cb(&mut file)
+    }
+
+    pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
+        let hash = FileHash::new(self);
+        for unit in self.filter_units(options, false) {
+            let mut state = PrintState::new(self, &hash, options);
+            unit.print(w, &mut state, options)?;
+        }
+        Ok(())
+    }
+
+    pub fn diff(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
+        let hash_a = FileHash::new(file_a);
+        let hash_b = FileHash::new(file_b);
+        let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
+        state
+            .merge(
+                w,
+                |_state| file_a.filter_units(options, true),
+                |_state| file_b.filter_units(options, true),
+                |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b, options),
+                |w, state, a, b| {
+                    Unit::diff(a, b, w, state, options)
+                },
+                |w, state, a| {
+                    if !options.ignore_deleted {
+                        a.print(w, state, options)?;
+                    }
+                    Ok(())
+                },
+                |w, state, b| {
+                    if !options.ignore_added {
+                        b.print(w, state, options)?;
+                    }
+                    Ok(())
+                },
+            )?;
+        Ok(())
+    }
+
     fn filter_units(&self, options: &Options, diff: bool) -> Vec<&Unit> {
         let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(options)).collect();
         match options.sort.with_diff(diff) {
@@ -197,146 +369,6 @@ impl<'input> File<'input> {
         }
         units
     }
-}
-
-pub fn parse_file(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(e) => {
-            return Err(format!("open failed: {}", e).into());
-        }
-    };
-
-    let file = match memmap::Mmap::open(&file, memmap::Protection::Read) {
-        Ok(file) => file,
-        Err(e) => {
-            return Err(format!("memmap failed: {}", e).into());
-        }
-    };
-
-    let input = unsafe { file.as_slice() };
-    if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
-        pdb::parse(input, cb)
-    } else {
-        let mut cursor = io::Cursor::new(input);
-        match goblin::peek(&mut cursor) {
-            Ok(goblin::Hint::Elf(_)) => parse_elf(input, cb),
-            Ok(goblin::Hint::Mach(_)) => parse_mach(input, cb),
-            Ok(_) => Err("unrecognized file format".into()),
-            Err(e) => Err(format!("file identification failed: {}", e).into()),
-        }
-    }
-}
-
-pub fn parse_elf<'input>(
-    input: &'input [u8],
-    cb: &mut FnMut(&mut File) -> Result<()>,
-) -> Result<()> {
-    let elf = match goblin::elf::Elf::parse(&input) {
-        Ok(elf) => elf,
-        Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
-    };
-
-    let machine = elf.header.e_machine;
-    let region = match machine {
-        goblin::elf::header::EM_X86_64 => {
-            Some(panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF))
-        }
-        _ => None,
-    };
-
-    let mut code = None;
-    if let Some(mut region) = region {
-        for ph in &elf.program_headers {
-            if ph.p_type == goblin::elf::program_header::PT_LOAD {
-                let offset = ph.p_offset;
-                let size = ph.p_filesz;
-                let addr = ph.p_vaddr;
-                if offset as usize <= input.len() {
-                    let input = &input[offset as usize..];
-                    if size as usize <= input.len() {
-                        let bound = panopticon::Bound::new(addr, addr + size);
-                        let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
-                        region.cover(bound, layer);
-                        debug!("loaded program header addr {:#x} size {:#x}", addr, size);
-                    } else {
-                        debug!("invalid program header size {}", size);
-                    }
-                } else {
-                    debug!("invalid program header offset {}", offset);
-                }
-            }
-        }
-        code = Some(CodeRegion { machine, region });
-    }
-
-    // Code based on 'object' crate
-    let get_section = |section_name: &str| -> &'input [u8] {
-        for header in &elf.section_headers {
-            if let Ok(name) = elf.shdr_strtab.get(header.sh_name) {
-                if name == section_name {
-                    return &input[header.sh_offset as usize..][..header.sh_size as usize];
-                }
-            }
-        }
-        &[]
-    };
-
-    let units = match elf.header.e_ident[goblin::elf::header::EI_DATA] {
-        goblin::elf::header::ELFDATA2LSB => dwarf::parse(gimli::LittleEndian, get_section)?,
-        goblin::elf::header::ELFDATA2MSB => dwarf::parse(gimli::BigEndian, get_section)?,
-        _ => return Err("unknown endianity".into()),
-    };
-
-    let mut file = File { code, units };
-    cb(&mut file)
-}
-
-pub fn parse_mach<'input>(
-    input: &'input [u8],
-    cb: &mut FnMut(&mut File) -> Result<()>,
-) -> Result<()> {
-    let macho = match goblin::mach::MachO::parse(&input, 0) {
-        Ok(macho) => macho,
-        Err(e) => return Err(format!("Mach-O parse failed: {}", e).into()),
-    };
-
-    // Code based on 'object' crate
-    let get_section = |section_name: &str| -> &'input [u8] {
-        let mut name = Vec::with_capacity(section_name.len() + 1);
-        name.push(b'_');
-        name.push(b'_');
-        for ch in &section_name.as_bytes()[1..] {
-            name.push(*ch);
-        }
-        let section_name = name;
-
-        for segment in &*macho.segments {
-            if let Ok(name) = segment.name() {
-                if name == "__DWARF" {
-                    if let Ok(sections) = segment.sections() {
-                        for section in sections {
-                            if let Ok(name) = section.name() {
-                                if name.as_bytes() == &*section_name {
-                                    return section.data;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        &[]
-    };
-
-    let units = if macho.header.is_little_endian() {
-        dwarf::parse(gimli::LittleEndian, get_section)?
-    } else {
-        dwarf::parse(gimli::BigEndian, get_section)?
-    };
-
-    let mut file = File { code: None, units };
-    cb(&mut file)
 }
 
 #[derive(Debug)]
@@ -383,44 +415,6 @@ impl<'a, 'input> FileHash<'a, 'input> {
         }
         types
     }
-}
-
-pub fn print_file(w: &mut Write, file: &File, options: &Options) -> Result<()> {
-    let hash = FileHash::new(file);
-    for unit in &file.filter_units(options, false) {
-        let mut state = PrintState::new(file, &hash, options);
-        unit.print(w, &mut state, options)?;
-    }
-    Ok(())
-}
-
-pub fn diff_file(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
-    let hash_a = FileHash::new(file_a);
-    let hash_b = FileHash::new(file_b);
-    let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
-    state
-        .merge(
-            w,
-            |_state| file_a.filter_units(options, true),
-            |_state| file_b.filter_units(options, true),
-            |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b, options),
-            |w, state, a, b| {
-                Unit::diff(a, b, w, state, options)
-            },
-            |w, state, a| {
-                if !options.ignore_deleted {
-                    a.print(w, state, options)?;
-                }
-                Ok(())
-            },
-            |w, state, b| {
-                if !options.ignore_added {
-                    b.print(w, state, options)?;
-                }
-                Ok(())
-            },
-        )?;
-    Ok(())
 }
 
 #[derive(Debug, Default, Clone, Copy)]
