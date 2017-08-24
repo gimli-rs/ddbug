@@ -16,6 +16,7 @@ const OPT_INLINE_DEPTH: &'static str = "inline-depth";
 
 // Print categories
 const OPT_CATEGORY: &'static str = "category";
+const OPT_CATEGORY_FILE: &'static str = "file";
 const OPT_CATEGORY_UNIT: &'static str = "unit";
 const OPT_CATEGORY_TYPE: &'static str = "type";
 const OPT_CATEGORY_FUNCTION: &'static str = "function";
@@ -82,6 +83,7 @@ fn main() {
                 .require_delimiter(true)
                 .value_name("CATEGORY")
                 .possible_values(&[
+                    OPT_CATEGORY_FILE,
                     OPT_CATEGORY_UNIT,
                     OPT_CATEGORY_TYPE,
                     OPT_CATEGORY_FUNCTION,
@@ -166,6 +168,7 @@ fn main() {
     if let Some(values) = matches.values_of(OPT_CATEGORY) {
         for value in values {
             match value {
+                OPT_CATEGORY_FILE => options.category_file = true,
                 OPT_CATEGORY_UNIT => options.category_unit = true,
                 OPT_CATEGORY_TYPE => options.category_type = true,
                 OPT_CATEGORY_FUNCTION => options.category_function = true,
@@ -177,6 +180,7 @@ fn main() {
             }
         }
     } else {
+        options.category_file = true;
         options.category_unit = true;
         options.category_type = true;
         options.category_function = true;

@@ -10,7 +10,7 @@ use super::{ArrayType, BaseType, EnumerationType, Enumerator, File, Function, Fu
             FunctionType, Member, Namespace, Parameter, StructType, Type, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, Unit};
 
-pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+pub fn parse(input: &[u8], path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
     let mut cursor = io::Cursor::new(input);
     let mut pdb = pdb::PDB::open(&mut cursor)?;
     let type_information = pdb.type_information()?;
@@ -264,6 +264,7 @@ pub fn parse(input: &[u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()
     units.push(unit);
 
     let mut file = File {
+        path: path,
         code: None,
         units: units,
     };

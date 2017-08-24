@@ -23,7 +23,7 @@ where
     inline_depth: usize,
 
     // The remaining fields contain information that is commonly needed in print methods.
-    pub file: &'a File<'input>,
+    pub file: &'a File<'a, 'input>,
     pub hash: &'a FileHash<'a, 'input>,
     pub options: &'a Options<'a>,
 }
@@ -33,7 +33,7 @@ where
     'input: 'a,
 {
     pub fn new(
-        file: &'a File<'input>,
+        file: &'a File<'a, 'input>,
         hash: &'a FileHash<'a, 'input>,
         options: &'a Options<'a>,
     ) -> Self {
@@ -161,9 +161,9 @@ where
     'input: 'a,
 {
     pub fn new(
-        file_a: &'a File<'input>,
+        file_a: &'a File<'a, 'input>,
         hash_a: &'a FileHash<'a, 'input>,
-        file_b: &'a File<'input>,
+        file_b: &'a File<'a, 'input>,
         hash_b: &'a FileHash<'a, 'input>,
         options: &'a Options<'a>,
     ) -> Self {

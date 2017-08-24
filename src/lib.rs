@@ -103,6 +103,7 @@ pub struct Options<'a> {
     pub calls: bool,
     pub inline_depth: usize,
 
+    pub category_file: bool,
     pub category_unit: bool,
     pub category_type: bool,
     pub category_function: bool,
@@ -182,13 +183,14 @@ pub struct CodeRegion {
 }
 
 #[derive(Debug)]
-pub struct File<'input> {
+pub struct File<'a, 'input> {
+    path: &'a str,
     code: Option<CodeRegion>,
     units: Vec<Unit<'input>>,
 }
 
-impl<'input> File<'input> {
-    pub fn parse(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+impl<'a, 'input> File<'a, 'input> {
+    pub fn parse(path: &'a str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
         let file = match fs::File::open(path) {
             Ok(file) => file,
             Err(e) => {
@@ -205,19 +207,23 @@ impl<'input> File<'input> {
 
         let input = unsafe { file.as_slice() };
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
-            pdb::parse(input, cb)
+            pdb::parse(input, path, cb)
         } else {
             let mut cursor = io::Cursor::new(input);
             match goblin::peek(&mut cursor) {
-                Ok(goblin::Hint::Elf(_)) => Self::parse_elf(input, cb),
-                Ok(goblin::Hint::Mach(_)) => Self::parse_mach(input, cb),
+                Ok(goblin::Hint::Elf(_)) => Self::parse_elf(input, path, cb),
+                Ok(goblin::Hint::Mach(_)) => Self::parse_mach(input, path, cb),
                 Ok(_) => Err("unrecognized file format".into()),
                 Err(e) => Err(format!("file identification failed: {}", e).into()),
             }
         }
     }
 
-    fn parse_elf(input: &'input [u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+    fn parse_elf(
+        input: &'input [u8],
+        path: &'a str,
+        cb: &mut FnMut(&mut File) -> Result<()>,
+    ) -> Result<()> {
         let elf = match goblin::elf::Elf::parse(&input) {
             Ok(elf) => elf,
             Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
@@ -274,11 +280,15 @@ impl<'input> File<'input> {
             _ => return Err("unknown endianity".into()),
         };
 
-        let mut file = File { code, units };
+        let mut file = File { path, code, units };
         cb(&mut file)
     }
 
-    fn parse_mach(input: &'input [u8], cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+    fn parse_mach(
+        input: &'input [u8],
+        path: &'a str,
+        cb: &mut FnMut(&mut File) -> Result<()>,
+    ) -> Result<()> {
         let macho = match goblin::mach::MachO::parse(&input, 0) {
             Ok(macho) => macho,
             Err(e) => return Err(format!("Mach-O parse failed: {}", e).into()),
@@ -318,14 +328,27 @@ impl<'input> File<'input> {
             dwarf::parse(gimli::BigEndian, get_section)?
         };
 
-        let mut file = File { code: None, units };
+        let mut file = File {
+            path,
+            code: None,
+            units,
+        };
         cb(&mut file)
     }
 
     pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
         let hash = FileHash::new(self);
+        let mut state = PrintState::new(self, &hash, options);
+
+        if options.category_file {
+            state.line(w, |w, _state| {
+                write!(w, "file {}", self.path)?;
+                Ok(())
+            })?;
+            writeln!(w, "")?;
+        }
+
         for unit in self.filter_units(options, false) {
-            let mut state = PrintState::new(self, &hash, options);
             unit.print(w, &mut state, options)?;
         }
         Ok(())
@@ -335,6 +358,15 @@ impl<'input> File<'input> {
         let hash_a = FileHash::new(file_a);
         let hash_b = FileHash::new(file_b);
         let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
+
+        if options.category_file {
+            state.line(w, file_a, file_b, |w, _state, x| {
+                write!(w, "file {}", x.path)?;
+                Ok(())
+            })?;
+            writeln!(w, "")?;
+        }
+
         state
             .merge(
                 w,
@@ -383,7 +415,7 @@ where
 }
 
 impl<'a, 'input> FileHash<'a, 'input> {
-    fn new(file: &'a File<'input>) -> Self {
+    fn new(file: &'a File<'a, 'input>) -> Self {
         FileHash {
             functions: Self::functions(file),
             types: Self::types(file),
@@ -391,7 +423,7 @@ impl<'a, 'input> FileHash<'a, 'input> {
     }
 
     /// Returns a map from address to function for all functions in the file.
-    fn functions(file: &'a File<'input>) -> HashMap<u64, &'a Function<'input>> {
+    fn functions(file: &'a File<'a, 'input>) -> HashMap<u64, &'a Function<'input>> {
         let mut functions = HashMap::new();
         // TODO: insert symbol table names too
         for unit in &file.units {
@@ -406,7 +438,7 @@ impl<'a, 'input> FileHash<'a, 'input> {
     }
 
     /// Returns a map from offset to type for all types in the file.
-    fn types(file: &'a File<'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
+    fn types(file: &'a File<'a, 'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
         let mut types = HashMap::new();
         for unit in &file.units {
             for (offset, ty) in unit.types.iter() {
