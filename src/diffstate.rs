@@ -1,5 +1,5 @@
-use std::io::Write;
 use std::cmp;
+use std::io::Write;
 
 use {File, FileHash, Options, Result};
 use diff;

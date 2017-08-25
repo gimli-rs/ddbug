@@ -3,7 +3,7 @@ use gimli;
 use goblin;
 use panopticon;
 
-use super::{CodeRegion, File, Result};
+use {CodeRegion, File, Result};
 
 pub(crate) fn parse(
     input: &[u8],

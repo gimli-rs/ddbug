@@ -5,10 +5,10 @@ use std::rc::Rc;
 use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
-use super::Result;
-use super::{ArrayType, BaseType, EnumerationType, Enumerator, File, Function, FunctionOffset,
-            FunctionType, Member, Namespace, Parameter, StructType, Type, TypeKind, TypeModifier,
-            TypeModifierKind, TypeOffset, UnionType, Unit};
+use Result;
+use {File, Function, FunctionOffset, Namespace, Parameter, Unit};
+use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member, StructType,
+            Type, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType};
 
 pub(crate) fn parse(
     input: &[u8],

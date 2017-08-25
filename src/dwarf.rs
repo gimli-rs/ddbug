@@ -4,11 +4,11 @@ use std::mem;
 use gimli;
 
 use range::Range;
-use super::Result;
-use super::{ArrayType, BaseType, EnumerationType, Enumerator, Function, FunctionType,
-            InlinedFunction, Member, Namespace, NamespaceKind, Parameter, PointerToMemberType,
-            StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset,
-            UnionType, Unit, UnspecifiedType, Variable};
+use Result;
+use {Function, InlinedFunction, Namespace, NamespaceKind, Parameter, Unit, Variable};
+use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member,
+            PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
+            TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
 
 struct DwarfFileState<'input, Endian>
 where

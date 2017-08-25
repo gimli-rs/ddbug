@@ -2,7 +2,7 @@ use gimli;
 use goblin;
 use dwarf;
 
-use super::{File, Result};
+use {File, Result};
 
 pub(crate) fn parse(
     input: &[u8],
