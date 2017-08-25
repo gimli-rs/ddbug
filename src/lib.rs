@@ -10,6 +10,8 @@ extern crate pdb as crate_pdb;
 mod diff;
 mod diffstate;
 mod dwarf;
+mod elf;
+mod mach;
 mod pdb;
 
 use std::borrow::Borrow;
@@ -212,129 +214,12 @@ impl<'a, 'input> File<'a, 'input> {
         } else {
             let mut cursor = io::Cursor::new(input);
             match goblin::peek(&mut cursor) {
-                Ok(goblin::Hint::Elf(_)) => Self::parse_elf(input, path, cb),
-                Ok(goblin::Hint::Mach(_)) => Self::parse_mach(input, path, cb),
+                Ok(goblin::Hint::Elf(_)) => elf::parse(input, path, cb),
+                Ok(goblin::Hint::Mach(_)) => mach::parse(input, path, cb),
                 Ok(_) => Err("unrecognized file format".into()),
                 Err(e) => Err(format!("file identification failed: {}", e).into()),
             }
         }
-    }
-
-    fn parse_elf(
-        input: &'input [u8],
-        path: &'a str,
-        cb: &mut FnMut(&mut File) -> Result<()>,
-    ) -> Result<()> {
-        let elf = match goblin::elf::Elf::parse(&input) {
-            Ok(elf) => elf,
-            Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
-        };
-
-        let machine = elf.header.e_machine;
-        let region = match machine {
-            goblin::elf::header::EM_X86_64 => {
-                Some(panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF))
-            }
-            _ => None,
-        };
-
-        let mut code = None;
-        if let Some(mut region) = region {
-            for ph in &elf.program_headers {
-                if ph.p_type == goblin::elf::program_header::PT_LOAD {
-                    let offset = ph.p_offset;
-                    let size = ph.p_filesz;
-                    let addr = ph.p_vaddr;
-                    if offset as usize <= input.len() {
-                        let input = &input[offset as usize..];
-                        if size as usize <= input.len() {
-                            let bound = panopticon::Bound::new(addr, addr + size);
-                            let layer = panopticon::Layer::wrap(input[..size as usize].to_vec());
-                            region.cover(bound, layer);
-                            debug!("loaded program header addr {:#x} size {:#x}", addr, size);
-                        } else {
-                            debug!("invalid program header size {}", size);
-                        }
-                    } else {
-                        debug!("invalid program header offset {}", offset);
-                    }
-                }
-            }
-            code = Some(CodeRegion { machine, region });
-        }
-
-        // Code based on 'object' crate
-        let get_section = |section_name: &str| -> &'input [u8] {
-            for header in &elf.section_headers {
-                if let Ok(name) = elf.shdr_strtab.get(header.sh_name) {
-                    if name == section_name {
-                        return &input[header.sh_offset as usize..][..header.sh_size as usize];
-                    }
-                }
-            }
-            &[]
-        };
-
-        let units = match elf.header.e_ident[goblin::elf::header::EI_DATA] {
-            goblin::elf::header::ELFDATA2LSB => dwarf::parse(gimli::LittleEndian, get_section)?,
-            goblin::elf::header::ELFDATA2MSB => dwarf::parse(gimli::BigEndian, get_section)?,
-            _ => return Err("unknown endianity".into()),
-        };
-
-        let mut file = File { path, code, units };
-        cb(&mut file)
-    }
-
-    fn parse_mach(
-        input: &'input [u8],
-        path: &'a str,
-        cb: &mut FnMut(&mut File) -> Result<()>,
-    ) -> Result<()> {
-        let macho = match goblin::mach::MachO::parse(&input, 0) {
-            Ok(macho) => macho,
-            Err(e) => return Err(format!("Mach-O parse failed: {}", e).into()),
-        };
-
-        // Code based on 'object' crate
-        let get_section = |section_name: &str| -> &'input [u8] {
-            let mut name = Vec::with_capacity(section_name.len() + 1);
-            name.push(b'_');
-            name.push(b'_');
-            for ch in &section_name.as_bytes()[1..] {
-                name.push(*ch);
-            }
-            let section_name = name;
-
-            for segment in &*macho.segments {
-                if let Ok(name) = segment.name() {
-                    if name == "__DWARF" {
-                        if let Ok(sections) = segment.sections() {
-                            for section in sections {
-                                if let Ok(name) = section.name() {
-                                    if name.as_bytes() == &*section_name {
-                                        return section.data;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            &[]
-        };
-
-        let units = if macho.header.is_little_endian() {
-            dwarf::parse(gimli::LittleEndian, get_section)?
-        } else {
-            dwarf::parse(gimli::BigEndian, get_section)?
-        };
-
-        let mut file = File {
-            path,
-            code: None,
-            units,
-        };
-        cb(&mut file)
     }
 
     pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
@@ -543,7 +428,7 @@ impl RangeList {
     }
 
     // Append a range, combining with previous range if possible.
-    fn push(&mut self, mut range: Range) {
+    fn push(&mut self, range: Range) {
         // Ranges starting at 0 are probably invalid.
         // TODO: is this always desired?
         if range.begin == 0 || range.end <= range.begin {
