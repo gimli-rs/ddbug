@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::cmp;
 
-use {File, FileHash, Options, Result, Unit};
+use {File, FileHash, Options, Result};
 use diff;
 
 #[derive(Debug, Clone, Copy)]
@@ -134,7 +134,7 @@ where
         &mut self,
         label: &str,
         w: &mut Write,
-        unit: &Unit,
+        arg: &T::Arg,
         list: &[T],
     ) -> Result<()> {
         if list.is_empty() {
@@ -150,7 +150,7 @@ where
 
         self.indent(|state| {
             for item in list {
-                item.print_list(w, state, unit)?;
+                item.print_list(w, state, arg)?;
             }
             Ok(())
         })
@@ -380,9 +380,9 @@ where
         &mut self,
         label: &str,
         w: &mut Write,
-        unit_a: &Unit,
+        arg_a: &T::Arg,
         list_a: &[T],
-        unit_b: &Unit,
+        arg_b: &T::Arg,
         list_b: &[T],
     ) -> Result<()> {
         if list_a.is_empty() && list_b.is_empty() {
@@ -403,7 +403,7 @@ where
                 list_a,
                 list_b,
                 T::step_cost(),
-                |a, b| T::diff_cost(state, unit_a, a, unit_b, b),
+                |a, b| T::diff_cost(state, arg_a, a, arg_b, b),
             );
             let mut iter_a = list_a.iter();
             let mut iter_b = list_b.iter();
@@ -412,14 +412,14 @@ where
                     diff::Direction::None => break,
                     diff::Direction::Diagonal => {
                         if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                            T::diff_list(w, state, unit_a, a, unit_b, b)?;
+                            T::diff_list(w, state, arg_a, a, arg_b, b)?;
                         }
                     }
                     diff::Direction::Horizontal => if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| a.print_list(w, state, unit_a))?;
+                        state.prefix_less(|state| a.print_list(w, state, arg_a))?;
                     },
                     diff::Direction::Vertical => if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| b.print_list(w, state, unit_b))?;
+                        state.prefix_greater(|state| b.print_list(w, state, arg_b))?;
                     },
                 }
             }
@@ -429,29 +429,40 @@ where
 }
 
 pub(crate) trait PrintList {
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()>;
+    type Arg;
+
+    // TODO: need associated type constructor to avoid requiring arg to be a reference?
+    fn print_list(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()>;
 }
 
 impl<'a, T> PrintList for &'a T
 where
     T: PrintList,
 {
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        T::print_list(*self, w, state, unit)
+    type Arg = T::Arg;
+
+    fn print_list(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()> {
+        T::print_list(*self, w, state, arg)
     }
 }
 
 pub(crate) trait DiffList: PrintList {
     fn step_cost() -> usize;
 
-    fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize;
+    fn diff_cost(
+        state: &DiffState,
+        arg_a: &Self::Arg,
+        a: &Self,
+        arg_b: &Self::Arg,
+        b: &Self,
+    ) -> usize;
 
     fn diff_list(
         w: &mut Write,
         state: &mut DiffState,
-        unit_a: &Unit,
+        arg_a: &Self::Arg,
         a: &Self,
-        unit_b: &Unit,
+        arg_b: &Self::Arg,
         b: &Self,
     ) -> Result<()>;
 }

@@ -228,7 +228,6 @@ impl<'a, 'input> File<'a, 'input> {
         let mut state = PrintState::new(self, &hash, options);
 
         if options.category_file {
-            let unit = Unit::default();
             state.line(w, |w, _state| {
                 write!(w, "file {}", self.path)?;
                 Ok(())
@@ -236,7 +235,7 @@ impl<'a, 'input> File<'a, 'input> {
 
             // TODO: display ranges/size that aren't covered by debuginfo.
             let ranges = self.ranges();
-            state.list("addresses", w, &unit, ranges.list())?;
+            state.list("addresses", w, &(), ranges.list())?;
             state.line_option_u64(w, "size", ranges.size())?;
             writeln!(w, "")?;
         }
@@ -253,14 +252,13 @@ impl<'a, 'input> File<'a, 'input> {
         let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
 
         if options.category_file {
-            let unit = Unit::default();
             state.line(w, file_a, file_b, |w, _state, x| {
                 write!(w, "file {}", x.path)?;
                 Ok(())
             })?;
             let ranges_a = file_a.ranges();
             let ranges_b = file_b.ranges();
-            state.list("addresses", w, &unit, ranges_a.list(), &unit, ranges_b.list())?;
+            state.list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
             state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
             writeln!(w, "")?;
         }
@@ -710,7 +708,7 @@ impl<'input> Unit<'input> {
             })?;
             state.indent(|state| {
                 if self.ranges.list().len() > 1 {
-                    state.list("addresses", w, self, self.ranges.list())?;
+                    state.list("addresses", w, &(), self.ranges.list())?;
                 } else {
                     state.line_option(w, |w, _state| self.print_address(w))?;
                 }
@@ -774,9 +772,9 @@ impl<'input> Unit<'input> {
                     state.list(
                         "addresses",
                         w,
-                        unit_a,
+                        &(),
                         unit_a.ranges.list(),
-                        unit_b,
+                        &(),
                         unit_b.ranges.list(),
                     )?;
                 } else {
@@ -1751,6 +1749,8 @@ impl<'input> Member<'input> {
 }
 
 impl<'input> PrintList for Member<'input> {
+    type Arg = Unit<'input>;
+
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let bit_size = self.bit_size(state.hash);
         state.line(w, |w, state| self.print_name(w, state, bit_size))?;
@@ -1955,6 +1955,8 @@ impl<'input> Enumerator<'input> {
 }
 
 impl<'input> PrintList for Enumerator<'input> {
+    type Arg = Unit<'input>;
+
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_name_value(w))
     }
@@ -2625,6 +2627,8 @@ impl<'input> Parameter<'input> {
 }
 
 impl<'input> PrintList for Parameter<'input> {
+    type Arg = Unit<'input>;
+
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state))
     }
@@ -2690,6 +2694,8 @@ impl<'input> InlinedFunction<'input> {
 }
 
 impl<'input> PrintList for InlinedFunction<'input> {
+    type Arg = Unit<'input>;
+
     fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
         state.inline(|state| state.list("", w, unit, &self.inlined_functions))?;
@@ -2884,6 +2890,8 @@ impl<'input> Variable<'input> {
 }
 
 impl<'input> PrintList for Variable<'input> {
+    type Arg = Unit<'input>;
+
     fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state))
     }
