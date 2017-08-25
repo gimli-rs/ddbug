@@ -4,8 +4,9 @@ use std::rc::Rc;
 use std::marker;
 use gimli;
 
-use {cmp_ns_and_name, filter_option, FileHash, Namespace, Options, Result, Unit};
+use {filter_option, Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
+use file::{cmp_ns_and_name, FileHash, Namespace, Unit};
 use function::Parameter;
 
 #[derive(Debug)]
@@ -210,7 +211,7 @@ impl<'input> Type<'input> {
         hash_b: &FileHash,
         type_b: &Type,
     ) -> cmp::Ordering {
-        use TypeKind::*;
+        use self::TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
             (&Base(ref a), &Base(ref b)) => BaseType::cmp_id(a, b),
             (&Def(ref a), &Def(ref b)) => TypeDef::cmp_id(a, b),
@@ -251,7 +252,7 @@ impl<'input> Type<'input> {
         unit_b: &Unit,
         type_b: &Type,
     ) -> Result<()> {
-        use TypeKind::*;
+        use self::TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
             (&Def(ref a), &Def(ref b)) => TypeDef::diff(w, state, unit_a, a, unit_b, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::diff(w, state, unit_a, a, unit_b, b),

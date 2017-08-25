@@ -4,8 +4,9 @@ use std::rc::Rc;
 
 use gimli;
 
-use {cmp_ns_and_name, FileHash, Namespace, Options, Result, Unit};
+use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
+use file::{cmp_ns_and_name, FileHash, Namespace, Unit};
 use types::{Type, TypeOffset};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

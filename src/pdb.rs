@@ -6,7 +6,7 @@ use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
 use Result;
-use {File, Namespace, Unit};
+use file::{File, Namespace, Unit};
 use function::{Function, FunctionOffset, Parameter};
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member, StructType,
             Type, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType};

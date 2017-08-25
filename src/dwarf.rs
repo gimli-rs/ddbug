@@ -5,12 +5,12 @@ use gimli;
 
 use range::Range;
 use Result;
-use {Namespace, NamespaceKind, Unit};
+use file::{Namespace, NamespaceKind, Unit};
 use function::{Function, InlinedFunction, Parameter};
-use variable::Variable;
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member,
             PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
+use variable::Variable;
 
 struct DwarfFileState<'input, Endian>
 where
@@ -47,7 +47,7 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub fn parse<'input, Endian, F>(endian: Endian, get_section: F) -> Result<Vec<Unit<'input>>>
+pub(crate) fn parse<'input, Endian, F>(endian: Endian, get_section: F) -> Result<Vec<Unit<'input>>>
 where
     Endian: gimli::Endianity,
     F: Fn(&str) -> &'input [u8],

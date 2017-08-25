@@ -1,7 +1,8 @@
 use std::cmp;
 use std::io::Write;
 
-use {File, FileHash, Options, Result};
+use {Options, Result};
+use file::{File, FileHash};
 use diff;
 
 #[derive(Debug, Clone, Copy)]

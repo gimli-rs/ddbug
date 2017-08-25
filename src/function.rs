@@ -9,8 +9,9 @@ use gimli;
 use goblin;
 use panopticon;
 
-use {cmp_ns_and_name, CodeRegion, File, FileHash, Namespace, Options, Result, Unit};
+use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
+use file::{cmp_ns_and_name, CodeRegion, File, FileHash, Namespace, Unit};
 use types::{Type, TypeOffset};
 use variable::Variable;
 
