@@ -4,8 +4,9 @@ use std::rc::Rc;
 use std::marker;
 use gimli;
 
-use {cmp_ns_and_name, filter_option, DiffList, DiffState, FileHash, Namespace, Options, Parameter,
-     PrintList, PrintState, Result, Unit};
+use {cmp_ns_and_name, filter_option, FileHash, Namespace, Options, Result, Unit};
+use diffstate::{DiffList, DiffState, PrintList, PrintState};
+use function::Parameter;
 
 #[derive(Debug)]
 pub(crate) enum TypeKind<'input> {

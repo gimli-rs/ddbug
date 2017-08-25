@@ -5,7 +5,9 @@ use gimli;
 
 use range::Range;
 use Result;
-use {Function, InlinedFunction, Namespace, NamespaceKind, Parameter, Unit, Variable};
+use {Namespace, NamespaceKind, Unit};
+use function::{Function, InlinedFunction, Parameter};
+use variable::Variable;
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member,
             PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};

@@ -9,9 +9,10 @@ use gimli;
 use goblin;
 use panopticon;
 
-use {cmp_ns_and_name, CodeRegion, File, FileHash, Namespace, Options, Result, Unit, Variable};
+use {cmp_ns_and_name, CodeRegion, File, FileHash, Namespace, Options, Result, Unit};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
 use types::{Type, TypeOffset};
+use variable::Variable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct FunctionOffset(pub usize);
