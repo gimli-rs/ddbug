@@ -14,7 +14,7 @@ use memmap;
 use pdb;
 use panopticon;
 
-use {filter_name, Options, Result, Sort};
+use {Options, Result, Sort};
 use diffstate::{DiffState, PrintState};
 use function::{Function, FunctionOffset};
 use range::RangeList;
@@ -263,7 +263,10 @@ impl<'input> Namespace<'input> {
 
         if ret {
             if offset < namespace.len() {
-                (filter_name(self.name, namespace[offset]), offset + 1)
+                match self.name {
+                    Some(name) => (name == namespace[offset].as_bytes(), offset + 1),
+                    None => (false, offset + 1),
+                }
             } else {
                 (true, offset)
             }
@@ -407,7 +410,7 @@ impl<'input> Unit<'input> {
                     // Hack for rust closures
                     // TODO: is there better way of identifying these, or a
                     // a way to match pairs for diffing?
-                    if diff && filter_name(t.name, "closure") {
+                    if diff && t.name == Some(b"closure") {
                         return false;
                     }
                 }

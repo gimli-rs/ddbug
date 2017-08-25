@@ -144,11 +144,7 @@ impl<'a> Options<'a> {
     }
 
     fn filter_name(&self, name: Option<&[u8]>) -> bool {
-        if let Some(filter) = self.filter_name {
-            filter_name(name, filter)
-        } else {
-            true
-        }
+        self.filter_name.is_none() || self.filter_name.map(str::as_bytes) == name
     }
 
     fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {
@@ -161,19 +157,4 @@ impl<'a> Options<'a> {
             true
         }
     }
-}
-
-fn filter_name(name: Option<&[u8]>, filter: &str) -> bool {
-    match name {
-        Some(name) => name == filter.as_bytes(),
-        None => false,
-    }
-}
-
-fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
-where
-    T: Copy,
-    F: FnOnce(T) -> bool,
-{
-    o.and_then(|v| if f(v) { Some(v) } else { None })
 }

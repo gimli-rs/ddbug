@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::marker;
 use gimli;
 
-use {filter_option, Options, Result};
+use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
 use file::{cmp_ns_and_name, FileHash, Namespace, Unit};
 use function::Parameter;
@@ -544,6 +544,14 @@ impl<'input> TypeDef<'input> {
             Type::diff_members("members", w, state, unit_a, ty_a, unit_b, ty_b)
         })
     }
+}
+
+fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
+where
+    T: Copy,
+    F: FnOnce(T) -> bool,
+{
+    o.and_then(|v| if f(v) { Some(v) } else { None })
 }
 
 #[derive(Debug, Default)]
