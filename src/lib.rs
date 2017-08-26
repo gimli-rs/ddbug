@@ -148,13 +148,11 @@ impl<'a> Options<'a> {
     }
 
     fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {
-        if !self.filter_namespace.is_empty() {
+        self.filter_namespace.is_empty() || {
             match *namespace {
                 Some(ref namespace) => namespace.filter(&self.filter_namespace),
                 None => false,
             }
-        } else {
-            true
         }
     }
 }
