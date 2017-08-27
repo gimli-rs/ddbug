@@ -40,31 +40,6 @@ impl<'input> Variable<'input> {
         self.ty(hash).and_then(|t| t.byte_size(hash))
     }
 
-    pub fn filter(&self, options: &Options) -> bool {
-        if !self.declaration && self.address.is_none() {
-            // TODO: make this configurable?
-            return false;
-        }
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
-    }
-
-    /// Compare the identifying information of two variables.
-    /// This can be used to sort, and to determine if two variables refer to the same definition
-    /// (even if there are differences in the definitions).
-    pub fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-    }
-
-    /// Compare the size of two variables.
-    pub fn cmp_size(
-        hash_a: &FileHash,
-        a: &Variable,
-        hash_b: &FileHash,
-        b: &Variable,
-    ) -> cmp::Ordering {
-        a.byte_size(hash_a).cmp(&b.byte_size(hash_b))
-    }
-
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -153,6 +128,31 @@ impl<'input> Variable<'input> {
             write!(w, "declaration: yes")?;
         }
         Ok(())
+    }
+
+    pub fn filter(&self, options: &Options) -> bool {
+        if !self.declaration && self.address.is_none() {
+            // TODO: make this configurable?
+            return false;
+        }
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+    }
+
+    /// Compare the identifying information of two variables.
+    /// This can be used to sort, and to determine if two variables refer to the same definition
+    /// (even if there are differences in the definitions).
+    pub fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    /// Compare the size of two variables.
+    pub fn cmp_size(
+        hash_a: &FileHash,
+        a: &Variable,
+        hash_b: &FileHash,
+        b: &Variable,
+    ) -> cmp::Ordering {
+        a.byte_size(hash_a).cmp(&b.byte_size(hash_b))
     }
 }
 

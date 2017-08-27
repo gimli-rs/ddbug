@@ -49,20 +49,30 @@ impl<'input> Function<'input> {
         unit.functions.get(&offset)
     }
 
+    fn address(&self) -> Option<Range> {
+        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
+            Some(Range {
+                begin: low_pc,
+                end: high_pc,
+            })
+        } else if let Some(low_pc) = self.low_pc {
+            Some(Range {
+                begin: low_pc,
+                end: low_pc,
+            })
+        } else {
+            if !self.inline && !self.declaration {
+                debug!("non-inline function with no address");
+            }
+            None
+        }
+    }
+
     fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
     where
         'input: 'a,
     {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
-    }
-
-    pub fn filter(&self, options: &Options) -> bool {
-        if !self.inline && self.low_pc.is_none() {
-            // TODO: make this configurable?
-            return false;
-        }
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace) &&
-            options.filter_function_inline(self.inline)
     }
 
     fn calls(&self, file: &File) -> Vec<u64> {
@@ -74,48 +84,6 @@ impl<'input> Function<'input> {
             }
         }
         Vec::new()
-    }
-
-    /// Compare the identifying information of two functions.
-    /// This can be used to sort, and to determine if two functions refer to the same definition
-    /// (even if there are differences in the definitions).
-    pub fn cmp_id(
-        _hash_a: &FileHash,
-        a: &Function,
-        _hash_b: &FileHash,
-        b: &Function,
-    ) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-    }
-
-    // This function is a bit of a hack. We use it for sorting, but not for
-    // equality, in the hopes that we'll get better results in the presence
-    // of overloading, while still coping with changed function signatures.
-    // TODO: do something smarter
-    pub fn cmp_id_and_param(
-        hash_a: &FileHash,
-        a: &Function,
-        hash_b: &FileHash,
-        b: &Function,
-    ) -> cmp::Ordering {
-        let ord = Self::cmp_id(hash_a, a, hash_b, b);
-        if ord != cmp::Ordering::Equal {
-            return ord;
-        }
-
-        for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
-            if ord != cmp::Ordering::Equal {
-                return ord;
-            }
-        }
-
-        a.parameters.len().cmp(&b.parameters.len())
-    }
-
-    /// Compare the size of two functions.
-    pub fn cmp_size(a: &Function, b: &Function) -> cmp::Ordering {
-        a.size.cmp(&b.size)
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -240,25 +208,6 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn address(&self) -> Option<Range> {
-        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
-            Some(Range {
-                begin: low_pc,
-                end: high_pc,
-            })
-        } else if let Some(low_pc) = self.low_pc {
-            Some(Range {
-                begin: low_pc,
-                end: low_pc,
-            })
-        } else {
-            if !self.inline && !self.declaration {
-                debug!("non-inline function with no address");
-            }
-            None
-        }
-    }
-
     fn print_address(&self, w: &mut Write) -> Result<()> {
         if let Some(range) = self.address() {
             write!(w, "address: ")?;
@@ -334,6 +283,57 @@ impl<'input> Function<'input> {
     ) -> Result<()> {
         // TODO
         Ok(())
+    }
+
+    pub fn filter(&self, options: &Options) -> bool {
+        if !self.inline && self.low_pc.is_none() {
+            // TODO: make this configurable?
+            return false;
+        }
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace) &&
+            options.filter_function_inline(self.inline)
+    }
+
+    /// Compare the identifying information of two functions.
+    /// This can be used to sort, and to determine if two functions refer to the same definition
+    /// (even if there are differences in the definitions).
+    pub fn cmp_id(
+        _hash_a: &FileHash,
+        a: &Function,
+        _hash_b: &FileHash,
+        b: &Function,
+    ) -> cmp::Ordering {
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    // This function is a bit of a hack. We use it for sorting, but not for
+    // equality, in the hopes that we'll get better results in the presence
+    // of overloading, while still coping with changed function signatures.
+    // TODO: do something smarter
+    pub fn cmp_id_and_param(
+        hash_a: &FileHash,
+        a: &Function,
+        hash_b: &FileHash,
+        b: &Function,
+    ) -> cmp::Ordering {
+        let ord = Self::cmp_id(hash_a, a, hash_b, b);
+        if ord != cmp::Ordering::Equal {
+            return ord;
+        }
+
+        for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
+            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
+            if ord != cmp::Ordering::Equal {
+                return ord;
+            }
+        }
+
+        a.parameters.len().cmp(&b.parameters.len())
+    }
+
+    /// Compare the size of two functions.
+    pub fn cmp_size(a: &Function, b: &Function) -> cmp::Ordering {
+        a.size.cmp(&b.size)
     }
 }
 

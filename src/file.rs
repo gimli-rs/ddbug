@@ -65,6 +65,17 @@ impl<'a, 'input> File<'a, 'input> {
         }
     }
 
+    fn ranges(&self) -> RangeList {
+        let mut ranges = RangeList::default();
+        for unit in &self.units {
+            for range in unit.ranges.list() {
+                ranges.push(*range);
+            }
+        }
+        ranges.sort();
+        ranges
+    }
+
     pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
         let hash = FileHash::new(self);
         let mut state = PrintState::new(self, &hash, options);
@@ -138,17 +149,6 @@ impl<'a, 'input> File<'a, 'input> {
             Sort::Size => units.sort_by(|a, b| Unit::cmp_size(a, b)),
         }
         units
-    }
-
-    fn ranges(&self) -> RangeList {
-        let mut ranges = RangeList::default();
-        for unit in &self.units {
-            for range in unit.ranges.list() {
-                ranges.push(*range);
-            }
-        }
-        ranges.sort();
-        ranges
     }
 }
 
@@ -243,6 +243,16 @@ impl<'input> Namespace<'input> {
         }
     }
 
+    pub fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
+        match *namespace {
+            Some(ref namespace) => {
+                namespace.kind == NamespaceKind::Type &&
+                    (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
+            }
+            None => false,
+        }
+    }
+
     pub fn print(&self, w: &mut Write) -> Result<()> {
         if let Some(ref parent) = self.parent {
             parent.print(w)?;
@@ -328,16 +338,6 @@ impl<'input> Namespace<'input> {
             (&None, &None) => name1.cmp(&name2),
         }
     }
-
-    pub fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
-        match *namespace {
-            Some(ref namespace) => {
-                namespace.kind == NamespaceKind::Type &&
-                    (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
-            }
-            None => false,
-        }
-    }
 }
 
 #[derive(Debug, Default)]
@@ -354,24 +354,35 @@ pub(crate) struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
-    fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {
-        let name = self.name.unwrap_or(&[]);
-        for &(old, new) in &options.prefix_map {
-            if name.starts_with(old.as_bytes()) {
-                return (new.as_bytes(), &name[old.len()..]);
-            }
-        }
-        (&[], name)
+    fn size(&self) -> Option<u64> {
+        self.ranges.size()
     }
 
-    /// Return true if this unit matches the filter options.
-    fn filter(&self, options: &Options) -> bool {
-        if let Some(filter) = options.filter_unit {
-            let (prefix, suffix) = self.prefix_map(options);
-            let iter = prefix.iter().chain(suffix);
-            iter.cmp(filter.as_bytes()) == cmp::Ordering::Equal
+    fn function_size(&self) -> Option<u64> {
+        let mut size = 0;
+        for function in self.functions.values() {
+            if function.low_pc.is_some() {
+                size += function.size.unwrap_or(0);
+            }
+        }
+        if size != 0 {
+            Some(size)
         } else {
-            true
+            None
+        }
+    }
+
+    fn variable_size(&self, hash: &FileHash) -> Option<u64> {
+        let mut size = 0;
+        for variable in self.variables.values() {
+            if variable.address.is_some() {
+                size += variable.byte_size(hash).unwrap_or(0);
+            }
+        }
+        if size != 0 {
+            Some(size)
+        } else {
+            None
         }
     }
 
@@ -396,151 +407,10 @@ impl<'input> Unit<'input> {
         inline_types
     }
 
-    /// Filter and sort the list of types using the options.
-    /// Perform additional filtering and always sort when diffing.
-    fn filter_types(&self, state: &PrintState, options: &Options, diff: bool) -> Vec<&Type> {
-        let inline_types = self.inline_types(state);
-        let filter_type = |t: &Type| {
-            // Filter by user options.
-            if !t.filter(options) {
-                return false;
-            }
-            match t.kind {
-                TypeKind::Struct(ref t) => {
-                    // Hack for rust closures
-                    // TODO: is there better way of identifying these, or a
-                    // a way to match pairs for diffing?
-                    if diff && t.name == Some(b"closure") {
-                        return false;
-                    }
-                }
-                TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
-                TypeKind::Base(..) |
-                TypeKind::Array(..) |
-                TypeKind::Function(..) |
-                TypeKind::Unspecified(..) |
-                TypeKind::PointerToMember(..) |
-                TypeKind::Modifier(..) => return false,
-            }
-            // Filter out inline types.
-            !inline_types.contains(&t.offset.0)
-        };
-        let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b)),
-            Sort::Size => types.sort_by(|a, b| Type::cmp_size(state.hash, a, state.hash, b)),
-        }
-        types
-    }
-
-    /// Filter and sort the list of functions using the options.
-    /// Always sort when diffing.
-    fn filter_functions(
-        &self,
-        state: &PrintState,
-        options: &Options,
-        diff: bool,
-    ) -> Vec<&Function> {
-        let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(options)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => {
-                functions.sort_by(|a, b| Function::cmp_id_and_param(state.hash, a, state.hash, b))
-            }
-            Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
-        }
-        functions
-    }
-
-    /// Filter and sort the list of variables using the options.
-    /// Always sort when diffing.
-    fn filter_variables(
-        &self,
-        state: &PrintState,
-        options: &Options,
-        diff: bool,
-    ) -> Vec<&Variable> {
-        let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(options)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => variables.sort_by(|a, b| Variable::cmp_id(a, b)),
-            Sort::Size => {
-                variables.sort_by(|a, b| Variable::cmp_size(state.hash, a, state.hash, b))
-            }
-        }
-        variables
-    }
-
     fn print_ref(&self, w: &mut Write) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
-        }
-        Ok(())
-    }
-
-    fn print_address(&self, w: &mut Write) -> Result<()> {
-        if self.ranges.list().is_empty() {
-            if let Some(low_pc) = self.low_pc {
-                write!(w, "address: 0x{:x}", low_pc)?;
-            }
-        } else if self.ranges.list().len() == 1 {
-            write!(w, "address: ")?;
-            self.ranges.list()[0].print(w)?;
-        }
-        Ok(())
-    }
-
-    fn size(&self) -> Option<u64> {
-        self.ranges.size()
-    }
-
-    fn print_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.size() {
-            write!(w, "size: {}", size)?;
-        }
-        Ok(())
-    }
-
-    fn function_size(&self) -> Option<u64> {
-        let mut size = 0;
-        for function in self.functions.values() {
-            if function.low_pc.is_some() {
-                size += function.size.unwrap_or(0);
-            }
-        }
-        if size != 0 {
-            Some(size)
-        } else {
-            None
-        }
-    }
-
-    fn print_function_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.function_size() {
-            write!(w, "fn size: {}", size)?;
-        }
-        Ok(())
-    }
-
-    fn variable_size(&self, hash: &FileHash) -> Option<u64> {
-        let mut size = 0;
-        for variable in self.variables.values() {
-            if variable.address.is_some() {
-                size += variable.byte_size(hash).unwrap_or(0);
-            }
-        }
-        if size != 0 {
-            Some(size)
-        } else {
-            None
-        }
-    }
-
-    fn print_variable_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.variable_size(hash) {
-            write!(w, "var size: {}", size)?;
         }
         Ok(())
     }
@@ -583,21 +453,6 @@ impl<'input> Unit<'input> {
             }
         }
         Ok(())
-    }
-
-    /// Compare the identifying information of two units.
-    /// This can be used to sort, and to determine if two units refer to the same source.
-    fn cmp_id(a: &Unit, b: &Unit, options: &Options) -> cmp::Ordering {
-        let (prefix_a, suffix_a) = a.prefix_map(options);
-        let (prefix_b, suffix_b) = b.prefix_map(options);
-        let iter_a = prefix_a.iter().chain(suffix_a);
-        let iter_b = prefix_b.iter().chain(suffix_b);
-        iter_a.cmp(iter_b)
-    }
-
-    /// Compare the size of two units.
-    fn cmp_size(a: &Unit, b: &Unit) -> cmp::Ordering {
-        a.size().cmp(&b.size())
     }
 
     fn diff(
@@ -735,5 +590,150 @@ impl<'input> Unit<'input> {
             )?;
         }
         Ok(())
+    }
+
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        if self.ranges.list().is_empty() {
+            if let Some(low_pc) = self.low_pc {
+                write!(w, "address: 0x{:x}", low_pc)?;
+            }
+        } else if self.ranges.list().len() == 1 {
+            write!(w, "address: ")?;
+            self.ranges.list()[0].print(w)?;
+        }
+        Ok(())
+    }
+
+    fn print_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.size() {
+            write!(w, "size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_function_size(&self, w: &mut Write) -> Result<()> {
+        if let Some(size) = self.function_size() {
+            write!(w, "fn size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    fn print_variable_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        if let Some(size) = self.variable_size(hash) {
+            write!(w, "var size: {}", size)?;
+        }
+        Ok(())
+    }
+
+    /// Filter and sort the list of types using the options.
+    /// Perform additional filtering and always sort when diffing.
+    fn filter_types(&self, state: &PrintState, options: &Options, diff: bool) -> Vec<&Type> {
+        let inline_types = self.inline_types(state);
+        let filter_type = |t: &Type| {
+            // Filter by user options.
+            if !t.filter(options) {
+                return false;
+            }
+            match t.kind {
+                TypeKind::Struct(ref t) => {
+                    // Hack for rust closures
+                    // TODO: is there better way of identifying these, or a
+                    // a way to match pairs for diffing?
+                    if diff && t.name == Some(b"closure") {
+                        return false;
+                    }
+                }
+                TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
+                TypeKind::Base(..) |
+                TypeKind::Array(..) |
+                TypeKind::Function(..) |
+                TypeKind::Unspecified(..) |
+                TypeKind::PointerToMember(..) |
+                TypeKind::Modifier(..) => return false,
+            }
+            // Filter out inline types.
+            !inline_types.contains(&t.offset.0)
+        };
+        let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
+        match options.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b)),
+            Sort::Size => types.sort_by(|a, b| Type::cmp_size(state.hash, a, state.hash, b)),
+        }
+        types
+    }
+
+    /// Filter and sort the list of functions using the options.
+    /// Always sort when diffing.
+    fn filter_functions(
+        &self,
+        state: &PrintState,
+        options: &Options,
+        diff: bool,
+    ) -> Vec<&Function> {
+        let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(options)).collect();
+        match options.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => {
+                functions.sort_by(|a, b| Function::cmp_id_and_param(state.hash, a, state.hash, b))
+            }
+            Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
+        }
+        functions
+    }
+
+    /// Filter and sort the list of variables using the options.
+    /// Always sort when diffing.
+    fn filter_variables(
+        &self,
+        state: &PrintState,
+        options: &Options,
+        diff: bool,
+    ) -> Vec<&Variable> {
+        let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(options)).collect();
+        match options.sort.with_diff(diff) {
+            Sort::None => {}
+            Sort::Name => variables.sort_by(|a, b| Variable::cmp_id(a, b)),
+            Sort::Size => {
+                variables.sort_by(|a, b| Variable::cmp_size(state.hash, a, state.hash, b))
+            }
+        }
+        variables
+    }
+
+    fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {
+        let name = self.name.unwrap_or(&[]);
+        for &(old, new) in &options.prefix_map {
+            if name.starts_with(old.as_bytes()) {
+                return (new.as_bytes(), &name[old.len()..]);
+            }
+        }
+        (&[], name)
+    }
+
+    /// Return true if this unit matches the filter options.
+    fn filter(&self, options: &Options) -> bool {
+        if let Some(filter) = options.filter_unit {
+            let (prefix, suffix) = self.prefix_map(options);
+            let iter = prefix.iter().chain(suffix);
+            iter.cmp(filter.as_bytes()) == cmp::Ordering::Equal
+        } else {
+            true
+        }
+    }
+
+    /// Compare the identifying information of two units.
+    /// This can be used to sort, and to determine if two units refer to the same source.
+    fn cmp_id(a: &Unit, b: &Unit, options: &Options) -> cmp::Ordering {
+        let (prefix_a, suffix_a) = a.prefix_map(options);
+        let (prefix_b, suffix_b) = b.prefix_map(options);
+        let iter_a = prefix_a.iter().chain(suffix_a);
+        let iter_b = prefix_b.iter().chain(suffix_b);
+        iter_a.cmp(iter_b)
+    }
+
+    /// Compare the size of two units.
+    fn cmp_size(a: &Unit, b: &Unit) -> cmp::Ordering {
+        a.size().cmp(&b.size())
     }
 }
