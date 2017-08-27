@@ -6,7 +6,7 @@ use gimli;
 
 use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
-use file::{cmp_ns_and_name, FileHash, Namespace, Unit};
+use file::{FileHash, Namespace, Unit};
 use types::{Type, TypeOffset};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -52,7 +52,7 @@ impl<'input> Variable<'input> {
     /// This can be used to sort, and to determine if two variables refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     /// Compare the size of two variables.

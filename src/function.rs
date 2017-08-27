@@ -11,7 +11,7 @@ use panopticon;
 
 use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
-use file::{cmp_ns_and_name, CodeRegion, File, FileHash, Namespace, Unit};
+use file::{CodeRegion, File, FileHash, Namespace, Unit};
 use range::Range;
 use types::{Type, TypeOffset};
 use variable::Variable;
@@ -85,7 +85,7 @@ impl<'input> Function<'input> {
         _hash_b: &FileHash,
         b: &Function,
     ) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     // This function is a bit of a hack. We use it for sorting, but not for

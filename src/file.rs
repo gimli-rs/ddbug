@@ -312,6 +312,23 @@ impl<'input> Namespace<'input> {
         }
     }
 
+    pub fn cmp_ns_and_name(
+        ns1: &Option<Rc<Namespace>>,
+        name1: Option<&[u8]>,
+        ns2: &Option<Rc<Namespace>>,
+        name2: Option<&[u8]>,
+    ) -> cmp::Ordering {
+        match (ns1, ns2) {
+            (&Some(ref ns1), &Some(ref ns2)) => match Namespace::cmp(ns1, ns2) {
+                cmp::Ordering::Equal => name1.cmp(&name2),
+                o => o,
+            },
+            (&Some(_), &None) => cmp::Ordering::Greater,
+            (&None, &Some(_)) => cmp::Ordering::Less,
+            (&None, &None) => name1.cmp(&name2),
+        }
+    }
+
     pub fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
         match *namespace {
             Some(ref namespace) => {
@@ -320,23 +337,6 @@ impl<'input> Namespace<'input> {
             }
             None => false,
         }
-    }
-}
-
-pub(crate) fn cmp_ns_and_name(
-    ns1: &Option<Rc<Namespace>>,
-    name1: Option<&[u8]>,
-    ns2: &Option<Rc<Namespace>>,
-    name2: Option<&[u8]>,
-) -> cmp::Ordering {
-    match (ns1, ns2) {
-        (&Some(ref ns1), &Some(ref ns2)) => match Namespace::cmp(ns1, ns2) {
-            cmp::Ordering::Equal => name1.cmp(&name2),
-            o => o,
-        },
-        (&Some(_), &None) => cmp::Ordering::Greater,
-        (&None, &Some(_)) => cmp::Ordering::Less,
-        (&None, &None) => name1.cmp(&name2),
     }
 }
 

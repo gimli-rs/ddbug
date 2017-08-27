@@ -6,7 +6,7 @@ use gimli;
 
 use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
-use file::{cmp_ns_and_name, FileHash, Namespace, Unit};
+use file::{FileHash, Namespace, Unit};
 use function::Parameter;
 
 #[derive(Debug)]
@@ -525,7 +525,7 @@ impl<'input> TypeDef<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn diff(
@@ -664,7 +664,7 @@ impl<'input> StructType<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &StructType, b: &StructType) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 }
 
@@ -779,7 +779,7 @@ impl<'input> UnionType<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &UnionType, b: &UnionType) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 }
 
@@ -999,7 +999,7 @@ impl<'input> EnumerationType<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -1296,7 +1296,7 @@ impl<'input> UnspecifiedType<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
-        cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
 }
 
