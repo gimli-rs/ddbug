@@ -1,9 +1,8 @@
 use gimli;
 use goblin;
-use dwarf;
 
 use Result;
-use file::File;
+use file::{dwarf, File};
 
 pub(crate) fn parse(
     input: &[u8],

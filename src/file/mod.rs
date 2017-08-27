@@ -6,12 +6,14 @@ use std::fs;
 use std::io::{self, Write};
 use std::rc::Rc;
 
-use elf;
+mod dwarf;
+mod elf;
+mod mach;
+mod pdb;
+
 use gimli;
 use goblin;
-use mach;
 use memmap;
-use pdb;
 use panopticon;
 
 use {Options, Result, Sort};
@@ -30,9 +32,9 @@ pub(crate) struct CodeRegion {
 
 #[derive(Debug)]
 pub struct File<'a, 'input> {
-    pub(crate) path: &'a str,
-    pub(crate) code: Option<CodeRegion>,
-    pub(crate) units: Vec<Unit<'input>>,
+    path: &'a str,
+    code: Option<CodeRegion>,
+    units: Vec<Unit<'input>>,
 }
 
 impl<'a, 'input> File<'a, 'input> {
@@ -63,6 +65,10 @@ impl<'a, 'input> File<'a, 'input> {
                 Err(e) => Err(format!("file identification failed: {}", e).into()),
             }
         }
+    }
+
+    pub(crate) fn code(&self) -> Option<&CodeRegion> {
+        self.code.as_ref()
     }
 
     fn ranges(&self) -> RangeList {

@@ -78,7 +78,7 @@ impl<'input> Function<'input> {
     fn calls(&self, file: &File) -> Vec<u64> {
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             if low_pc != 0 {
-                if let Some(ref code) = file.code {
+                if let Some(code) = file.code() {
                     return disassemble(code, low_pc, high_pc);
                 }
             }

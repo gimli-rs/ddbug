@@ -1,10 +1,9 @@
-use dwarf;
 use gimli;
 use goblin;
 use panopticon;
 
 use Result;
-use file::{CodeRegion, File};
+use file::{dwarf, CodeRegion, File};
 
 pub(crate) fn parse(
     input: &[u8],
