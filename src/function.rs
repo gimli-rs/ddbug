@@ -12,6 +12,7 @@ use panopticon;
 use {Options, Result};
 use diffstate::{DiffList, DiffState, PrintList, PrintState};
 use file::{cmp_ns_and_name, CodeRegion, File, FileHash, Namespace, Unit};
+use range::Range;
 use types::{Type, TypeOffset};
 use variable::Variable;
 
@@ -239,17 +240,29 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write) -> Result<()> {
+    fn address(&self) -> Option<Range> {
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
-            if high_pc > low_pc {
-                write!(w, "address: 0x{:x}-0x{:x}", low_pc, high_pc - 1)?;
-            } else {
-                write!(w, "address: 0x{:x}", low_pc)?;
-            }
+            Some(Range {
+                begin: low_pc,
+                end: high_pc,
+            })
         } else if let Some(low_pc) = self.low_pc {
-            write!(w, "address: 0x{:x}", low_pc)?;
-        } else if !self.inline && !self.declaration {
-            debug!("non-inline function with no address");
+            Some(Range {
+                begin: low_pc,
+                end: low_pc,
+            })
+        } else {
+            if !self.inline && !self.declaration {
+                debug!("non-inline function with no address");
+            }
+            None
+        }
+    }
+
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        if let Some(range) = self.address() {
+            write!(w, "address: ")?;
+            range.print(w)?;
         }
         Ok(())
     }

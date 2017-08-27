@@ -12,7 +12,11 @@ pub(crate) struct Range {
 
 impl Range {
     pub fn print(&self, w: &mut Write) -> Result<()> {
-        write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
+        if self.end > self.begin {
+            write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
+        } else {
+            write!(w, "0x{:x}", self.begin)?;
+        }
         Ok(())
     }
 }
