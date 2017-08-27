@@ -6,10 +6,12 @@ use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
 
 use Result;
-use file::{File, Namespace, Unit};
+use file::File;
 use function::{Function, FunctionOffset, Parameter};
+use namespace::Namespace;
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member, StructType,
             Type, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType};
+use unit::Unit;
 
 pub(crate) fn parse(
     input: &[u8],

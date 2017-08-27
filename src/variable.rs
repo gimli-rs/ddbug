@@ -5,9 +5,11 @@ use std::rc::Rc;
 use gimli;
 
 use {Options, Result};
-use file::{FileHash, Namespace, Unit};
+use file::FileHash;
+use namespace::Namespace;
 use print::{DiffList, DiffState, PrintList, PrintState};
 use types::{Type, TypeOffset};
+use unit::Unit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct VariableOffset(pub usize);

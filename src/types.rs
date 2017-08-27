@@ -5,9 +5,11 @@ use std::marker;
 use gimli;
 
 use {Options, Result};
-use file::{FileHash, Namespace, Unit};
+use file::FileHash;
 use function::Parameter;
+use namespace::Namespace;
 use print::{DiffList, DiffState, PrintList, PrintState};
+use unit::Unit;
 
 #[derive(Debug)]
 pub(crate) enum TypeKind<'input> {

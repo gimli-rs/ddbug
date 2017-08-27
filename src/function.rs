@@ -10,11 +10,13 @@ use goblin;
 use panopticon;
 
 use {Options, Result};
-use file::{CodeRegion, File, FileHash, Namespace, Unit};
+use file::{CodeRegion, File, FileHash};
+use namespace::Namespace;
 use print::{DiffList, DiffState, PrintList, PrintState};
 use range::Range;
 use types::{Type, TypeOffset};
 use variable::Variable;
+use unit::Unit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct FunctionOffset(pub usize);

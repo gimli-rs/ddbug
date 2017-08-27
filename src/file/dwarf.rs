@@ -5,11 +5,12 @@ use gimli;
 
 use range::Range;
 use Result;
-use file::{Namespace, NamespaceKind, Unit};
 use function::{Function, InlinedFunction, Parameter};
+use namespace::{Namespace, NamespaceKind};
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member,
             PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
+use unit::Unit;
 use variable::Variable;
 
 struct DwarfFileState<'input, Endian>

@@ -9,10 +9,12 @@ extern crate pdb as crate_pdb;
 
 mod file;
 mod function;
+mod namespace;
 mod print;
 mod range;
 mod types;
 mod variable;
+mod unit;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
@@ -22,7 +24,7 @@ use std::io;
 use std::result;
 use std::rc::Rc;
 
-use file::Namespace;
+use namespace::Namespace;
 
 pub use file::File;
 
