@@ -168,10 +168,14 @@ where
                 let addr = row.address();
                 if row.end_sequence() {
                     if let Some(seq_addr) = seq_addr {
-                        unit.ranges.push(Range {
-                            begin: seq_addr,
-                            end: addr,
-                        });
+                        // Sequences starting at 0 are probably invalid.
+                        // TODO: is this always desired?
+                        if seq_addr != 0 {
+                            unit.ranges.push(Range {
+                                begin: seq_addr,
+                                end: addr,
+                            });
+                        }
                     }
                     seq_addr = None;
                 } else if seq_addr.is_none() {
@@ -183,10 +187,14 @@ where
             let mut ranges =
                 dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
             while let Some(range) = ranges.next()? {
-                unit.ranges.push(Range {
-                    begin: range.begin,
-                    end: range.end,
-                });
+                // Ranges starting at 0 are probably invalid.
+                // TODO: is this always desired?
+                if range.begin != 0 {
+                    unit.ranges.push(Range {
+                        begin: range.begin,
+                        end: range.end,
+                    });
+                }
             }
         } else if let Some(low_pc) = unit.low_pc {
             if let Some(size) = size {

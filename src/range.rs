@@ -78,9 +78,8 @@ impl RangeList {
 
     // Append a range, combining with previous range if possible.
     pub fn push(&mut self, range: Range) {
-        // Ranges starting at 0 are probably invalid.
-        // TODO: is this always desired?
-        if range.begin == 0 || range.end <= range.begin {
+        if range.end <= range.begin {
+            debug!("invalid range: {:?}", range);
             return;
         }
         if let Some(prev) = self.ranges.last_mut() {
