@@ -5,9 +5,9 @@ use std::marker;
 use gimli;
 
 use {Options, Result};
-use diffstate::{DiffList, DiffState, PrintList, PrintState};
 use file::{FileHash, Namespace, Unit};
 use function::Parameter;
+use print::{DiffList, DiffState, PrintList, PrintState};
 
 #[derive(Debug)]
 pub(crate) enum TypeKind<'input> {

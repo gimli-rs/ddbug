@@ -10,8 +10,8 @@ use goblin;
 use panopticon;
 
 use {Options, Result};
-use diffstate::{DiffList, DiffState, PrintList, PrintState};
 use file::{CodeRegion, File, FileHash, Namespace, Unit};
+use print::{DiffList, DiffState, PrintList, PrintState};
 use range::Range;
 use types::{Type, TypeOffset};
 use variable::Variable;

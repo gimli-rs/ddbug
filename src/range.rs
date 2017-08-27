@@ -1,8 +1,8 @@
 use std::io::Write;
 use std::mem;
 
-use diffstate::{DiffList, DiffState, PrintList, PrintState};
 use Result;
+use print::{DiffList, DiffState, PrintList, PrintState};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct Range {

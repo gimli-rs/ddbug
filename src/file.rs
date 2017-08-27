@@ -15,8 +15,8 @@ use pdb;
 use panopticon;
 
 use {Options, Result, Sort};
-use diffstate::{DiffState, PrintState};
 use function::{Function, FunctionOffset};
+use print::{DiffState, PrintState};
 use range::RangeList;
 use types::{Type, TypeKind, TypeOffset};
 use variable::{Variable, VariableOffset};

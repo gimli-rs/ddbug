@@ -7,14 +7,13 @@ extern crate panopticon_core as panopticon;
 extern crate panopticon_amd64 as amd64;
 extern crate pdb as crate_pdb;
 
-mod diff;
-mod diffstate;
 mod dwarf;
 mod elf;
 mod file;
 mod function;
 mod mach;
 mod pdb;
+mod print;
 mod range;
 mod types;
 mod variable;
