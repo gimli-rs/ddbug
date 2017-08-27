@@ -6,7 +6,6 @@ use std::rc::Rc;
 
 use amd64;
 use gimli;
-use goblin;
 use panopticon;
 
 use {Options, Result};
@@ -527,7 +526,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
 
 fn disassemble(code: &CodeRegion, low_pc: u64, high_pc: u64) -> Vec<u64> {
     match code.machine {
-        goblin::elf::header::EM_X86_64 => {
+        panopticon::Machine::Amd64 => {
             disassemble_arch::<amd64::Amd64>(&code.region, low_pc, high_pc, amd64::Mode::Long)
         }
         _ => Vec::new(),

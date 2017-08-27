@@ -20,8 +20,7 @@ use unit::Unit;
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {
-    // TODO: use format independent machine type
-    pub machine: u16,
+    pub machine: panopticon::Machine,
     pub region: panopticon::Region,
 }
 

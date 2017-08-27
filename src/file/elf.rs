@@ -15,16 +15,16 @@ pub(crate) fn parse(
         Err(e) => return Err(format!("ELF parse failed: {}", e).into()),
     };
 
-    let machine = elf.header.e_machine;
-    let region = match machine {
+    let machine = match elf.header.e_machine {
         goblin::elf::header::EM_X86_64 => {
-            Some(panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF))
+            let region = panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
+            Some((panopticon::Machine::Amd64, region))
         }
         _ => None,
     };
 
     let mut code = None;
-    if let Some(mut region) = region {
+    if let Some((machine, mut region)) = machine {
         for ph in &elf.program_headers {
             if ph.p_type == goblin::elf::program_header::PT_LOAD {
                 let offset = ph.p_offset;
