@@ -5,13 +5,31 @@ use gimli;
 
 use range::Range;
 use Result;
-use function::{Function, InlinedFunction, Parameter};
+use function::{Function, FunctionOffset, InlinedFunction, Parameter};
 use namespace::{Namespace, NamespaceKind};
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member,
             PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
 use unit::Unit;
-use variable::Variable;
+use variable::{Variable, VariableOffset};
+
+impl From<gimli::DebugInfoOffset> for FunctionOffset {
+    fn from(o: gimli::DebugInfoOffset) -> FunctionOffset {
+        FunctionOffset(o.0)
+    }
+}
+
+impl From<gimli::DebugInfoOffset> for TypeOffset {
+    fn from(o: gimli::DebugInfoOffset) -> TypeOffset {
+        TypeOffset(o.0)
+    }
+}
+
+impl From<gimli::DebugInfoOffset> for VariableOffset {
+    fn from(o: gimli::DebugInfoOffset) -> VariableOffset {
+        VariableOffset(o.0)
+    }
+}
 
 struct DwarfFileState<'input, Endian>
 where

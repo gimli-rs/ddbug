@@ -2,8 +2,6 @@ use std::cmp;
 use std::io::Write;
 use std::rc::Rc;
 
-use gimli;
-
 use {Options, Result};
 use file::FileHash;
 use namespace::Namespace;
@@ -13,12 +11,6 @@ use unit::Unit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct VariableOffset(pub usize);
-
-impl From<gimli::DebugInfoOffset> for VariableOffset {
-    fn from(o: gimli::DebugInfoOffset) -> VariableOffset {
-        VariableOffset(o.0)
-    }
-}
 
 #[derive(Debug, Default)]
 pub(crate) struct Variable<'input> {

@@ -2,7 +2,6 @@ use std::cmp;
 use std::io::Write;
 use std::rc::Rc;
 use std::marker;
-use gimli;
 
 use {Options, Result};
 use file::FileHash;
@@ -44,12 +43,6 @@ impl<'input> TypeKind<'input> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TypeOffset(pub usize);
-
-impl From<gimli::DebugInfoOffset> for TypeOffset {
-    fn from(o: gimli::DebugInfoOffset) -> TypeOffset {
-        TypeOffset(o.0)
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct Type<'input> {

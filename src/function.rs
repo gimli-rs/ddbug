@@ -5,7 +5,6 @@ use std::io::Write;
 use std::rc::Rc;
 
 use amd64;
-use gimli;
 use panopticon;
 
 use {Options, Result};
@@ -19,12 +18,6 @@ use unit::Unit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct FunctionOffset(pub usize);
-
-impl From<gimli::DebugInfoOffset> for FunctionOffset {
-    fn from(o: gimli::DebugInfoOffset) -> FunctionOffset {
-        FunctionOffset(o.0)
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct Function<'input> {
