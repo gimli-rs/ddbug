@@ -51,6 +51,7 @@ pub(crate) fn parse(
     let mut file = File {
         path,
         code: None,
+        sections: Vec::new(),
         units,
     };
     cb(&mut file)

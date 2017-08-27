@@ -3,7 +3,7 @@ use goblin;
 use panopticon;
 
 use Result;
-use file::{dwarf, CodeRegion, File};
+use file::{dwarf, CodeRegion, File, Section};
 
 pub(crate) fn parse(
     input: &[u8],
@@ -48,12 +48,30 @@ pub(crate) fn parse(
         code = Some(CodeRegion { machine, region });
     }
 
+    let mut sections = Vec::new();
+    for sh in &elf.section_headers {
+        let name = elf.shdr_strtab.get(sh.sh_name).ok().map(str::as_bytes);
+        let address = if sh.sh_addr != 0 {
+            Some(sh.sh_addr)
+        } else {
+            None
+        };
+        let size = sh.sh_size;
+        if size != 0 {
+            sections.push(Section {
+                name,
+                address,
+                size,
+            });
+        }
+    }
+
     // Code based on 'object' crate
     let get_section = |section_name: &str| -> &[u8] {
-        for header in &elf.section_headers {
-            if let Ok(name) = elf.shdr_strtab.get(header.sh_name) {
+        for sh in &elf.section_headers {
+            if let Ok(name) = elf.shdr_strtab.get(sh.sh_name) {
                 if name == section_name {
-                    return &input[header.sh_offset as usize..][..header.sh_size as usize];
+                    return &input[sh.sh_offset as usize..][..sh.sh_size as usize];
                 }
             }
         }
@@ -66,6 +84,11 @@ pub(crate) fn parse(
         _ => return Err("unknown endianity".into()),
     };
 
-    let mut file = File { path, code, units };
+    let mut file = File {
+        path,
+        code,
+        sections,
+        units,
+    };
     cb(&mut file)
 }

@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
@@ -13,8 +14,8 @@ use panopticon;
 
 use {Options, Result, Sort};
 use function::Function;
-use print::{DiffState, PrintState};
-use range::RangeList;
+use print::{DiffList, DiffState, PrintList, PrintState};
+use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
 
@@ -28,6 +29,7 @@ pub(crate) struct CodeRegion {
 pub struct File<'a, 'input> {
     path: &'a str,
     code: Option<CodeRegion>,
+    sections: Vec<Section<'input>>,
     units: Vec<Unit<'input>>,
 }
 
@@ -67,6 +69,12 @@ impl<'a, 'input> File<'a, 'input> {
 
     fn ranges(&self) -> RangeList {
         let mut ranges = RangeList::default();
+        for section in &self.sections {
+            // TODO: ignore BSS for size?
+            if let Some(range) = section.address() {
+                ranges.push(range);
+            }
+        }
         for unit in &self.units {
             for range in unit.ranges.list() {
                 ranges.push(*range);
@@ -85,11 +93,14 @@ impl<'a, 'input> File<'a, 'input> {
                 write!(w, "file {}", self.path)?;
                 Ok(())
             })?;
-
-            // TODO: display ranges/size that aren't covered by debuginfo.
-            let ranges = self.ranges();
-            state.list("addresses", w, &(), ranges.list())?;
-            state.line_option_u64(w, "size", ranges.size())?;
+            state.indent(|state| {
+                // TODO: display ranges/size that aren't covered by debuginfo.
+                let ranges = self.ranges();
+                state.list("addresses", w, &(), ranges.list())?;
+                state.line_option_u64(w, "size", ranges.size())?;
+                state.list("sections", w, &(), &*self.sections)?;
+                Ok(())
+            })?;
             writeln!(w, "")?;
         }
 
@@ -109,10 +120,15 @@ impl<'a, 'input> File<'a, 'input> {
                 write!(w, "file {}", x.path)?;
                 Ok(())
             })?;
-            let ranges_a = file_a.ranges();
-            let ranges_b = file_b.ranges();
-            state.list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
-            state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
+            state.indent(|state| {
+                let ranges_a = file_a.ranges();
+                let ranges_b = file_b.ranges();
+                state.list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
+                state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
+                // TODO: sort sections
+                state.list("sections", w, &(), &*file_a.sections, &(), &*file_b.sections)?;
+                Ok(())
+            })?;
             writeln!(w, "")?;
         }
 
@@ -195,5 +211,80 @@ impl<'a, 'input> FileHash<'a, 'input> {
             }
         }
         types
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Section<'input> {
+    name: Option<&'input [u8]>,
+    address: Option<u64>,
+    size: u64,
+}
+
+impl<'input> Section<'input> {
+    fn address(&self) -> Option<Range> {
+        self.address.map(|address| {
+            Range {
+                begin: address,
+                end: address + self.size,
+            }
+        })
+    }
+
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        match self.name {
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            None => write!(w, "<anon-section>")?,
+        }
+        Ok(())
+    }
+
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        if let Some(address) = self.address() {
+            write!(w, "address: ")?;
+            address.print(w)?;
+        }
+        Ok(())
+    }
+}
+
+impl<'input> PrintList for Section<'input> {
+    type Arg = ();
+
+    fn print_list(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+        state.line(w, |w, _state| self.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w, |w, _state| self.print_address(w))?;
+            state.line_option_u64(w, "size", Some(self.size))
+        })
+    }
+}
+
+impl<'input> DiffList for Section<'input> {
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 2;
+        }
+        cost
+    }
+
+    fn diff_list(
+        w: &mut Write,
+        state: &mut DiffState,
+        _arg_a: &(),
+        a: &Self,
+        _arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, _state, x| x.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w, a, b, |w, _state, x| x.print_address(w))?;
+            state.line_option_u64(w, "size", Some(a.size), Some(b.size))
+        })
     }
 }

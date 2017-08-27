@@ -273,6 +273,7 @@ pub(crate) fn parse(
     let mut file = File {
         path: path,
         code: None,
+        sections: Vec::new(),
         units: units,
     };
 
