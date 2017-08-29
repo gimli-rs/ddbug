@@ -2,10 +2,10 @@ use std::cmp;
 use std::io::Write;
 use std::rc::Rc;
 
-use {Options, Result};
+use {Options, Result, Sort};
 use file::FileHash;
 use namespace::Namespace;
-use print::{DiffList, DiffState, PrintList, PrintState};
+use print::{DiffList, DiffState, PrintList, PrintState, SortList};
 use types::{Type, TypeOffset};
 use unit::Unit;
 
@@ -69,7 +69,9 @@ impl<'input> Variable<'input> {
             state.line_option(w, |w, state| self.print_size(w, state))?;
             state.line_option(w, |w, _state| self.print_declaration(w))
             // TODO: print anon type inline
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     pub fn diff(w: &mut Write, state: &mut DiffState, a: &Variable, b: &Variable) -> Result<()> {
@@ -83,7 +85,9 @@ impl<'input> Variable<'input> {
             )?;
             state.line_option(w, a, b, |w, state, x| x.print_size(w, state))?;
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
@@ -131,23 +135,6 @@ impl<'input> Variable<'input> {
         }
         options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
-
-    /// Compare the identifying information of two variables.
-    /// This can be used to sort, and to determine if two variables refer to the same definition
-    /// (even if there are differences in the definitions).
-    pub fn cmp_id(a: &Variable, b: &Variable) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
-    }
-
-    /// Compare the size of two variables.
-    pub fn cmp_size(
-        hash_a: &FileHash,
-        a: &Variable,
-        hash_b: &FileHash,
-        b: &Variable,
-    ) -> cmp::Ordering {
-        a.byte_size(hash_a).cmp(&b.byte_size(hash_b))
-    }
 }
 
 impl<'input> PrintList for Variable<'input> {
@@ -191,5 +178,49 @@ impl<'a, 'input> DiffList for &'a Variable<'input> {
         b: &Self,
     ) -> Result<()> {
         state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
+    }
+}
+
+impl<'input> SortList for Variable<'input> {
+    type Arg = ();
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+        self.print(w, state)
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _arg_a: &(),
+        a: &Self,
+        _arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        Self::diff(w, state, a, b)
+    }
+
+    fn cmp_id(
+        _state_a: &PrintState,
+        a: &Self,
+        _state_b: &PrintState,
+        b: &Self,
+        _options: &Options,
+    ) -> cmp::Ordering {
+        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+    }
+
+    fn cmp_by(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering {
+        match options.sort {
+            // TODO: sort by offset?
+            Sort::None => a.address.cmp(&b.address),
+            Sort::Name => Self::cmp_id(state_a, a, state_b, b, options),
+            Sort::Size => a.byte_size(state_a.hash).cmp(&b.byte_size(state_b.hash)),
+        }
     }
 }

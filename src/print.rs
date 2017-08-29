@@ -157,6 +157,19 @@ where
             Ok(())
         })
     }
+
+    pub fn sort_list<T: SortList>(
+        &mut self,
+        w: &mut Write,
+        arg: &T::Arg,
+        list: &mut [&T],
+    ) -> Result<()> {
+        list.sort_by(|a, b| T::cmp_by(self, a, self, b, self.options));
+        for item in list {
+            item.print(w, self, arg)?;
+        }
+        Ok(())
+    }
 }
 
 pub(crate) struct DiffState<'a, 'input>
@@ -184,42 +197,6 @@ where
             b: PrintState::new(file_b, hash_b, options),
             options: options,
         }
-    }
-
-    // This is similar to `list`, but because the items are ordered
-    // we can do a greedy search.
-    pub fn merge<T, I, FIterA, FIterB, FCmp, FEqual, FLess, FGreater>(
-        &mut self,
-        w: &mut Write,
-        iter_a: FIterA,
-        iter_b: FIterB,
-        cmp: FCmp,
-        mut equal: FEqual,
-        less: FLess,
-        greater: FGreater,
-    ) -> Result<()>
-    where
-        T: Copy,
-        I: IntoIterator<Item = T>,
-        FIterA: Fn(&PrintState<'a, 'input>) -> I,
-        FIterB: Fn(&PrintState<'a, 'input>) -> I,
-        FCmp: Fn(&FileHash, T, &FileHash, T) -> cmp::Ordering,
-        FEqual: FnMut(&mut Write, &mut DiffState<'a, 'input>, T, T) -> Result<()>,
-        FLess: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
-        FGreater: Fn(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
-    {
-        let iter_a = &mut iter_a(&self.a).into_iter();
-        let iter_b = &mut iter_b(&self.b).into_iter();
-        let hash_a = self.a.hash;
-        let hash_b = self.b.hash;
-        for m in MergeIterator::new(iter_a, iter_b, |a, b| cmp(hash_a, a, hash_b, b)) {
-            match m {
-                MergeResult::Both(l, r) => self.prefix_equal(|state| equal(w, state, l, r))?,
-                MergeResult::Left(l) => self.prefix_less(|state| less(w, state, l))?,
-                MergeResult::Right(r) => self.prefix_greater(|state| greater(w, state, r))?,
-            }
-        }
-        Ok(())
     }
 
     pub fn diff<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
@@ -428,6 +405,46 @@ where
             Ok(())
         })
     }
+
+    // This is similar to `list`, but because the items are ordered
+    // we can do a greedy search.
+    pub fn sort_list<T: SortList>(
+        &mut self,
+        w: &mut Write,
+        arg_a: &T::Arg,
+        list_a: &mut [&T],
+        arg_b: &T::Arg,
+        list_b: &mut [&T],
+    ) -> Result<()> {
+        list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.a, x, &self.a, y, self.options));
+        list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.b, x, &self.b, y, self.options));
+
+        let mut list: Vec<_> = MergeIterator::new(
+            list_a.iter(),
+            list_b.iter(),
+            |a, b| T::cmp_id(&self.a, a, &self.b, b, self.options),
+        ).collect();
+        list.sort_by(|x, y| {
+            MergeResult::cmp(x, y, &self.a, &self.b, |x, state_x, y, state_y| {
+                T::cmp_by(state_x, x, state_y, y, self.options)
+            })
+        });
+
+        for item in list {
+            match item {
+                MergeResult::Both(a, b) => {
+                    self.diff(w, |w, state| T::diff(w, state, arg_a, a, arg_b, b))?;
+                }
+                MergeResult::Left(a) => if !self.options.ignore_deleted {
+                    self.prefix_less(|state| a.print(w, state, arg_a))?;
+                },
+                MergeResult::Right(b) => if !self.options.ignore_added {
+                    self.prefix_greater(|state| b.print(w, state, arg_b))?;
+                },
+            }
+        }
+        Ok(())
+    }
 }
 
 pub(crate) trait PrintList {
@@ -469,10 +486,77 @@ pub(crate) trait DiffList: PrintList {
     ) -> Result<()>;
 }
 
+pub(crate) trait SortList {
+    type Arg;
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()>;
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        arg_a: &Self::Arg,
+        a: &Self,
+        arg_b: &Self::Arg,
+        b: &Self,
+    ) -> Result<()>;
+
+    fn cmp_id(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering;
+
+    fn cmp_id_for_sort(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering {
+        Self::cmp_id(state_a, a, state_b, b, options)
+    }
+
+    fn cmp_by(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering;
+}
+
 enum MergeResult<T> {
     Left(T),
     Right(T),
     Both(T, T),
+}
+
+impl<T> MergeResult<T> {
+    fn cmp<Arg, F>(x: &Self, y: &Self, arg_left: Arg, arg_right: Arg, f: F) -> cmp::Ordering
+    where
+        Arg: Copy,
+        F: Fn(&T, Arg, &T, Arg) -> cmp::Ordering,
+    {
+        match x {
+            &MergeResult::Both(ref x_left, _) => match y {
+                &MergeResult::Both(ref y_left, _) => f(x_left, arg_left, y_left, arg_left),
+                &MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
+                &MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
+            },
+            &MergeResult::Left(ref x_left) => match y {
+                &MergeResult::Both(ref y_left, _) => f(x_left, arg_left, y_left, arg_left),
+                &MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
+                &MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
+            },
+            &MergeResult::Right(ref x_right) => match y {
+                &MergeResult::Both(ref y_left, _) => f(x_right, arg_right, y_left, arg_left),
+                &MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
+                &MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
+            },
+        }
+    }
 }
 
 struct MergeIterator<T, I, C>

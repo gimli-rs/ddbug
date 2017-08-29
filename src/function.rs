@@ -7,10 +7,10 @@ use std::rc::Rc;
 use amd64;
 use panopticon;
 
-use {Options, Result};
+use {Options, Result, Sort};
 use file::{CodeRegion, File, FileHash};
 use namespace::Namespace;
-use print::{DiffList, DiffState, PrintList, PrintState};
+use print::{DiffList, DiffState, PrintList, PrintState, SortList};
 use range::Range;
 use types::{Type, TypeOffset};
 use variable::Variable;
@@ -114,7 +114,9 @@ impl<'input> Function<'input> {
                 }
             }
             Ok(())
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     pub fn diff(
@@ -152,9 +154,11 @@ impl<'input> Function<'input> {
             state.list("parameters", w, unit_a, &a.parameters, unit_b, &b.parameters)?;
             {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
-                variables_a.sort_by(|x, y| Variable::cmp_id(x, y));
+                variables_a
+                    .sort_by(|x, y| Variable::cmp_id(&state.a, x, &state.a, y, state.options));
                 let mut variables_b: Vec<_> = b.variables.iter().collect();
-                variables_b.sort_by(|x, y| Variable::cmp_id(x, y));
+                variables_b
+                    .sort_by(|x, y| Variable::cmp_id(&state.b, x, &state.b, y, state.options));
                 state.list("variables", w, unit_a, &variables_a, unit_b, &variables_b)?;
             }
             state.inline(|state| {
@@ -180,7 +184,9 @@ impl<'input> Function<'input> {
                 state.indent(|state| Function::diff_calls(w, state, &calls_a, &calls_b))?;
             }
             Ok(())
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     fn print_name(&self, w: &mut Write) -> Result<()> {
@@ -287,15 +293,32 @@ impl<'input> Function<'input> {
         options.filter_name(self.name) && options.filter_namespace(&self.namespace) &&
             options.filter_function_inline(self.inline)
     }
+}
 
-    /// Compare the identifying information of two functions.
-    /// This can be used to sort, and to determine if two functions refer to the same definition
-    /// (even if there are differences in the definitions).
-    pub fn cmp_id(
-        _hash_a: &FileHash,
-        a: &Function,
-        _hash_b: &FileHash,
-        b: &Function,
+impl<'input> SortList for Function<'input> {
+    type Arg = Unit<'input>;
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
+        self.print(w, state, unit)
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Self::Arg,
+        a: &Self,
+        unit_b: &Self::Arg,
+        b: &Self,
+    ) -> Result<()> {
+        Self::diff(w, state, unit_a, a, unit_b, b)
+    }
+
+    fn cmp_id(
+        _state_a: &PrintState,
+        a: &Self,
+        _state_b: &PrintState,
+        b: &Self,
+        _options: &Options,
     ) -> cmp::Ordering {
         Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
     }
@@ -304,19 +327,20 @@ impl<'input> Function<'input> {
     // equality, in the hopes that we'll get better results in the presence
     // of overloading, while still coping with changed function signatures.
     // TODO: do something smarter
-    pub fn cmp_id_and_param(
-        hash_a: &FileHash,
-        a: &Function,
-        hash_b: &FileHash,
-        b: &Function,
+    fn cmp_id_for_sort(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
     ) -> cmp::Ordering {
-        let ord = Self::cmp_id(hash_a, a, hash_b, b);
+        let ord = Self::cmp_id(state_a, a, state_b, b, options);
         if ord != cmp::Ordering::Equal {
             return ord;
         }
 
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
+            let ord = Parameter::cmp_type(state_a.hash, parameter_a, state_b.hash, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -325,9 +349,19 @@ impl<'input> Function<'input> {
         a.parameters.len().cmp(&b.parameters.len())
     }
 
-    /// Compare the size of two functions.
-    pub fn cmp_size(a: &Function, b: &Function) -> cmp::Ordering {
-        a.size.cmp(&b.size)
+    fn cmp_by(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering {
+        match options.sort {
+            // TODO: sort by offset?
+            Sort::None => a.low_pc.cmp(&b.low_pc),
+            Sort::Name => Self::cmp_id_for_sort(state_a, a, state_b, b, options),
+            Sort::Size => a.size.cmp(&b.size),
+        }
     }
 }
 
@@ -482,7 +516,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
         let mut cost = 0;
         let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v)).unwrap();
         let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v)).unwrap();
-        if Function::cmp_id(state.a.hash, function_a, state.b.hash, function_b) !=
+        if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options) !=
             cmp::Ordering::Equal
         {
             cost += 1;

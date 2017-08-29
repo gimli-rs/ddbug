@@ -82,16 +82,6 @@ pub enum Sort {
     Size,
 }
 
-impl Sort {
-    fn with_diff(self, diff: bool) -> Self {
-        if diff {
-            Sort::Name
-        } else {
-            self
-        }
-    }
-}
-
 impl Default for Sort {
     fn default() -> Self {
         Sort::None

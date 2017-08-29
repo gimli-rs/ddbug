@@ -7,7 +7,7 @@ use gimli;
 use {Options, Result, Sort};
 use file::FileHash;
 use function::{Function, FunctionOffset};
-use print::{DiffState, PrintState};
+use print::{DiffState, PrintState, SortList};
 use range::RangeList;
 use types::{Type, TypeKind, TypeOffset};
 use variable::{Variable, VariableOffset};
@@ -87,8 +87,8 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    pub fn print(&self, w: &mut Write, state: &mut PrintState, options: &Options) -> Result<()> {
-        if options.category_unit {
+    pub fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if state.options.category_unit {
             state.line(w, |w, _state| {
                 write!(w, "unit ")?;
                 self.print_ref(w)
@@ -106,35 +106,21 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if options.category_type {
-            for ty in &self.filter_types(state, options, false) {
-                ty.print(w, state, self)?;
-                writeln!(w, "")?;
-            }
+        if state.options.category_type {
+            let mut types = self.filter_types(state, false);
+            state.sort_list(w, self, &mut *types)?;
         }
-        if options.category_function {
-            for function in &self.filter_functions(state, options, false) {
-                function.print(w, state, self)?;
-                writeln!(w, "")?;
-            }
+        if state.options.category_function {
+            state.sort_list(w, self, &mut *self.filter_functions(state.options))?;
         }
-        if options.category_variable {
-            for variable in &self.filter_variables(state, options, false) {
-                variable.print(w, state)?;
-                writeln!(w, "")?;
-            }
+        if state.options.category_variable {
+            state.sort_list(w, &(), &mut *self.filter_variables(state.options))?;
         }
         Ok(())
     }
 
-    pub fn diff(
-        unit_a: &Unit,
-        unit_b: &Unit,
-        w: &mut Write,
-        state: &mut DiffState,
-        options: &Options,
-    ) -> Result<()> {
-        if options.category_unit {
+    pub fn diff(w: &mut Write, state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
+        if state.options.category_unit {
             state.line(w, unit_a, unit_b, |w, _state, unit| {
                 write!(w, "unit ")?;
                 unit.print_ref(w)
@@ -165,100 +151,27 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if options.category_type {
-            state
-            .merge(
+        if state.options.category_type {
+            let mut types_a = unit_a.filter_types(&state.a, true);
+            let mut types_b = unit_b.filter_types(&state.b, true);
+            state.sort_list(w, unit_a, &mut *types_a, unit_b, &mut *types_b)?;
+        }
+        if state.options.category_function {
+            state.sort_list(
                 w,
-                |state| unit_a.filter_types(state, options, true),
-                |state| unit_b.filter_types(state, options, true),
-                |hash_a, a, hash_b, b| Type::cmp_id(hash_a, a, hash_b, b),
-                |w, state, a, b| {
-                    state.diff(
-                        w, |w, state| {
-                            Type::diff(w, state, unit_a, a, unit_b, b)?;
-                            writeln!(w, "")?;
-                            Ok(())
-                        }
-                    )
-                },
-                |w, state, a| {
-                    if !options.ignore_deleted {
-                        a.print(w, state, unit_a)?;
-                        writeln!(w, "")?;
-                    }
-                    Ok(())
-                },
-                |w, state, b| {
-                    if !options.ignore_added {
-                        b.print(w, state, unit_b)?;
-                        writeln!(w, "")?;
-                    }
-                    Ok(())
-                },
+                unit_a,
+                &mut *unit_a.filter_functions(state.options),
+                unit_b,
+                &mut *unit_b.filter_functions(state.options),
             )?;
         }
-        if options.category_function {
-            state
-            .merge(
+        if state.options.category_variable {
+            state.sort_list(
                 w,
-                |state| unit_a.filter_functions(state, options, true),
-                |state| unit_b.filter_functions(state, options, true),
-                |hash_a, a, hash_b, b| Function::cmp_id(hash_a, a, hash_b, b),
-                |w, state, a, b| {
-                    state.diff(
-                        w, |w, state| {
-                            Function::diff(w, state, unit_a, a, unit_b, b)?;
-                            writeln!(w, "")?;
-                            Ok(())
-                        }
-                    )
-                },
-                |w, state, a| {
-                    if !options.ignore_deleted {
-                        a.print(w, state, unit_a)?;
-                        writeln!(w, "")?;
-                    }
-                    Ok(())
-                },
-                |w, state, b| {
-                    if !options.ignore_added {
-                        b.print(w, state, unit_b)?;
-                        writeln!(w, "")?;
-                    }
-                    Ok(())
-                },
-            )?;
-        }
-        if options.category_variable {
-            state
-            .merge(
-                w,
-                |state| unit_a.filter_variables(state, options, true),
-                |state| unit_b.filter_variables(state, options, true),
-                |_hash_a, a, _hash_b, b| Variable::cmp_id(a, b),
-                |w, state, a, b| {
-                    state.diff(
-                        w, |w, state| {
-                            Variable::diff(w, state, a, b)?;
-                            writeln!(w, "")?;
-                            Ok(())
-                        }
-                    )
-                },
-                |w, state, a| {
-                    if !options.ignore_deleted {
-                        a.print(w, state)?;
-                        writeln!(w, "")?;
-                    }
-                    Ok(())
-                },
-                |w, state, b| {
-                    if !options.ignore_added {
-                        b.print(w, state)?;
-                        writeln!(w, "")?;
-                    }
-                    Ok(())
-                },
+                &(),
+                &mut *unit_a.filter_variables(state.options),
+                &(),
+                &mut *unit_b.filter_variables(state.options),
             )?;
         }
         Ok(())
@@ -297,13 +210,13 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    /// Filter and sort the list of types using the options.
-    /// Perform additional filtering and always sort when diffing.
-    fn filter_types(&self, state: &PrintState, options: &Options, diff: bool) -> Vec<&Type> {
+    /// Filter and the list of types using the options.
+    /// Perform additional filtering when diffing.
+    fn filter_types(&self, state: &PrintState, diff: bool) -> Vec<&Type> {
         let inline_types = self.inline_types(state);
         let filter_type = |t: &Type| {
             // Filter by user options.
-            if !t.filter(options) {
+            if !t.filter(state.options) {
                 return false;
             }
             match t.kind {
@@ -326,51 +239,15 @@ impl<'input> Unit<'input> {
             // Filter out inline types.
             !inline_types.contains(&t.offset.0)
         };
-        let mut types: Vec<_> = self.types.values().filter(|a| filter_type(a)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => types.sort_by(|a, b| Type::cmp_id(state.hash, a, state.hash, b)),
-            Sort::Size => types.sort_by(|a, b| Type::cmp_size(state.hash, a, state.hash, b)),
-        }
-        types
+        self.types.values().filter(|a| filter_type(a)).collect()
     }
 
-    /// Filter and sort the list of functions using the options.
-    /// Always sort when diffing.
-    fn filter_functions(
-        &self,
-        state: &PrintState,
-        options: &Options,
-        diff: bool,
-    ) -> Vec<&Function> {
-        let mut functions: Vec<_> = self.functions.values().filter(|a| a.filter(options)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => {
-                functions.sort_by(|a, b| Function::cmp_id_and_param(state.hash, a, state.hash, b))
-            }
-            Sort::Size => functions.sort_by(|a, b| Function::cmp_size(a, b)),
-        }
-        functions
+    fn filter_functions(&self, options: &Options) -> Vec<&Function> {
+        self.functions.values().filter(|a| a.filter(options)).collect()
     }
 
-    /// Filter and sort the list of variables using the options.
-    /// Always sort when diffing.
-    fn filter_variables(
-        &self,
-        state: &PrintState,
-        options: &Options,
-        diff: bool,
-    ) -> Vec<&Variable> {
-        let mut variables: Vec<_> = self.variables.values().filter(|a| a.filter(options)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => variables.sort_by(|a, b| Variable::cmp_id(a, b)),
-            Sort::Size => {
-                variables.sort_by(|a, b| Variable::cmp_size(state.hash, a, state.hash, b))
-            }
-        }
-        variables
+    fn filter_variables(&self, options: &Options) -> Vec<&Variable> {
+        self.variables.values().filter(|a| a.filter(options)).collect()
     }
 
     fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {
@@ -393,10 +270,33 @@ impl<'input> Unit<'input> {
             true
         }
     }
+}
 
-    /// Compare the identifying information of two units.
-    /// This can be used to sort, and to determine if two units refer to the same source.
-    pub fn cmp_id(a: &Unit, b: &Unit, options: &Options) -> cmp::Ordering {
+impl<'input> SortList for Unit<'input> {
+    type Arg = ();
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+        self.print(w, state)
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _arg_a: &(),
+        a: &Self,
+        _arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        Self::diff(w, state, a, b)
+    }
+
+    fn cmp_id(
+        _state_a: &PrintState,
+        a: &Self,
+        _state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering {
         let (prefix_a, suffix_a) = a.prefix_map(options);
         let (prefix_b, suffix_b) = b.prefix_map(options);
         let iter_a = prefix_a.iter().chain(suffix_a);
@@ -404,8 +304,18 @@ impl<'input> Unit<'input> {
         iter_a.cmp(iter_b)
     }
 
-    /// Compare the size of two units.
-    pub fn cmp_size(a: &Unit, b: &Unit) -> cmp::Ordering {
-        a.size().cmp(&b.size())
+    fn cmp_by(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering {
+        match options.sort {
+            // TODO: sort by offset?
+            Sort::None => cmp::Ordering::Equal,
+            Sort::Name => Self::cmp_id(state_a, a, state_b, b, options),
+            Sort::Size => a.size().cmp(&b.size()),
+        }
     }
 }

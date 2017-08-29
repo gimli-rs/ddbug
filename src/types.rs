@@ -3,11 +3,11 @@ use std::io::Write;
 use std::rc::Rc;
 use std::marker;
 
-use {Options, Result};
+use {Options, Result, Sort};
 use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
-use print::{DiffList, DiffState, PrintList, PrintState};
+use print::{DiffList, DiffState, PrintList, PrintState, SortList};
 use unit::Unit;
 
 #[derive(Debug)]
@@ -294,15 +294,49 @@ impl<'input> Type<'input> {
             }
         }
     }
+}
 
-    /// Compare the size of two types.
-    pub fn cmp_size(
-        hash_a: &FileHash,
+impl<'input> SortList for Type<'input> {
+    type Arg = Unit<'input>;
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
+        self.print(w, state, unit)
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Self::Arg,
+        a: &Self,
+        unit_b: &Self::Arg,
+        b: &Self,
+    ) -> Result<()> {
+        Self::diff(w, state, unit_a, a, unit_b, b)
+    }
+
+    /// This must only be called for types that have identifiers.
+    fn cmp_id(
+        state_a: &PrintState,
         type_a: &Type,
-        hash_b: &FileHash,
+        state_b: &PrintState,
         type_b: &Type,
+        _options: &Options,
     ) -> cmp::Ordering {
-        type_a.byte_size(hash_a).cmp(&type_b.byte_size(hash_b))
+        Type::cmp_id(state_a.hash, type_a, state_b.hash, type_b)
+    }
+
+    fn cmp_by(
+        state_a: &PrintState,
+        a: &Self,
+        state_b: &PrintState,
+        b: &Self,
+        options: &Options,
+    ) -> cmp::Ordering {
+        match options.sort {
+            Sort::None => a.offset.0.cmp(&b.offset.0),
+            Sort::Name => Type::cmp_id(state_a.hash, a, state_b.hash, b),
+            Sort::Size => a.byte_size(state_a.hash).cmp(&b.byte_size(state_b.hash)),
+        }
     }
 }
 
@@ -509,6 +543,7 @@ impl<'input> TypeDef<'input> {
             }
             Ok(())
         })?;
+        writeln!(w, "")?;
         Ok(())
     }
 
@@ -526,7 +561,9 @@ impl<'input> TypeDef<'input> {
             let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
             let ty_b = filter_option(b.ty(state.b.hash), Type::is_anon);
             Type::diff_members("members", w, state, unit_a, ty_a, unit_b, ty_b)
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     fn filter(&self, options: &Options) -> bool {
@@ -591,7 +628,9 @@ impl<'input> StructType<'input> {
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_members("members", w, state, unit)
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     fn diff(
@@ -609,7 +648,7 @@ impl<'input> StructType<'input> {
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", w, state, unit_a, a, unit_b, b)
         })?;
-
+        writeln!(w, "")?;
         Ok(())
     }
 
@@ -705,7 +744,9 @@ impl<'input> UnionType<'input> {
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_members("members", w, state, unit)
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     fn diff(
@@ -723,7 +764,7 @@ impl<'input> UnionType<'input> {
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", w, state, unit_a, a, unit_b, b)
         })?;
-
+        writeln!(w, "")?;
         Ok(())
     }
 
@@ -1004,7 +1045,9 @@ impl<'input> EnumerationType<'input> {
             state.line_option(w, |w, _state| self.print_declaration(w))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             state.list("enumerators", w, unit, &self.enumerators)
-        })
+        })?;
+        writeln!(w, "")?;
+        Ok(())
     }
 
     fn diff(
@@ -1023,6 +1066,7 @@ impl<'input> EnumerationType<'input> {
             // TODO: handle reordering better
             state.list("enumerators", w, unit_a, &a.enumerators, unit_b, &b.enumerators)
         })?;
+        writeln!(w, "")?;
         Ok(())
     }
 

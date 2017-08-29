@@ -12,7 +12,7 @@ use goblin;
 use memmap;
 use panopticon;
 
-use {Options, Result, Sort};
+use {Options, Result};
 use function::Function;
 use print::{DiffList, DiffState, PrintList, PrintState};
 use range::{Range, RangeList};
@@ -104,10 +104,7 @@ impl<'a, 'input> File<'a, 'input> {
             writeln!(w, "")?;
         }
 
-        for unit in self.filter_units(options, false) {
-            unit.print(w, &mut state, options)?;
-        }
-        Ok(())
+        state.sort_list(w, &(), &mut *self.filter_units(state.options))
     }
 
     pub fn diff(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
@@ -132,39 +129,17 @@ impl<'a, 'input> File<'a, 'input> {
             writeln!(w, "")?;
         }
 
-        state
-            .merge(
-                w,
-                |_state| file_a.filter_units(options, true),
-                |_state| file_b.filter_units(options, true),
-                |_hash_a, a, _hash_b, b| Unit::cmp_id(a, b, options),
-                |w, state, a, b| {
-                    Unit::diff(a, b, w, state, options)
-                },
-                |w, state, a| {
-                    if !options.ignore_deleted {
-                        a.print(w, state, options)?;
-                    }
-                    Ok(())
-                },
-                |w, state, b| {
-                    if !options.ignore_added {
-                        b.print(w, state, options)?;
-                    }
-                    Ok(())
-                },
-            )?;
-        Ok(())
+        state.sort_list(
+            w,
+            &(),
+            &mut *file_a.filter_units(state.options),
+            &(),
+            &mut *file_b.filter_units(state.options),
+        )
     }
 
-    fn filter_units(&self, options: &Options, diff: bool) -> Vec<&Unit> {
-        let mut units: Vec<_> = self.units.iter().filter(|a| a.filter(options)).collect();
-        match options.sort.with_diff(diff) {
-            Sort::None => {}
-            Sort::Name => units.sort_by(|a, b| Unit::cmp_id(a, b, options)),
-            Sort::Size => units.sort_by(|a, b| Unit::cmp_size(a, b)),
-        }
-        units
+    fn filter_units(&self, options: &Options) -> Vec<&Unit> {
+        self.units.iter().filter(|a| a.filter(options)).collect()
     }
 }
 
