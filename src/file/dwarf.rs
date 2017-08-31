@@ -1396,6 +1396,9 @@ where
                     child,
                 )?;
             }
+            gimli::DW_TAG_subprogram => {
+                parse_subprogram(unit, dwarf, dwarf_unit, &namespace, child)?;
+            }
             gimli::DW_TAG_unspecified_parameters |
             gimli::DW_TAG_template_type_parameter |
             gimli::DW_TAG_template_value_parameter |
