@@ -13,7 +13,7 @@ use namespace::Namespace;
 use print::{DiffList, DiffState, PrintList, PrintState, SortList};
 use range::Range;
 use types::{Type, TypeOffset};
-use variable::Variable;
+use variable::LocalVariable;
 use unit::Unit;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -32,7 +32,7 @@ pub(crate) struct Function<'input> {
     pub parameters: Vec<Parameter<'input>>,
     pub return_type: Option<TypeOffset>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
-    pub variables: Vec<Variable<'input>>,
+    pub variables: Vec<LocalVariable<'input>>,
 }
 
 impl<'input> Function<'input> {
@@ -155,10 +155,10 @@ impl<'input> Function<'input> {
             {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
                 variables_a
-                    .sort_by(|x, y| Variable::cmp_id(&state.a, x, &state.a, y, state.options));
+                    .sort_by(|x, y| LocalVariable::cmp_id(&state.a, x, &state.a, y, state.options));
                 let mut variables_b: Vec<_> = b.variables.iter().collect();
                 variables_b
-                    .sort_by(|x, y| Variable::cmp_id(&state.b, x, &state.b, y, state.options));
+                    .sort_by(|x, y| LocalVariable::cmp_id(&state.b, x, &state.b, y, state.options));
                 state.list("variables", w, unit_a, &variables_a, unit_b, &variables_b)?;
             }
             state.inline(|state| {
@@ -479,7 +479,7 @@ pub(crate) struct InlinedFunction<'input> {
     pub abstract_origin: Option<FunctionOffset>,
     pub size: Option<u64>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
-    pub variables: Vec<Variable<'input>>,
+    pub variables: Vec<LocalVariable<'input>>,
 }
 
 impl<'input> InlinedFunction<'input> {

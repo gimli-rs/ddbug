@@ -11,7 +11,7 @@ use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Memb
             PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
 use unit::Unit;
-use variable::{Variable, VariableOffset};
+use variable::{LocalVariable, Variable, VariableOffset};
 
 impl From<gimli::DebugInfoOffset> for FunctionOffset {
     fn from(o: gimli::DebugInfoOffset) -> FunctionOffset {
@@ -1376,14 +1376,7 @@ where
                     .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
-                let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
-                if variable.specification.is_some() {
-                    debug!(
-                        "specification on subprogram declaration at offset 0x{:x}",
-                        variable.offset.0
-                    );
-                }
-                function.variables.push(variable.variable);
+                function.variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1466,7 +1459,7 @@ where
 
 fn parse_lexical_block<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
     inlined_functions: &mut Vec<InlinedFunction<'input>>,
-    variables: &mut Vec<Variable<'input>>,
+    variables: &mut Vec<LocalVariable<'input>>,
     unit: &mut Unit<'input>,
     dwarf: &DwarfFileState<'input, Endian>,
     dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
@@ -1496,14 +1489,7 @@ where
                 inlined_functions.push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
-                let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
-                if variable.specification.is_some() {
-                    debug!(
-                        "specification on subprogram declaration at offset 0x{:x}",
-                        variable.offset.0
-                    );
-                }
-                variables.push(variable.variable);
+                variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1621,8 +1607,7 @@ where
                     .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_variable => {
-                let variable = parse_variable(unit, dwarf, dwarf_unit, None, child)?;
-                function.variables.push(variable.variable);
+                function.variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1736,6 +1721,75 @@ where
         specification: specification,
         variable: variable,
     })
+}
+
+fn parse_local_variable<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
+    _unit: &mut Unit<'input>,
+    dwarf: &DwarfFileState<'input, Endian>,
+    dwarf_unit: &mut DwarfUnitState<'state, 'input, Endian>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, gimli::EndianBuf<'input, Endian>>,
+) -> Result<LocalVariable<'input>>
+where
+    Endian: gimli::Endianity,
+{
+    let mut variable = LocalVariable::default();
+
+    {
+        let mut attrs = node.entry().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_name => {
+                    variable.name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
+                }
+                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    variable.ty = Some(offset);
+                },
+                gimli::DW_AT_location => {
+                    match attr.value() {
+                        gimli::AttributeValue::Exprloc(expr) => {
+                            match evaluate(dwarf_unit.header, expr) {
+                                Some(gimli::Location::Address { address }) => {
+                                    // TODO: is address 0 ever valid?
+                                    if address != 0 {
+                                        variable.address = Some(address);
+                                    }
+                                }
+                                Some(gimli::Location::Register { .. }) |
+                                Some(gimli::Location::Scalar { .. }) |
+                                None => {}
+                                Some(loc) => debug!("unknown DW_AT_location result: {:?}", loc),
+                            }
+                        }
+                        gimli::AttributeValue::DebugLocRef(..) => {
+                            // TODO
+                        }
+                        _ => {
+                            debug!("unknown DW_AT_location: {:?}", attr.value());
+                        }
+                    }
+                }
+                gimli::DW_AT_abstract_origin |
+                gimli::DW_AT_alignment |
+                gimli::DW_AT_artificial |
+                gimli::DW_AT_const_value |
+                gimli::DW_AT_external |
+                gimli::DW_AT_decl_file |
+                gimli::DW_AT_decl_line => {}
+                _ => debug!("unknown variable attribute: {} {:?}", attr.name(), attr.value()),
+            }
+        }
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            tag => {
+                debug!("unknown variable child tag: {}", tag);
+            }
+        }
+    }
+
+    Ok(variable)
 }
 
 

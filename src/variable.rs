@@ -45,22 +45,6 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        self.print_ref(w)?;
-        write!(w, ": ")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
-        Ok(())
-    }
-
-    fn print_size_and_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        match self.byte_size(state.hash) {
-            Some(byte_size) => write!(w, "[{}]", byte_size)?,
-            None => write!(w, "[??]")?,
-        }
-        write!(w, "\t")?;
-        self.print_decl(w, state)
-    }
-
     pub fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(|state| {
@@ -137,50 +121,6 @@ impl<'input> Variable<'input> {
     }
 }
 
-impl<'input> PrintList for Variable<'input> {
-    type Arg = Unit<'input>;
-
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
-        state.line(w, |w, state| self.print_size_and_decl(w, state))
-    }
-}
-
-impl<'a, 'input> DiffList for &'a Variable<'input> {
-    fn step_cost() -> usize {
-        1
-    }
-
-    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-            cost += 1;
-        }
-        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-            (Some(ty_a), Some(ty_b)) => {
-                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
-                    cost += 1;
-                }
-            }
-            (None, None) => {}
-            _ => {
-                cost += 1;
-            }
-        }
-        cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        _unit_a: &Unit,
-        a: &Self,
-        _unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
-        state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
-    }
-}
-
 impl<'input> SortList for Variable<'input> {
     type Arg = ();
 
@@ -222,5 +162,103 @@ impl<'input> SortList for Variable<'input> {
             Sort::Name => Self::cmp_id(state_a, a, state_b, b, options),
             Sort::Size => a.byte_size(state_a.hash).cmp(&b.byte_size(state_b.hash)),
         }
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct LocalVariable<'input> {
+    pub name: Option<&'input [u8]>,
+    pub ty: Option<TypeOffset>,
+    pub address: Option<u64>,
+}
+
+impl<'input> LocalVariable<'input> {
+    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
+    where
+        'input: 'a,
+    {
+        self.ty.and_then(|v| Type::from_offset(hash, v))
+    }
+
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+        self.ty(hash).and_then(|t| t.byte_size(hash))
+    }
+
+    fn print_ref(&self, w: &mut Write) -> Result<()> {
+        match self.name {
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
+    fn print_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        self.print_ref(w)?;
+        write!(w, ": ")?;
+        Type::print_ref_from_offset(w, state, self.ty)?;
+        Ok(())
+    }
+
+    fn print_size_and_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+        match self.byte_size(state.hash) {
+            Some(byte_size) => write!(w, "[{}]", byte_size)?,
+            None => write!(w, "[??]")?,
+        }
+        write!(w, "\t")?;
+        self.print_decl(w, state)
+    }
+
+    pub fn cmp_id(
+        _state_a: &PrintState,
+        a: &Self,
+        _state_b: &PrintState,
+        b: &Self,
+        _options: &Options,
+    ) -> cmp::Ordering {
+        a.name.cmp(&b.name)
+    }
+}
+
+impl<'input> PrintList for LocalVariable<'input> {
+    type Arg = Unit<'input>;
+
+    fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+        state.line(w, |w, state| self.print_size_and_decl(w, state))
+    }
+}
+
+impl<'a, 'input> DiffList for &'a LocalVariable<'input> {
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+            (Some(ty_a), Some(ty_b)) => {
+                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+        cost
+    }
+
+    fn diff_list(
+        w: &mut Write,
+        state: &mut DiffState,
+        _unit_a: &Unit,
+        a: &Self,
+        _unit_b: &Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
     }
 }
