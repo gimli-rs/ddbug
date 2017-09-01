@@ -287,6 +287,8 @@ impl<'input> Function<'input> {
 
     pub fn filter(&self, options: &Options) -> bool {
         if !self.inline && self.low_pc.is_none() {
+            // This is either a declaration or a dead function that was removed
+            // from the code, but wasn't removed from the debuginfo.
             // TODO: make this configurable?
             return false;
         }
