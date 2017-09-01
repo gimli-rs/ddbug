@@ -7,7 +7,7 @@ use gimli;
 use {Options, Result, Sort};
 use file::FileHash;
 use function::{Function, FunctionOffset};
-use print::{DiffState, PrintState, SortList};
+use print::{DiffState, Print, PrintState, SortList};
 use range::RangeList;
 use types::{Type, TypeKind, TypeOffset};
 use variable::{Variable, VariableOffset};
@@ -272,7 +272,7 @@ impl<'input> Unit<'input> {
     }
 }
 
-impl<'input> SortList for Unit<'input> {
+impl<'input> Print for Unit<'input> {
     type Arg = ();
 
     fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
@@ -289,7 +289,9 @@ impl<'input> SortList for Unit<'input> {
     ) -> Result<()> {
         Self::diff(w, state, a, b)
     }
+}
 
+impl<'input> SortList for Unit<'input> {
     fn cmp_id(
         _state_a: &PrintState,
         a: &Self,

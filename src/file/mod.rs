@@ -14,7 +14,7 @@ use panopticon;
 
 use {Options, Result};
 use function::Function;
-use print::{DiffList, DiffState, PrintList, PrintState};
+use print::{DiffList, DiffState, Print, PrintState};
 use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
@@ -223,14 +223,29 @@ impl<'input> Section<'input> {
     }
 }
 
-impl<'input> PrintList for Section<'input> {
+impl<'input> Print for Section<'input> {
     type Arg = ();
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
         state.line(w, |w, _state| self.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_address(w))?;
             state.line_option_u64(w, "size", Some(self.size))
+        })
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _arg_a: &(),
+        a: &Self,
+        _arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, _state, x| x.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w, a, b, |w, _state, x| x.print_address(w))?;
+            state.line_option_u64(w, "size", Some(a.size), Some(b.size))
         })
     }
 }
@@ -246,20 +261,5 @@ impl<'input> DiffList for Section<'input> {
             cost += 2;
         }
         cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        _arg_a: &(),
-        a: &Self,
-        _arg_b: &(),
-        b: &Self,
-    ) -> Result<()> {
-        state.line(w, a, b, |w, _state, x| x.print_name(w))?;
-        state.indent(|state| {
-            state.line_option(w, a, b, |w, _state, x| x.print_address(w))?;
-            state.line_option_u64(w, "size", Some(a.size), Some(b.size))
-        })
     }
 }

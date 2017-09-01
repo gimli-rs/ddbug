@@ -7,7 +7,7 @@ use {Options, Result, Sort};
 use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
-use print::{DiffList, DiffState, PrintList, PrintState, SortList};
+use print::{DiffList, DiffState, Print, PrintState, SortList};
 use unit::Unit;
 
 #[derive(Debug)]
@@ -296,7 +296,7 @@ impl<'input> Type<'input> {
     }
 }
 
-impl<'input> SortList for Type<'input> {
+impl<'input> Print for Type<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
@@ -313,7 +313,9 @@ impl<'input> SortList for Type<'input> {
     ) -> Result<()> {
         Self::diff(w, state, unit_a, a, unit_b, b)
     }
+}
 
+impl<'input> SortList for Type<'input> {
     /// This must only be called for types that have identifiers.
     fn cmp_id(
         state_a: &PrintState,
@@ -913,10 +915,10 @@ impl<'input> Member<'input> {
     }
 }
 
-impl<'input> PrintList for Member<'input> {
+impl<'input> Print for Member<'input> {
     type Arg = Unit<'input>;
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let bit_size = self.bit_size(state.hash);
         state.line(w, |w, state| self.print_name(w, state, bit_size))?;
         state.indent(|state| {
@@ -929,33 +931,8 @@ impl<'input> PrintList for Member<'input> {
         })?;
         state.line_option(w, |w, state| self.print_padding(w, state, bit_size))
     }
-}
 
-impl<'input> DiffList for Member<'input> {
-    fn step_cost() -> usize {
-        1
-    }
-
-    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-            cost += 1;
-        }
-        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
-            (Some(ty_a), Some(ty_b)) => {
-                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
-                    cost += 1;
-                }
-            }
-            (None, None) => {}
-            _ => {
-                cost += 1;
-            }
-        }
-        cost
-    }
-
-    fn diff_list(
+    fn diff(
         w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
@@ -985,6 +962,31 @@ impl<'input> DiffList for Member<'input> {
         state.line_option(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_padding(w, state, bit_size)
         })
+    }
+}
+
+impl<'input> DiffList for Member<'input> {
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+            (Some(ty_a), Some(ty_b)) => {
+                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+        cost
     }
 }
 
@@ -1122,11 +1124,22 @@ impl<'input> Enumerator<'input> {
     }
 }
 
-impl<'input> PrintList for Enumerator<'input> {
+impl<'input> Print for Enumerator<'input> {
     type Arg = Unit<'input>;
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_name_value(w))
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _unit_a: &Unit,
+        a: &Self,
+        _unit_b: &Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, _state, x| x.print_name_value(w))
     }
 }
 
@@ -1146,17 +1159,6 @@ impl<'input> DiffList for Enumerator<'input> {
             cost += 2;
         }
         cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        _unit_a: &Unit,
-        a: &Self,
-        _unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
-        state.line(w, a, b, |w, _state, x| x.print_name_value(w))
     }
 }
 

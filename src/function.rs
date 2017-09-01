@@ -10,7 +10,7 @@ use panopticon;
 use {Options, Result, Sort};
 use file::{CodeRegion, File, FileHash};
 use namespace::Namespace;
-use print::{DiffList, DiffState, PrintList, PrintState, SortList};
+use print::{DiffList, DiffState, Print, PrintState, SortList};
 use range::Range;
 use types::{Type, TypeOffset};
 use variable::LocalVariable;
@@ -295,7 +295,7 @@ impl<'input> Function<'input> {
     }
 }
 
-impl<'input> SortList for Function<'input> {
+impl<'input> Print for Function<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
@@ -312,7 +312,9 @@ impl<'input> SortList for Function<'input> {
     ) -> Result<()> {
         Self::diff(w, state, unit_a, a, unit_b, b)
     }
+}
 
+impl<'input> SortList for Function<'input> {
     fn cmp_id(
         _state_a: &PrintState,
         a: &Self,
@@ -430,11 +432,22 @@ impl<'input> Parameter<'input> {
     }
 }
 
-impl<'input> PrintList for Parameter<'input> {
+impl<'input> Print for Parameter<'input> {
     type Arg = Unit<'input>;
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state))
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _unit_a: &Unit,
+        a: &Self,
+        _unit_b: &Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
     }
 }
 
@@ -461,17 +474,6 @@ impl<'input> DiffList for Parameter<'input> {
         }
         cost
     }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        _unit_a: &Unit,
-        a: &Self,
-        _unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
-        state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
-    }
 }
 
 #[derive(Debug, Default)]
@@ -497,12 +499,35 @@ impl<'input> InlinedFunction<'input> {
     }
 }
 
-impl<'input> PrintList for InlinedFunction<'input> {
+impl<'input> Print for InlinedFunction<'input> {
     type Arg = Unit<'input>;
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
         state.inline(|state| state.list("", w, unit, &self.inlined_functions))?;
+        Ok(())
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &Self,
+        unit_b: &Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.line(
+            w,
+            (unit_a, a),
+            (unit_b, b),
+            |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
+        )?;
+
+        state
+            .inline(|state| {
+                state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
+            })?;
+
         Ok(())
     }
 }
@@ -525,29 +550,6 @@ impl<'input> DiffList for InlinedFunction<'input> {
             cost += 1;
         }
         cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Self,
-        unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
-        state.line(
-            w,
-            (unit_a, a),
-            (unit_b, b),
-            |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
-        )?;
-
-        state
-            .inline(|state| {
-                state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
-            })?;
-
-        Ok(())
     }
 }
 

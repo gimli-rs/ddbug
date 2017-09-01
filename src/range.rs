@@ -2,7 +2,7 @@ use std::io::Write;
 use std::mem;
 
 use Result;
-use print::{DiffList, DiffState, PrintList, PrintState};
+use print::{DiffList, DiffState, Print, PrintState};
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct Range {
@@ -21,11 +21,22 @@ impl Range {
     }
 }
 
-impl PrintList for Range {
+impl Print for Range {
     type Arg = ();
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
         state.line(w, |w, _state| self.print(w))
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _arg_a: &(),
+        a: &Self,
+        _arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, _state, x| x.print(w))
     }
 }
 
@@ -43,17 +54,6 @@ impl DiffList for Range {
             cost += 2;
         }
         cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        _arg_a: &(),
-        a: &Self,
-        _arg_b: &(),
-        b: &Self,
-    ) -> Result<()> {
-        state.line(w, a, b, |w, _state, x| x.print(w))
     }
 }
 

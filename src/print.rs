@@ -132,7 +132,7 @@ where
         Ok(())
     }
 
-    pub fn list<T: PrintList>(
+    pub fn list<T: Print>(
         &mut self,
         label: &str,
         w: &mut Write,
@@ -152,7 +152,7 @@ where
 
         self.indent(|state| {
             for item in list {
-                item.print_list(w, state, arg)?;
+                item.print(w, state, arg)?;
             }
             Ok(())
         })
@@ -391,14 +391,14 @@ where
                     Direction::None => break,
                     Direction::Diagonal => {
                         if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                            T::diff_list(w, state, arg_a, a, arg_b, b)?;
+                            T::diff(w, state, arg_a, a, arg_b, b)?;
                         }
                     }
                     Direction::Horizontal => if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| a.print_list(w, state, arg_a))?;
+                        state.prefix_less(|state| a.print(w, state, arg_a))?;
                     },
                     Direction::Vertical => if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| b.print_list(w, state, arg_b))?;
+                        state.prefix_greater(|state| b.print(w, state, arg_b))?;
                     },
                 }
             }
@@ -408,6 +408,9 @@ where
 
     // This is similar to `list`, but because the items are ordered
     // we can do a greedy search.
+    //
+    // Another significant difference is that items with no difference are not
+    // displayed, and added/deleted items are optionally ignored.
     pub fn sort_list<T: SortList>(
         &mut self,
         w: &mut Write,
@@ -447,48 +450,10 @@ where
     }
 }
 
-pub(crate) trait PrintList {
+pub(crate) trait Print {
     type Arg;
 
     // TODO: need associated type constructor to avoid requiring arg to be a reference?
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()>;
-}
-
-impl<'a, T> PrintList for &'a T
-where
-    T: PrintList,
-{
-    type Arg = T::Arg;
-
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()> {
-        T::print_list(*self, w, state, arg)
-    }
-}
-
-pub(crate) trait DiffList: PrintList {
-    fn step_cost() -> usize;
-
-    fn diff_cost(
-        state: &DiffState,
-        arg_a: &Self::Arg,
-        a: &Self,
-        arg_b: &Self::Arg,
-        b: &Self,
-    ) -> usize;
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        arg_a: &Self::Arg,
-        a: &Self,
-        arg_b: &Self::Arg,
-        b: &Self,
-    ) -> Result<()>;
-}
-
-pub(crate) trait SortList {
-    type Arg;
-
     fn print(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()>;
 
     fn diff(
@@ -499,7 +464,43 @@ pub(crate) trait SortList {
         arg_b: &Self::Arg,
         b: &Self,
     ) -> Result<()>;
+}
 
+impl<'a, T> Print for &'a T
+where
+    T: Print,
+{
+    type Arg = T::Arg;
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()> {
+        T::print(*self, w, state, arg)
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        arg_a: &Self::Arg,
+        a: &Self,
+        arg_b: &Self::Arg,
+        b: &Self,
+    ) -> Result<()> {
+        T::diff(w, state, arg_a, *a, arg_b, *b)
+    }
+}
+
+pub(crate) trait DiffList: Print {
+    fn step_cost() -> usize;
+
+    fn diff_cost(
+        state: &DiffState,
+        arg_a: &Self::Arg,
+        a: &Self,
+        arg_b: &Self::Arg,
+        b: &Self,
+    ) -> usize;
+}
+
+pub(crate) trait SortList: Print {
     fn cmp_id(
         state_a: &PrintState,
         a: &Self,

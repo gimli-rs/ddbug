@@ -5,7 +5,7 @@ use std::rc::Rc;
 use {Options, Result, Sort};
 use file::FileHash;
 use namespace::Namespace;
-use print::{DiffList, DiffState, PrintList, PrintState, SortList};
+use print::{DiffList, DiffState, Print, PrintState, SortList};
 use types::{Type, TypeOffset};
 use unit::Unit;
 
@@ -121,7 +121,7 @@ impl<'input> Variable<'input> {
     }
 }
 
-impl<'input> SortList for Variable<'input> {
+impl<'input> Print for Variable<'input> {
     type Arg = ();
 
     fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
@@ -138,7 +138,9 @@ impl<'input> SortList for Variable<'input> {
     ) -> Result<()> {
         Self::diff(w, state, a, b)
     }
+}
 
+impl<'input> SortList for Variable<'input> {
     fn cmp_id(
         _state_a: &PrintState,
         a: &Self,
@@ -219,11 +221,22 @@ impl<'input> LocalVariable<'input> {
     }
 }
 
-impl<'input> PrintList for LocalVariable<'input> {
+impl<'input> Print for LocalVariable<'input> {
     type Arg = Unit<'input>;
 
-    fn print_list(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+    fn print(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state))
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _unit_a: &Unit,
+        a: &Self,
+        _unit_b: &Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
     }
 }
 
@@ -249,16 +262,5 @@ impl<'a, 'input> DiffList for &'a LocalVariable<'input> {
             }
         }
         cost
-    }
-
-    fn diff_list(
-        w: &mut Write,
-        state: &mut DiffState,
-        _unit_a: &Unit,
-        a: &Self,
-        _unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
-        state.line(w, a, b, |w, state, x| x.print_size_and_decl(w, state))
     }
 }
