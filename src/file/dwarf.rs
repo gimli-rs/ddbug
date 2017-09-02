@@ -1370,13 +1370,13 @@ where
             gimli::DW_TAG_formal_parameter => {
                 function.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
             }
+            gimli::DW_TAG_variable => {
+                function.variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
+            }
             gimli::DW_TAG_inlined_subroutine => {
                 function
                     .inlined_functions
                     .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
-            }
-            gimli::DW_TAG_variable => {
-                function.variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1485,11 +1485,11 @@ where
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
-            gimli::DW_TAG_inlined_subroutine => {
-                inlined_functions.push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
-            }
             gimli::DW_TAG_variable => {
                 variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
+            }
+            gimli::DW_TAG_inlined_subroutine => {
+                inlined_functions.push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1577,6 +1577,10 @@ where
         }
     }
 
+    if function.abstract_origin.is_none() {
+        debug!("inlined_subroutine with no abstract origin");
+    }
+
     if let Some(offset) = ranges {
         let mut size = 0;
         let low_pc = low_pc.unwrap_or(0);
@@ -1598,16 +1602,23 @@ where
     // However, not sure if this if ever actually used in practice.
     let namespace = None;
 
+    // TODO: handle abstract origin in all children
+    // - we should start by inheriting all children from our abstract_origin
+    // - then update the inherited children if they are pointed to by
+    //   an abstract origin in one of our children
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
+            gimli::DW_TAG_formal_parameter => {
+                function.parameters.push(parse_parameter(dwarf, dwarf_unit, child)?);
+            }
+            gimli::DW_TAG_variable => {
+                function.variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
+            }
             gimli::DW_TAG_inlined_subroutine => {
                 function
                     .inlined_functions
                     .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
-            }
-            gimli::DW_TAG_variable => {
-                function.variables.push(parse_local_variable(unit, dwarf, dwarf_unit, child)?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1620,7 +1631,7 @@ where
                     child,
                 )?;
             }
-            gimli::DW_TAG_formal_parameter | gimli::DW_TAG_GNU_call_site => {}
+            gimli::DW_TAG_GNU_call_site => {}
             tag => {
                 debug!("unknown inlined_subroutine child tag: {}", tag);
             }

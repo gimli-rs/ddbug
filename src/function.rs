@@ -31,8 +31,8 @@ pub(crate) struct Function<'input> {
     pub declaration: bool,
     pub parameters: Vec<Parameter<'input>>,
     pub return_type: Option<TypeOffset>,
-    pub inlined_functions: Vec<InlinedFunction<'input>>,
     pub variables: Vec<LocalVariable<'input>>,
+    pub inlined_functions: Vec<InlinedFunction<'input>>,
 }
 
 impl<'input> Function<'input> {
@@ -482,8 +482,9 @@ impl<'input> DiffList for Parameter<'input> {
 pub(crate) struct InlinedFunction<'input> {
     pub abstract_origin: Option<FunctionOffset>,
     pub size: Option<u64>,
-    pub inlined_functions: Vec<InlinedFunction<'input>>,
+    pub parameters: Vec<Parameter<'input>>,
     pub variables: Vec<LocalVariable<'input>>,
+    pub inlined_functions: Vec<InlinedFunction<'input>>,
 }
 
 impl<'input> InlinedFunction<'input> {
@@ -506,6 +507,7 @@ impl<'input> Print for InlinedFunction<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
+        // TODO: print parameters and variables?
         state.inline(|state| state.list("", w, unit, &self.inlined_functions))?;
         Ok(())
     }
@@ -524,6 +526,7 @@ impl<'input> Print for InlinedFunction<'input> {
             (unit_b, b),
             |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
         )?;
+        // TODO: diff parameters and variables?
 
         state
             .inline(|state| {
