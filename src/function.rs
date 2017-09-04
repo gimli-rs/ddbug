@@ -369,8 +369,12 @@ impl<'input> SortList for Function<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ParameterOffset(pub usize);
+
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Parameter<'input> {
+    pub offset: Option<ParameterOffset>,
     pub name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
 }

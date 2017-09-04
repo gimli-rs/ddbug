@@ -486,6 +486,7 @@ fn parse_procedure<'input>(
                     .iter()
                     .map(|argument| {
                         Parameter {
+                            offset: None,
                             name: None,
                             ty: parse_type_index(*argument),
                         }
@@ -528,7 +529,11 @@ fn parse_member_function<'input>(
     match this_pointer_type {
         None | Some(TypeOffset(3)) => {}
         ty => {
-            parameters.push(Parameter { name: None, ty: ty });
+            parameters.push(Parameter {
+                offset: None,
+                name: None,
+                ty: ty,
+            });
         }
     }
     if let Some(ref argument_list) = argument_list {
@@ -539,6 +544,7 @@ fn parse_member_function<'input>(
                 }
                 for argument in arguments {
                     parameters.push(Parameter {
+                        offset: None,
                         name: None,
                         ty: parse_type_index(*argument),
                     });

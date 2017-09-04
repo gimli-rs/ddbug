@@ -9,7 +9,7 @@ use print::{DiffList, DiffState, Print, PrintState, SortList};
 use types::{Type, TypeOffset};
 use unit::Unit;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct VariableOffset(pub usize);
 
 #[derive(Debug, Default)]
@@ -167,8 +167,9 @@ impl<'input> SortList for Variable<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct LocalVariable<'input> {
+    pub offset: VariableOffset,
     pub name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
     pub address: Option<u64>,
