@@ -13,11 +13,12 @@ use memmap;
 use panopticon;
 
 use {Options, Result};
-use function::Function;
+use function::{Function, FunctionOffset};
 use print::{DiffList, DiffState, Print, PrintState};
 use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
+use variable::{Variable, VariableOffset};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {
@@ -30,6 +31,7 @@ pub struct File<'a, 'input> {
     path: &'a str,
     code: Option<CodeRegion>,
     sections: Vec<Section<'input>>,
+    symbols: Vec<Symbol<'input>>,
     units: Vec<Unit<'input>>,
 }
 
@@ -60,6 +62,115 @@ impl<'a, 'input> File<'a, 'input> {
                 Ok(_) => Err("unrecognized file format".into()),
                 Err(e) => Err(format!("file identification failed: {}", e).into()),
             }
+        }
+    }
+
+    fn normalize(&mut self) {
+        self.symbols.sort_by(|a, b| a.address.cmp(&b.address));
+        let mut used_symbols = vec![false; self.symbols.len()];
+
+        // Set symbol names on functions/variables.
+        for unit in &mut self.units {
+            for function in unit.functions.values_mut() {
+                if let Some(address) = function.low_pc {
+                    if let Some(symbol) = Self::get_symbol(
+                        &*self.symbols,
+                        &mut used_symbols,
+                        address,
+                        function.linkage_name.or(function.name),
+                    ) {
+                        function.symbol_name = symbol.name;
+                    }
+                }
+            }
+
+            for variable in unit.variables.values_mut() {
+                if let Some(address) = variable.address {
+                    if let Some(symbol) = Self::get_symbol(
+                        &*self.symbols,
+                        &mut used_symbols,
+                        address,
+                        variable.linkage_name.or(variable.name),
+                    ) {
+                        variable.symbol_name = symbol.name;
+                    }
+                }
+            }
+        }
+
+        // Create a unit for symbols that don't have debuginfo.
+        let mut unit = Unit::default();
+        unit.name = Some(b"<symtab>");
+        for (index, (symbol, used)) in self.symbols.iter().zip(used_symbols.iter()).enumerate() {
+            if *used {
+                continue;
+            }
+            unit.ranges.push(Range {
+                begin: symbol.address,
+                end: symbol.address + symbol.size,
+            });
+            match symbol.ty {
+                SymbolType::Variable => {
+                    unit.variables.insert(
+                        VariableOffset(index),
+                        Variable {
+                            name: symbol.name,
+                            linkage_name: symbol.name,
+                            address: Some(symbol.address),
+                            size: Some(symbol.size),
+                            ..Default::default()
+                        },
+                    );
+                }
+                SymbolType::Function => {
+                    unit.functions.insert(
+                        FunctionOffset(index),
+                        Function {
+                            name: symbol.name,
+                            linkage_name: symbol.name,
+                            low_pc: Some(symbol.address),
+                            high_pc: Some(symbol.address + symbol.size),
+                            size: Some(symbol.size),
+                            ..Default::default()
+                        },
+                    );
+                }
+            }
+        }
+        unit.ranges.sort();
+        self.units.push(unit);
+    }
+
+    // Determine if the symbol at the given address has the given name.
+    // There may be multiple symbols for the same address.
+    // If none match the given name, then return the first one.
+    fn get_symbol<'sym>(
+        symbols: &'sym [Symbol<'input>],
+        used_symbols: &mut [bool],
+        address: u64,
+        name: Option<&'input [u8]>,
+    ) -> Option<&'sym Symbol<'input>> {
+        if let Ok(mut index) = symbols.binary_search_by(|x| x.address.cmp(&address)) {
+            while index > 0 && symbols[index - 1].address == address {
+                index -= 1;
+            }
+            let mut found = false;
+            for symbol in &symbols[index..] {
+                if symbol.address != address {
+                    break;
+                }
+                used_symbols[index] = true;
+                if symbol.name == name {
+                    found = true;
+                }
+            }
+            if found {
+                None
+            } else {
+                Some(&symbols[index])
+            }
+        } else {
+            None
         }
     }
 
@@ -99,6 +210,8 @@ impl<'a, 'input> File<'a, 'input> {
                 state.list("addresses", w, &(), ranges.list())?;
                 state.line_option_u64(w, "size", ranges.size())?;
                 state.list("sections", w, &(), &*self.sections)?;
+                // TODO: add option to display
+                //state.list("symbols", w, &(), &*self.symbols)?;
                 Ok(())
             })?;
             writeln!(w, "")?;
@@ -124,6 +237,9 @@ impl<'a, 'input> File<'a, 'input> {
                 state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
                 // TODO: sort sections
                 state.list("sections", w, &(), &*file_a.sections, &(), &*file_b.sections)?;
+                // TODO: sort symbols
+                // TODO: add option to display
+                //state.list("symbols", w, &(), &*file_a.symbols, &(), &*file_b.symbols)?;
                 Ok(())
             })?;
             writeln!(w, "")?;
@@ -251,6 +367,87 @@ impl<'input> Print for Section<'input> {
 }
 
 impl<'input> DiffList for Section<'input> {
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
+        let mut cost = 0;
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+            cost += 2;
+        }
+        cost
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SymbolType {
+    Variable,
+    Function,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Symbol<'input> {
+    name: Option<&'input [u8]>,
+    ty: SymbolType,
+    address: u64,
+    size: u64,
+}
+
+impl<'input> Symbol<'input> {
+    fn address(&self) -> Range {
+        Range {
+            begin: self.address,
+            end: self.address + self.size,
+        }
+    }
+
+    fn print_name(&self, w: &mut Write) -> Result<()> {
+        match self.ty {
+            SymbolType::Variable => write!(w, "var ")?,
+            SymbolType::Function => write!(w, "fn ")?,
+        }
+        match self.name {
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            None => write!(w, "<anon>")?,
+        }
+        Ok(())
+    }
+
+    fn print_address(&self, w: &mut Write) -> Result<()> {
+        write!(w, "address: ")?;
+        self.address().print(w)?;
+        Ok(())
+    }
+}
+impl<'input> Print for Symbol<'input> {
+    type Arg = ();
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+        state.line(w, |w, _state| self.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w, |w, _state| self.print_address(w))?;
+            state.line_option_u64(w, "size", Some(self.size))
+        })
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        _arg_a: &(),
+        a: &Self,
+        _arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        state.line(w, a, b, |w, _state, x| x.print_name(w))?;
+        state.indent(|state| {
+            state.line_option(w, a, b, |w, _state, x| x.print_address(w))?;
+            state.line_option_u64(w, "size", Some(a.size), Some(b.size))
+        })
+    }
+}
+
+impl<'input> DiffList for Symbol<'input> {
     fn step_cost() -> usize {
         1
     }

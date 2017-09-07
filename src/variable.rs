@@ -17,9 +17,11 @@ pub(crate) struct Variable<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,
+    pub symbol_name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
     pub declaration: bool,
     pub address: Option<u64>,
+    pub size: Option<u64>,
 }
 
 impl<'input> Variable<'input> {
@@ -31,7 +33,11 @@ impl<'input> Variable<'input> {
     }
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
-        self.ty(hash).and_then(|t| t.byte_size(hash))
+        if self.size.is_some() {
+            self.size
+        } else {
+            self.ty(hash).and_then(|t| t.byte_size(hash))
+        }
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
@@ -49,6 +55,7 @@ impl<'input> Variable<'input> {
         state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+            state.line_option(w, |w, _state| self.print_symbol_name(w))?;
             state.line_option(w, |w, _state| self.print_address(w))?;
             state.line_option(w, |w, state| self.print_size(w, state))?;
             state.line_option(w, |w, _state| self.print_declaration(w))
@@ -62,6 +69,7 @@ impl<'input> Variable<'input> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
+            state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))?;
             let flag = state.options.ignore_variable_address;
             state.ignore_diff(
                 flag,
@@ -85,6 +93,13 @@ impl<'input> Variable<'input> {
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
             write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
+        }
+        Ok(())
+    }
+
+    fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
+        if let Some(symbol_name) = self.symbol_name {
+            write!(w, "symbol name: {}", String::from_utf8_lossy(symbol_name))?;
         }
         Ok(())
     }

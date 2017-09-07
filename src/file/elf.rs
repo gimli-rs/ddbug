@@ -3,7 +3,7 @@ use goblin;
 use panopticon;
 
 use Result;
-use file::{dwarf, CodeRegion, File, Section};
+use file::{dwarf, CodeRegion, File, Section, Symbol, SymbolType};
 
 pub(crate) fn parse(
     input: &[u8],
@@ -66,6 +66,36 @@ pub(crate) fn parse(
         }
     }
 
+    let mut symbols = Vec::new();
+    for sym in &elf.syms {
+        // TODO: handle relocatable objects
+        let address = sym.st_value;
+        if address == 0 {
+            continue;
+        }
+
+        let size = sym.st_size;
+        if size == 0 {
+            continue;
+        }
+
+        // TODO: handle STT_FILE
+        let ty = match goblin::elf::sym::st_type(sym.st_info) {
+            goblin::elf::sym::STT_OBJECT => SymbolType::Variable,
+            goblin::elf::sym::STT_FUNC => SymbolType::Function,
+            _ => continue,
+        };
+
+        let name = elf.strtab.get(sym.st_name).ok().map(str::as_bytes);
+
+        symbols.push(Symbol {
+            name,
+            ty,
+            address,
+            size,
+        });
+    }
+
     // Code based on 'object' crate
     let get_section = |section_name: &str| -> &[u8] {
         for sh in &elf.section_headers {
@@ -88,7 +118,9 @@ pub(crate) fn parse(
         path,
         code,
         sections,
+        symbols,
         units,
     };
+    file.normalize();
     cb(&mut file)
 }

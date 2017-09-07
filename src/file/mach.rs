@@ -50,9 +50,14 @@ pub(crate) fn parse(
 
     let mut file = File {
         path,
+        // TODO
         code: None,
+        // TODO
         sections: Vec::new(),
+        // TODO
+        symbols: Vec::new(),
         units,
     };
+    file.normalize();
     cb(&mut file)
 }

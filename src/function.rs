@@ -19,11 +19,12 @@ use unit::Unit;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct FunctionOffset(pub usize);
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Function<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,
+    pub symbol_name: Option<&'input [u8]>,
     pub low_pc: Option<u64>,
     pub high_pc: Option<u64>,
     pub size: Option<u64>,
@@ -95,6 +96,7 @@ impl<'input> Function<'input> {
         state.line(w, |w, _state| self.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
+            state.line_option(w, |w, _state| self.print_symbol_name(w))?;
             state.line_option(w, |w, _state| self.print_address(w))?;
             state.line_option(w, |w, _state| self.print_size(w))?;
             state.line_option(w, |w, _state| self.print_inline(w))?;
@@ -130,6 +132,7 @@ impl<'input> Function<'input> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
+            state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))?;
             let flag = state.options.ignore_function_address;
             state.ignore_diff(
                 flag,
@@ -204,6 +207,13 @@ impl<'input> Function<'input> {
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
             write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
+        }
+        Ok(())
+    }
+
+    fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
+        if let Some(symbol_name) = self.symbol_name {
+            write!(w, "symbol name: {}", String::from_utf8_lossy(symbol_name))?;
         }
         Ok(())
     }

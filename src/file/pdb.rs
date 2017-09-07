@@ -249,6 +249,7 @@ pub(crate) fn parse(
                     Function {
                         namespace: namespace.clone(),
                         name: Some(symbol.name()?.as_bytes()),
+                        symbol_name: None,
                         linkage_name: None,
                         low_pc: Some(offset as u64),
                         high_pc: None,
@@ -272,11 +273,15 @@ pub(crate) fn parse(
 
     let mut file = File {
         path: path,
+        // TODO
         code: None,
+        // TODO
         sections: Vec::new(),
+        // TODO
+        symbols: Vec::new(),
         units: units,
     };
-
+    file.normalize();
     cb(&mut file)
 }
 

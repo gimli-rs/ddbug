@@ -1182,6 +1182,7 @@ where
     let mut function = Function {
         namespace: namespace.clone(),
         name: None,
+        symbol_name: None,
         linkage_name: None,
         low_pc: None,
         high_pc: None,
