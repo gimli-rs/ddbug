@@ -181,7 +181,6 @@ impl<'a, 'input> File<'a, 'input> {
     fn ranges(&self) -> RangeList {
         let mut ranges = RangeList::default();
         for section in &self.sections {
-            // TODO: ignore BSS for size?
             if let Some(range) = section.address() {
                 ranges.push(range);
             }
@@ -193,6 +192,22 @@ impl<'a, 'input> File<'a, 'input> {
         }
         ranges.sort();
         ranges
+    }
+
+    fn function_size(&self) -> u64 {
+        let mut size = 0;
+        for unit in &self.units {
+            size += unit.function_size();
+        }
+        size
+    }
+
+    fn variable_size(&self, hash: &FileHash) -> u64 {
+        let mut size = 0;
+        for unit in &self.units {
+            size += unit.variable_size(hash);
+        }
+        size
     }
 
     pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
@@ -207,8 +222,15 @@ impl<'a, 'input> File<'a, 'input> {
             state.indent(|state| {
                 // TODO: display ranges/size that aren't covered by debuginfo.
                 let ranges = self.ranges();
+                let size = ranges.size();
+                let fn_size = self.function_size();
+                let var_size = self.variable_size(state.hash);
+                let other_size = size - fn_size - var_size;
                 state.list("addresses", w, &(), ranges.list())?;
-                state.line_option_u64(w, "size", ranges.size())?;
+                state.line_u64(w, "size", size)?;
+                state.line_u64(w, "fn size", fn_size)?;
+                state.line_u64(w, "var size", var_size)?;
+                state.line_u64(w, "other size", other_size)?;
                 state.list("sections", w, &(), &*self.sections)?;
                 // TODO: add option to display
                 //state.list("symbols", w, &(), &*self.symbols)?;
@@ -233,8 +255,19 @@ impl<'a, 'input> File<'a, 'input> {
             state.indent(|state| {
                 let ranges_a = file_a.ranges();
                 let ranges_b = file_b.ranges();
+                let size_a = ranges_a.size();
+                let size_b = ranges_b.size();
+                let fn_size_a = file_a.function_size();
+                let fn_size_b = file_b.function_size();
+                let var_size_a = file_a.variable_size(state.a.hash);
+                let var_size_b = file_b.variable_size(state.b.hash);
+                let other_size_a = size_a - fn_size_a - var_size_a;
+                let other_size_b = size_b - fn_size_b - var_size_b;
                 state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
-                state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
+                state.line_u64(w, "size", size_a, size_b)?;
+                state.line_u64(w, "fn size", fn_size_a, fn_size_b)?;
+                state.line_u64(w, "var size", var_size_a, var_size_b)?;
+                state.line_u64(w, "other size", other_size_a, other_size_b)?;
                 // TODO: sort sections
                 state.list("sections", w, &(), &*file_a.sections, &(), &*file_b.sections)?;
                 // TODO: sort symbols
@@ -346,7 +379,7 @@ impl<'input> Print for Section<'input> {
         state.line(w, |w, _state| self.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_address(w))?;
-            state.line_option_u64(w, "size", Some(self.size))
+            state.line_u64(w, "size", self.size)
         })
     }
 
@@ -361,7 +394,7 @@ impl<'input> Print for Section<'input> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_address(w))?;
-            state.line_option_u64(w, "size", Some(a.size), Some(b.size))
+            state.line_u64(w, "size", a.size, b.size)
         })
     }
 }
@@ -427,7 +460,7 @@ impl<'input> Print for Symbol<'input> {
         state.line(w, |w, _state| self.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_address(w))?;
-            state.line_option_u64(w, "size", Some(self.size))
+            state.line_u64(w, "size", self.size)
         })
     }
 
@@ -442,7 +475,7 @@ impl<'input> Print for Symbol<'input> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_address(w))?;
-            state.line_option_u64(w, "size", Some(a.size), Some(b.size))
+            state.line_u64(w, "size", a.size, b.size)
         })
     }
 }

@@ -11,6 +11,10 @@ pub(crate) struct Range {
 }
 
 impl Range {
+    pub fn size(&self) -> u64 {
+        self.end - self.begin
+    }
+
     pub fn print(&self, w: &mut Write) -> Result<()> {
         if self.end > self.begin {
             write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
@@ -51,16 +55,12 @@ impl RangeList {
         &self.ranges
     }
 
-    pub fn size(&self) -> Option<u64> {
+    pub fn size(&self) -> u64 {
         let mut size = 0;
         for range in &self.ranges {
-            size += range.end - range.begin;
+            size += range.size();
         }
-        if size != 0 {
-            Some(size)
-        } else {
-            None
-        }
+        size
     }
 
     // Append a range, combining with previous range if possible.

@@ -122,14 +122,11 @@ where
         Ok(())
     }
 
-    pub fn line_option_u64(&mut self, w: &mut Write, label: &str, arg: Option<u64>) -> Result<()> {
-        if let Some(arg) = arg {
-            self.line(w, |w, _state| {
-                write!(w, "{}: {}", label, arg)?;
-                Ok(())
-            })?;
-        }
-        Ok(())
+    pub fn line_u64(&mut self, w: &mut Write, label: &str, arg: u64) -> Result<()> {
+        self.line(w, |w, _state| {
+            write!(w, "{}: {}", label, arg)?;
+            Ok(())
+        })
     }
 
     pub fn list<T: Print>(
@@ -336,20 +333,12 @@ where
         self.line(w, arg_a, arg_b, f)
     }
 
-    pub fn line_option_u64(
-        &mut self,
-        w: &mut Write,
-        label: &str,
-        arg_a: Option<u64>,
-        arg_b: Option<u64>,
-    ) -> Result<()> {
-        let base = arg_a.unwrap_or(0);
+    pub fn line_u64(&mut self, w: &mut Write, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
+        let base = arg_a;
         self.line_option(w, arg_a, arg_b, |w, _state, arg| {
-            if let Some(arg) = arg {
-                write!(w, "{}: {}", label, arg)?;
-                if arg != base {
-                    write!(w, " ({:+})", arg as i64 - base as i64)?;
-                }
+            write!(w, "{}: {}", label, arg)?;
+            if arg != base {
+                write!(w, " ({:+})", arg as i64 - base as i64)?;
             }
             Ok(())
         })

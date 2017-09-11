@@ -44,7 +44,7 @@ impl<'input> Function<'input> {
         unit.functions.get(&offset)
     }
 
-    fn address(&self) -> Option<Range> {
+    pub fn address(&self) -> Option<Range> {
         if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
             Some(Range {
                 begin: low_pc,

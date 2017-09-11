@@ -6,6 +6,7 @@ use {Options, Result, Sort};
 use file::FileHash;
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList};
+use range::Range;
 use types::{Type, TypeOffset};
 use unit::Unit;
 
@@ -37,6 +38,16 @@ impl<'input> Variable<'input> {
             self.size
         } else {
             self.ty(hash).and_then(|t| t.byte_size(hash))
+        }
+    }
+
+    pub fn address(&self, hash: &FileHash) -> Option<Range> {
+        match (self.address, self.byte_size(hash)) {
+            (Some(begin), Some(size)) => Some(Range {
+                begin,
+                end: begin + size,
+            }),
+            _ => None,
         }
     }
 

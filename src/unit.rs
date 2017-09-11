@@ -8,7 +8,7 @@ use {Options, Result, Sort};
 use file::FileHash;
 use function::{Function, FunctionOffset};
 use print::{DiffState, Print, PrintState, SortList};
-use range::RangeList;
+use range::{Range, RangeList};
 use types::{Type, TypeKind, TypeOffset};
 use variable::{Variable, VariableOffset};
 
@@ -26,36 +26,50 @@ pub(crate) struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
-    fn size(&self) -> Option<u64> {
-        self.ranges.size()
+    // Currently does not including self.ranges, because that would
+    // make size reporting less useful
+    // TODO: somehow display ranges that aren't functions/variables.
+    fn ranges(&self, hash: &FileHash) -> RangeList {
+        let mut ranges = RangeList::default();
+        for function in self.functions.values() {
+            if let Some(range) = function.address() {
+                ranges.push(range);
+            }
+        }
+        for variable in self.variables.values() {
+            if let Some(range) = variable.address(hash) {
+                ranges.push(range);
+            }
+        }
+        ranges.sort();
+        ranges
     }
 
-    fn function_size(&self) -> Option<u64> {
+    fn size(&self, hash: &FileHash) -> u64 {
+        // TODO: account for padding and overlap between functions and variables?
+        self.function_size() + self.variable_size(hash)
+    }
+
+    pub fn function_size(&self) -> u64 {
+        // TODO: account for padding and overlap between functions?
         let mut size = 0;
         for function in self.functions.values() {
-            if function.low_pc.is_some() {
-                size += function.size.unwrap_or(0);
+            if let Some(range) = function.address() {
+                size += range.size();
             }
         }
-        if size != 0 {
-            Some(size)
-        } else {
-            None
-        }
+        size
     }
 
-    fn variable_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn variable_size(&self, hash: &FileHash) -> u64 {
+        // TODO: account for padding and overlap between variables?
         let mut size = 0;
         for variable in self.variables.values() {
-            if variable.address.is_some() {
-                size += variable.byte_size(hash).unwrap_or(0);
+            if let Some(range) = variable.address(hash) {
+                size += range.size();
             }
         }
-        if size != 0 {
-            Some(size)
-        } else {
-            None
-        }
+        size
     }
 
     /// The offsets of types that should be printed inline.
@@ -94,14 +108,24 @@ impl<'input> Unit<'input> {
                 self.print_ref(w)
             })?;
             state.indent(|state| {
-                if self.ranges.list().len() > 1 {
-                    state.list("addresses", w, &(), self.ranges.list())?;
+                let ranges = self.ranges(state.hash);
+                if ranges.list().len() > 1 {
+                    state.list("addresses", w, &(), ranges.list())?;
                 } else {
-                    state.line_option(w, |w, _state| self.print_address(w))?;
+                    let range = ranges.list().first().cloned();
+                    state.line_option(w, |w, _state| self.print_address(w, range))?;
                 }
-                state.line_option(w, |w, _state| self.print_size(w))?;
-                state.line_option(w, |w, _state| self.print_function_size(w))?;
-                state.line_option(w, |w, state| self.print_variable_size(w, state.hash))
+
+                let fn_size = self.function_size();
+                if fn_size != 0 {
+                    state.line_u64(w, "fn size", fn_size)?;
+                }
+
+                let var_size = self.variable_size(state.hash);
+                if var_size != 0 {
+                    state.line_u64(w, "var size", var_size)?;
+                }
+                Ok(())
             })?;
             writeln!(w, "")?;
         }
@@ -126,27 +150,33 @@ impl<'input> Unit<'input> {
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
-                if unit_a.ranges.list().len() > 1 || unit_b.ranges.list().len() > 1 {
-                    state.ord_list(
-                        "addresses",
-                        w,
-                        &(),
-                        unit_a.ranges.list(),
-                        &(),
-                        unit_b.ranges.list(),
-                    )?;
+                let ranges_a = unit_a.ranges(state.a.hash);
+                let ranges_b = unit_b.ranges(state.b.hash);
+                if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
+                    state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
                 } else {
-                    state.line_option(w, unit_a, unit_b, |w, _state, x| x.print_address(w))?;
+                    let range_a = ranges_a.list().first().cloned();
+                    let range_b = ranges_b.list().first().cloned();
+                    state.line_option(
+                        w,
+                        (unit_a, range_a),
+                        (unit_b, range_b),
+                        |w, _state, (unit, range)| unit.print_address(w, range),
+                    )?;
                 }
-                state.line_option_u64(w, "size", unit_a.size(), unit_b.size())?;
-                state
-                    .line_option_u64(w, "fn size", unit_a.function_size(), unit_b.function_size())?;
-                state.line_option_u64(
-                    w,
-                    "var size",
-                    unit_a.variable_size(state.a.hash),
-                    unit_b.variable_size(state.b.hash),
-                )
+
+                let fn_size_a = unit_a.function_size();
+                let fn_size_b = unit_b.function_size();
+                if fn_size_a != 0 || fn_size_b != 0 {
+                    state.line_u64(w, "fn size", fn_size_a, fn_size_b)?;
+                }
+
+                let var_size_a = unit_a.variable_size(state.a.hash);
+                let var_size_b = unit_b.variable_size(state.b.hash);
+                if var_size_a != 0 || var_size_b != 0 {
+                    state.line_u64(w, "var size", var_size_a, var_size_b)?;
+                }
+                Ok(())
             })?;
             writeln!(w, "")?;
         }
@@ -177,35 +207,12 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write) -> Result<()> {
-        if self.ranges.list().is_empty() {
-            if let Some(low_pc) = self.low_pc {
-                write!(w, "address: 0x{:x}", low_pc)?;
-            }
-        } else if self.ranges.list().len() == 1 {
+    fn print_address(&self, w: &mut Write, range: Option<Range>) -> Result<()> {
+        if let Some(range) = range {
             write!(w, "address: ")?;
-            self.ranges.list()[0].print(w)?;
-        }
-        Ok(())
-    }
-
-    fn print_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.size() {
-            write!(w, "size: {}", size)?;
-        }
-        Ok(())
-    }
-
-    fn print_function_size(&self, w: &mut Write) -> Result<()> {
-        if let Some(size) = self.function_size() {
-            write!(w, "fn size: {}", size)?;
-        }
-        Ok(())
-    }
-
-    fn print_variable_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.variable_size(hash) {
-            write!(w, "var size: {}", size)?;
+            range.print(w)?;
+        } else if let Some(low_pc) = self.low_pc {
+            write!(w, "address: 0x{:x}", low_pc)?;
         }
         Ok(())
     }
@@ -317,7 +324,7 @@ impl<'input> SortList for Unit<'input> {
             // TODO: sort by offset?
             Sort::None => cmp::Ordering::Equal,
             Sort::Name => Self::cmp_id(state_a, a, state_b, b, options),
-            Sort::Size => a.size().cmp(&b.size()),
+            Sort::Size => a.size(state_a.hash).cmp(&b.size(state_b.hash)),
         }
     }
 }
