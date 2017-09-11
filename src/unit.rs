@@ -127,7 +127,7 @@ impl<'input> Unit<'input> {
             })?;
             state.indent(|state| {
                 if unit_a.ranges.list().len() > 1 || unit_b.ranges.list().len() > 1 {
-                    state.list(
+                    state.ord_list(
                         "addresses",
                         w,
                         &(),

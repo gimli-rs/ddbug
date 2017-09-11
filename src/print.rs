@@ -409,8 +409,55 @@ where
     // This is similar to `list`, but because the items are ordered
     // we can do a greedy search.
     //
-    // Another significant difference is that items with no difference are not
-    // displayed, and added/deleted items are optionally ignored.
+    // The caller must provide lists that are already sorted.
+    pub fn ord_list<T: Ord + Print>(
+        &mut self,
+        label: &str,
+        w: &mut Write,
+        arg_a: &T::Arg,
+        list_a: &[T],
+        arg_b: &T::Arg,
+        list_b: &[T],
+    ) -> Result<()> {
+        if list_a.is_empty() && list_b.is_empty() {
+            return Ok(());
+        }
+
+        if !label.is_empty() {
+            self.line(w, list_a, list_b, |w, _state, list| {
+                if !list.is_empty() {
+                    write!(w, "{}:", label)?;
+                }
+                Ok(())
+            })?;
+        }
+
+        self.indent(|state| {
+            for item in MergeIterator::new(list_a.iter(), list_b.iter(), T::cmp) {
+                match item {
+                    MergeResult::Both(a, b) => {
+                        state.diff(w, |w, state| T::diff(w, state, arg_a, a, arg_b, b))?;
+                    }
+                    MergeResult::Left(a) => if !state.options.ignore_deleted {
+                        state.prefix_less(|state| a.print(w, state, arg_a))?;
+                    },
+                    MergeResult::Right(b) => if !state.options.ignore_added {
+                        state.prefix_greater(|state| b.print(w, state, arg_b))?;
+                    },
+                }
+            }
+            Ok(())
+        })
+    }
+
+    // This is similar to `list`, but because the items are ordered
+    // we can do a greedy search.
+    //
+    // Items with no difference are not displayed.
+    //
+    // Also, self.options controls:
+    // - sort order
+    // - display of added/deleted options
     pub fn sort_list<T: SortList>(
         &mut self,
         w: &mut Write,

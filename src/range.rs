@@ -2,9 +2,9 @@ use std::io::Write;
 use std::mem;
 
 use Result;
-use print::{DiffList, DiffState, Print, PrintState};
+use print::{DiffState, Print, PrintState};
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Range {
     pub begin: u64,
     pub end: u64,
@@ -37,23 +37,6 @@ impl Print for Range {
         b: &Self,
     ) -> Result<()> {
         state.line(w, a, b, |w, _state, x| x.print(w))
-    }
-}
-
-impl DiffList for Range {
-    fn step_cost() -> usize {
-        3
-    }
-
-    fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
-        let mut cost = 0;
-        if a.begin != b.begin {
-            cost += 4;
-        }
-        if a.end != b.end {
-            cost += 2;
-        }
-        cost
     }
 }
 

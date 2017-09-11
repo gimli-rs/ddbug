@@ -233,7 +233,7 @@ impl<'a, 'input> File<'a, 'input> {
             state.indent(|state| {
                 let ranges_a = file_a.ranges();
                 let ranges_b = file_b.ranges();
-                state.list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
+                state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
                 state.line_option_u64(w, "size", ranges_a.size(), ranges_b.size())?;
                 // TODO: sort sections
                 state.list("sections", w, &(), &*file_a.sections, &(), &*file_b.sections)?;
