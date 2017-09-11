@@ -108,12 +108,14 @@ impl<'input> Unit<'input> {
                 self.print_ref(w)
             })?;
             state.indent(|state| {
-                let ranges = self.ranges(state.hash);
-                if ranges.list().len() > 1 {
-                    state.list("addresses", w, &(), ranges.list())?;
-                } else {
-                    let range = ranges.list().first().cloned();
-                    state.line_option(w, |w, _state| self.print_address(w, range))?;
+                if state.options.unit_address {
+                    let ranges = self.ranges(state.hash);
+                    if ranges.list().len() > 1 {
+                        state.list("addresses", w, &(), ranges.list())?;
+                    } else {
+                        let range = ranges.list().first().cloned();
+                        state.line_option(w, |w, _state| self.print_address(w, range))?;
+                    }
                 }
 
                 let fn_size = self.function_size();
@@ -150,19 +152,21 @@ impl<'input> Unit<'input> {
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
-                let ranges_a = unit_a.ranges(state.a.hash);
-                let ranges_b = unit_b.ranges(state.b.hash);
-                if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
-                    state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
-                } else {
-                    let range_a = ranges_a.list().first().cloned();
-                    let range_b = ranges_b.list().first().cloned();
-                    state.line_option(
-                        w,
-                        (unit_a, range_a),
-                        (unit_b, range_b),
-                        |w, _state, (unit, range)| unit.print_address(w, range),
-                    )?;
+                if state.options.unit_address {
+                    let ranges_a = unit_a.ranges(state.a.hash);
+                    let ranges_b = unit_b.ranges(state.b.hash);
+                    if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
+                        state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
+                    } else {
+                        let range_a = ranges_a.list().first().cloned();
+                        let range_b = ranges_b.list().first().cloned();
+                        state.line_option(
+                            w,
+                            (unit_a, range_a),
+                            (unit_b, range_b),
+                            |w, _state, (unit, range)| unit.print_address(w, range),
+                        )?;
+                    }
                 }
 
                 let fn_size_a = unit_a.function_size();

@@ -12,6 +12,8 @@ const OPT_DIFF: &'static str = "diff";
 
 // Print options
 const OPT_CALLS: &'static str = "calls";
+const OPT_FILE_ADDRESS: &'static str = "file-address";
+const OPT_UNIT_ADDRESS: &'static str = "unit-address";
 const OPT_INLINE_DEPTH: &'static str = "inline-depth";
 
 // Print categories
@@ -67,6 +69,16 @@ fn main() {
                 .value_names(&["FILE", "FILE"]),
         )
         .arg(clap::Arg::with_name(OPT_CALLS).long("calls").help("Print function calls"))
+        .arg(
+            clap::Arg::with_name(OPT_FILE_ADDRESS)
+                .long("file-address")
+                .help("Print file addresses"),
+        )
+        .arg(
+            clap::Arg::with_name(OPT_UNIT_ADDRESS)
+                .long("unit-address")
+                .help("Print unit addresses"),
+        )
         .arg(
             clap::Arg::with_name(OPT_INLINE_DEPTH)
                 .long(OPT_INLINE_DEPTH)
@@ -150,6 +162,8 @@ fn main() {
     let mut options = ddbug::Options::default();
 
     options.calls = matches.is_present(OPT_CALLS);
+    options.file_address = matches.is_present(OPT_FILE_ADDRESS);
+    options.unit_address = matches.is_present(OPT_UNIT_ADDRESS);
 
     options.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
