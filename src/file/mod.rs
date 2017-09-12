@@ -155,11 +155,13 @@ impl<'a, 'input> File<'a, 'input> {
                 index -= 1;
             }
             let mut found = false;
-            for symbol in &symbols[index..] {
+            for (symbol, used_symbol) in
+                (&symbols[index..]).iter().zip((&mut used_symbols[index..]).iter_mut())
+            {
                 if symbol.address != address {
                     break;
                 }
-                used_symbols[index] = true;
+                *used_symbol = true;
                 if symbol.name == name {
                     found = true;
                 }
