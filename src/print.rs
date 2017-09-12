@@ -425,14 +425,14 @@ where
             for item in MergeIterator::new(list_a.iter(), list_b.iter(), T::cmp) {
                 match item {
                     MergeResult::Both(a, b) => {
-                        state.diff(w, |w, state| T::diff(w, state, arg_a, a, arg_b, b))?;
+                        T::diff(w, state, arg_a, a, arg_b, b)?;
                     }
-                    MergeResult::Left(a) => if !state.options.ignore_deleted {
+                    MergeResult::Left(a) => {
                         state.prefix_less(|state| a.print(w, state, arg_a))?;
-                    },
-                    MergeResult::Right(b) => if !state.options.ignore_added {
+                    }
+                    MergeResult::Right(b) => {
                         state.prefix_greater(|state| b.print(w, state, arg_b))?;
-                    },
+                    }
                 }
             }
             Ok(())
