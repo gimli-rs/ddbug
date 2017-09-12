@@ -247,7 +247,7 @@ impl<'a, 'input> File<'a, 'input> {
                 let fn_size = self.function_size();
                 let var_size = self.variable_size(state.hash);
                 let other_size = size - fn_size - var_size;
-                if options.file_address {
+                if options.print_file_address {
                     state.list("addresses", w, &(), ranges.list())?;
                 }
                 state.line_u64(w, "size", size)?;
@@ -284,7 +284,7 @@ impl<'a, 'input> File<'a, 'input> {
                 let var_size_b = file_b.variable_size(state.b.hash);
                 let other_size_a = size_a - fn_size_a - var_size_a;
                 let other_size_b = size_b - fn_size_b - var_size_b;
-                if options.file_address {
+                if options.print_file_address {
                     state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
                 }
                 state.line_u64(w, "size", size_a, size_b)?;

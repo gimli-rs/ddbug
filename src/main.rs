@@ -10,12 +10,6 @@ extern crate ddbug;
 const OPT_FILE: &'static str = "file";
 const OPT_DIFF: &'static str = "diff";
 
-// Print options
-const OPT_CALLS: &'static str = "calls";
-const OPT_FILE_ADDRESS: &'static str = "file-address";
-const OPT_UNIT_ADDRESS: &'static str = "unit-address";
-const OPT_INLINE_DEPTH: &'static str = "inline-depth";
-
 // Print categories
 const OPT_CATEGORY: &'static str = "category";
 const OPT_CATEGORY_FILE: &'static str = "file";
@@ -23,6 +17,15 @@ const OPT_CATEGORY_UNIT: &'static str = "unit";
 const OPT_CATEGORY_TYPE: &'static str = "type";
 const OPT_CATEGORY_FUNCTION: &'static str = "function";
 const OPT_CATEGORY_VARIABLE: &'static str = "variable";
+
+// Print fields
+const OPT_PRINT: &'static str = "print";
+const OPT_PRINT_FILE_ADDRESS: &'static str = "file-address";
+const OPT_PRINT_UNIT_ADDRESS: &'static str = "unit-address";
+const OPT_PRINT_FUNCTION_CALLS: &'static str = "function-calls";
+
+// Print parameters
+const OPT_INLINE_DEPTH: &'static str = "inline-depth";
 
 // Filters
 const OPT_FILTER: &'static str = "filter";
@@ -68,23 +71,6 @@ fn main() {
                 .help("Print difference between two files")
                 .value_names(&["FILE", "FILE"]),
         )
-        .arg(clap::Arg::with_name(OPT_CALLS).long("calls").help("Print function calls"))
-        .arg(
-            clap::Arg::with_name(OPT_FILE_ADDRESS)
-                .long("file-address")
-                .help("Print file addresses"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_UNIT_ADDRESS)
-                .long("unit-address")
-                .help("Print unit addresses"),
-        )
-        .arg(
-            clap::Arg::with_name(OPT_INLINE_DEPTH)
-                .long(OPT_INLINE_DEPTH)
-                .help("Depth of inlined function calls to print (defaults to 1, 0 to disable)")
-                .value_name("DEPTH"),
-        )
         .arg(
             clap::Arg::with_name(OPT_CATEGORY)
                 .short("c")
@@ -101,6 +87,25 @@ fn main() {
                     OPT_CATEGORY_FUNCTION,
                     OPT_CATEGORY_VARIABLE,
                 ]),
+        )
+        .arg(
+            clap::Arg::with_name(OPT_PRINT)
+                .short("p")
+                .long(OPT_PRINT)
+                .help("Print extra fields within entries")
+                .takes_value(true)
+                .multiple(true)
+                .require_delimiter(true)
+                .value_name("FIELD")
+                .possible_values(
+                    &[OPT_PRINT_FILE_ADDRESS, OPT_PRINT_UNIT_ADDRESS, OPT_PRINT_FUNCTION_CALLS],
+                ),
+        )
+        .arg(
+            clap::Arg::with_name(OPT_INLINE_DEPTH)
+                .long(OPT_INLINE_DEPTH)
+                .help("Depth of inlined function calls to print (defaults to 1, 0 to disable)")
+                .value_name("DEPTH"),
         )
         .arg(
             clap::Arg::with_name(OPT_FILTER)
@@ -161,10 +166,6 @@ fn main() {
 
     let mut options = ddbug::Options::default();
 
-    options.calls = matches.is_present(OPT_CALLS);
-    options.file_address = matches.is_present(OPT_FILE_ADDRESS);
-    options.unit_address = matches.is_present(OPT_UNIT_ADDRESS);
-
     options.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
@@ -199,6 +200,24 @@ fn main() {
         options.category_type = true;
         options.category_function = true;
         options.category_variable = true;
+    }
+
+    if let Some(values) = matches.values_of(OPT_PRINT) {
+        for value in values {
+            match value {
+                OPT_PRINT_FILE_ADDRESS => options.print_file_address = true,
+                OPT_PRINT_UNIT_ADDRESS => options.print_unit_address = true,
+                OPT_PRINT_FUNCTION_CALLS => options.print_function_calls = true,
+                _ => clap::Error::with_description(
+                    &format!("invalid {} value: {}", OPT_PRINT, value),
+                    clap::ErrorKind::InvalidValue,
+                ).exit(),
+            }
+        }
+    } else {
+        options.print_file_address = false;
+        options.print_unit_address = false;
+        options.print_function_calls = false;
     }
 
     if let Some(values) = matches.values_of(OPT_FILTER) {

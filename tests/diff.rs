@@ -21,7 +21,6 @@ fn diff(name: &str, expect: &str) {
 
 fn options<'a>() -> ddbug::Options<'a> {
     ddbug::Options {
-        calls: false,
         inline_depth: 1,
 
         category_unit: false,

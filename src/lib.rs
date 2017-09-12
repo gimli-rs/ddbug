@@ -90,9 +90,9 @@ impl Default for Sort {
 
 #[derive(Debug, Default, Clone)]
 pub struct Options<'a> {
-    pub calls: bool,
-    pub file_address: bool,
-    pub unit_address: bool,
+    pub print_file_address: bool,
+    pub print_unit_address: bool,
+    pub print_function_calls: bool,
     pub inline_depth: usize,
 
     pub category_file: bool,

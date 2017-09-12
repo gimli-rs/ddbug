@@ -108,7 +108,7 @@ impl<'input> Function<'input> {
             state.list("variables", w, unit, &self.variables)?;
             state
                 .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
-            if state.options.calls {
+            if state.options.print_function_calls {
                 let calls = self.calls(state.file);
                 if !calls.is_empty() {
                     state.line(w, |w, _state| self.print_calls_label(w))?;
@@ -175,7 +175,7 @@ impl<'input> Function<'input> {
                 )
             })?;
             // TODO
-            if false && state.options.calls {
+            if false && state.options.print_function_calls {
                 let calls_a = a.calls(state.a.file);
                 let calls_b = b.calls(state.b.file);
                 state.line_option(w, (a, &calls_a), (b, &calls_b), |w, _state, (x, calls)| {

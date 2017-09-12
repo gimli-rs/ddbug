@@ -117,7 +117,7 @@ impl<'input> Unit<'input> {
             state.indent(|state| {
                 let unknown_ranges = self.unknown_ranges(state.hash);
 
-                if state.options.unit_address {
+                if state.options.print_unit_address {
                     let ranges = self.ranges(state.hash);
                     if ranges.list().len() > 1 {
                         state.list("addresses", w, &(), ranges.list())?;
@@ -171,7 +171,7 @@ impl<'input> Unit<'input> {
                 let unknown_ranges_a = unit_a.unknown_ranges(state.a.hash);
                 let unknown_ranges_b = unit_b.unknown_ranges(state.b.hash);
 
-                if state.options.unit_address {
+                if state.options.print_unit_address {
                     let ranges_a = unit_a.ranges(state.a.hash);
                     let ranges_b = unit_b.ranges(state.b.hash);
                     if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
