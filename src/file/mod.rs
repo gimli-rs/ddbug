@@ -255,8 +255,6 @@ impl<'a, 'input> File<'a, 'input> {
                 state.line_u64(w, "var size", var_size)?;
                 state.line_u64(w, "other size", other_size)?;
                 state.list("sections", w, &(), &*self.sections)?;
-                // TODO: add option to display
-                //state.list("symbols", w, &(), &*self.symbols)?;
                 Ok(())
             })?;
             writeln!(w, "")?;
@@ -295,9 +293,6 @@ impl<'a, 'input> File<'a, 'input> {
                 state.line_u64(w, "other size", other_size_a, other_size_b)?;
                 // TODO: sort sections
                 state.list("sections", w, &(), &*file_a.sections, &(), &*file_b.sections)?;
-                // TODO: sort symbols
-                // TODO: add option to display
-                //state.list("symbols", w, &(), &*file_a.symbols, &(), &*file_b.symbols)?;
                 Ok(())
             })?;
             writeln!(w, "")?;
@@ -339,7 +334,6 @@ impl<'a, 'input> FileHash<'a, 'input> {
     /// Returns a map from address to function for all functions in the file.
     fn functions(file: &'a File<'a, 'input>) -> HashMap<u64, &'a Function<'input>> {
         let mut functions = HashMap::new();
-        // TODO: insert symbol table names too
         for unit in &file.units {
             for function in unit.functions.values() {
                 if let Some(low_pc) = function.low_pc {
