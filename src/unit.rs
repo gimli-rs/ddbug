@@ -26,10 +26,8 @@ pub(crate) struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
-    // Currently does not including self.ranges, because that would
-    // make size reporting less useful
-    // TODO: somehow display ranges that aren't functions/variables.
-    fn ranges(&self, hash: &FileHash) -> RangeList {
+    // Does not include unknown ranges.
+    pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
         for function in self.functions.values() {
             if let Some(range) = function.address() {
@@ -45,31 +43,40 @@ impl<'input> Unit<'input> {
         ranges
     }
 
+    pub fn unknown_ranges(&self, hash: &FileHash) -> RangeList {
+        let mut ranges = RangeList::default();
+        for range in self.ranges.list() {
+            ranges.push(*range);
+        }
+        ranges.sort();
+        ranges.subtract(&self.ranges(hash))
+    }
+
     fn size(&self, hash: &FileHash) -> u64 {
         // TODO: account for padding and overlap between functions and variables?
         self.function_size() + self.variable_size(hash)
     }
 
     pub fn function_size(&self) -> u64 {
-        // TODO: account for padding and overlap between functions?
-        let mut size = 0;
+        let mut ranges = RangeList::default();
         for function in self.functions.values() {
             if let Some(range) = function.address() {
-                size += range.size();
+                ranges.push(range);
             }
         }
-        size
+        ranges.sort();
+        ranges.size()
     }
 
     pub fn variable_size(&self, hash: &FileHash) -> u64 {
-        // TODO: account for padding and overlap between variables?
-        let mut size = 0;
+        let mut ranges = RangeList::default();
         for variable in self.variables.values() {
             if let Some(range) = variable.address(hash) {
-                size += range.size();
+                ranges.push(range);
             }
         }
-        size
+        ranges.sort();
+        ranges.size()
     }
 
     /// The offsets of types that should be printed inline.
@@ -108,6 +115,8 @@ impl<'input> Unit<'input> {
                 self.print_ref(w)
             })?;
             state.indent(|state| {
+                let unknown_ranges = self.unknown_ranges(state.hash);
+
                 if state.options.unit_address {
                     let ranges = self.ranges(state.hash);
                     if ranges.list().len() > 1 {
@@ -116,6 +125,8 @@ impl<'input> Unit<'input> {
                         let range = ranges.list().first().cloned();
                         state.line_option(w, |w, _state| self.print_address(w, range))?;
                     }
+
+                    state.list("unknown addresses", w, &(), unknown_ranges.list())?;
                 }
 
                 let fn_size = self.function_size();
@@ -126,6 +137,11 @@ impl<'input> Unit<'input> {
                 let var_size = self.variable_size(state.hash);
                 if var_size != 0 {
                     state.line_u64(w, "var size", var_size)?;
+                }
+
+                let unknown_size = unknown_ranges.size();
+                if unknown_size != 0 {
+                    state.line_u64(w, "unknown size", unknown_size)?;
                 }
                 Ok(())
             })?;
@@ -152,6 +168,9 @@ impl<'input> Unit<'input> {
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
+                let unknown_ranges_a = unit_a.unknown_ranges(state.a.hash);
+                let unknown_ranges_b = unit_b.unknown_ranges(state.b.hash);
+
                 if state.options.unit_address {
                     let ranges_a = unit_a.ranges(state.a.hash);
                     let ranges_b = unit_b.ranges(state.b.hash);
@@ -167,6 +186,15 @@ impl<'input> Unit<'input> {
                             |w, _state, (unit, range)| unit.print_address(w, range),
                         )?;
                     }
+
+                    state.ord_list(
+                        "unknown addresses",
+                        w,
+                        &(),
+                        unknown_ranges_a.list(),
+                        &(),
+                        unknown_ranges_b.list(),
+                    )?;
                 }
 
                 let fn_size_a = unit_a.function_size();
@@ -179,6 +207,12 @@ impl<'input> Unit<'input> {
                 let var_size_b = unit_b.variable_size(state.b.hash);
                 if var_size_a != 0 || var_size_b != 0 {
                     state.line_u64(w, "var size", var_size_a, var_size_b)?;
+                }
+
+                let unknown_size_a = unknown_ranges_a.size();
+                let unknown_size_b = unknown_ranges_b.size();
+                if unknown_size_a != 0 || unknown_size_b != 0 {
+                    state.line_u64(w, "unknown size", unknown_size_a, unknown_size_b)?;
                 }
                 Ok(())
             })?;

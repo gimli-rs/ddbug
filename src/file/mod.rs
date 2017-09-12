@@ -139,6 +139,12 @@ impl<'a, 'input> File<'a, 'input> {
         }
         unit.ranges.sort();
         self.units.push(unit);
+
+        // Create a unit for all remaining address ranges.
+        let mut unit = Unit::default();
+        unit.name = Some(b"<unknown>");
+        unit.ranges = self.unknown_ranges();
+        self.units.push(unit);
     }
 
     // Determine if the symbol at the given address has the given name.
@@ -180,20 +186,34 @@ impl<'a, 'input> File<'a, 'input> {
         self.code.as_ref()
     }
 
-    fn ranges(&self) -> RangeList {
+    fn ranges(&self, hash: &FileHash) -> RangeList {
+        let mut ranges = RangeList::default();
+        for unit in &self.units {
+            for range in unit.ranges(hash).list() {
+                ranges.push(*range);
+            }
+            for range in unit.unknown_ranges(hash).list() {
+                ranges.push(*range);
+            }
+        }
+        ranges.sort();
+        ranges
+    }
+
+    // Used to create <unknown> unit. After creation of that unit
+    // this will return an empty range list.
+    fn unknown_ranges(&self) -> RangeList {
+        let hash = FileHash::new(self);
+        let unit_ranges = self.ranges(&hash);
+
         let mut ranges = RangeList::default();
         for section in &self.sections {
             if let Some(range) = section.address() {
                 ranges.push(range);
             }
         }
-        for unit in &self.units {
-            for range in unit.ranges.list() {
-                ranges.push(*range);
-            }
-        }
         ranges.sort();
-        ranges
+        ranges.subtract(&unit_ranges)
     }
 
     fn function_size(&self) -> u64 {
@@ -222,8 +242,7 @@ impl<'a, 'input> File<'a, 'input> {
                 Ok(())
             })?;
             state.indent(|state| {
-                // TODO: display ranges/size that aren't covered by debuginfo.
-                let ranges = self.ranges();
+                let ranges = self.ranges(state.hash);
                 let size = ranges.size();
                 let fn_size = self.function_size();
                 let var_size = self.variable_size(state.hash);
@@ -257,8 +276,8 @@ impl<'a, 'input> File<'a, 'input> {
                 Ok(())
             })?;
             state.indent(|state| {
-                let ranges_a = file_a.ranges();
-                let ranges_b = file_b.ranges();
+                let ranges_a = file_a.ranges(state.a.hash);
+                let ranges_b = file_b.ranges(state.a.hash);
                 let size_a = ranges_a.size();
                 let size_b = ranges_b.size();
                 let fn_size_a = file_a.function_size();

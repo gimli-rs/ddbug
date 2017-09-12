@@ -100,4 +100,46 @@ impl RangeList {
             self.push(range);
         }
     }
+
+    pub fn subtract(&self, other: &Self) -> Self {
+        let mut ranges = RangeList::default();
+        let mut other_ranges = other.ranges.iter();
+        let mut other_range = other_ranges.next();
+        for range in &*self.ranges {
+            let mut range = *range;
+            loop {
+                match other_range {
+                    Some(r) => {
+                        if r.end <= range.begin {
+                            other_range = other_ranges.next();
+                            continue;
+                        }
+                        if r.begin >= range.end {
+                            ranges.push(range);
+                            break;
+                        }
+                        if r.begin > range.begin {
+                            ranges.push(Range {
+                                begin: range.begin,
+                                end: r.begin,
+                            });
+                            range.begin = r.begin;
+                            continue;
+                        }
+                        if r.end <= range.end {
+                            range.begin = r.end;
+                            continue;
+                        }
+                        break;
+                    }
+                    None => {
+                        ranges.push(range);
+                        break;
+                    }
+                }
+            }
+        }
+        ranges.sort();
+        ranges
+    }
 }
