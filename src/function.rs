@@ -152,10 +152,9 @@ impl<'input> Function<'input> {
             )?;
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, _state, x| x.print_return_type_label(w))?;
-            state
-                .indent(
-                    |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
-                )?;
+            state.indent(
+                |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
+            )?;
             state.list("parameters", w, unit_a, &a.parameters, unit_b, &b.parameters)?;
             if state.options.print_function_variables {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
@@ -544,10 +543,9 @@ impl<'input> Print for InlinedFunction<'input> {
         )?;
         // TODO: diff parameters and variables?
 
-        state
-            .inline(|state| {
-                state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
-            })?;
+        state.inline(
+            |state| state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions),
+        )?;
 
         Ok(())
     }

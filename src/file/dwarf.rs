@@ -628,11 +628,10 @@ where
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
                 }
-                gimli::DW_AT_declaration => {
-                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                        ty.declaration = flag;
-                    }
-                }
+                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
+                {
+                    ty.declaration = flag;
+                },
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_containing_type |
@@ -700,11 +699,10 @@ where
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
                 }
-                gimli::DW_AT_declaration => {
-                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                        ty.declaration = flag;
-                    }
-                }
+                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
+                {
+                    ty.declaration = flag;
+                },
                 gimli::DW_AT_alignment |
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
@@ -901,11 +899,10 @@ where
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
                 }
-                gimli::DW_AT_declaration => {
-                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                        ty.declaration = flag;
-                    }
-                }
+                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
+                {
+                    ty.declaration = flag;
+                },
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_sibling |
@@ -1237,11 +1234,10 @@ where
                         abstract_origin = attr.name() == gimli::DW_AT_abstract_origin;
                     }
                 }
-                gimli::DW_AT_declaration => {
-                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                        function.declaration = flag;
-                    }
-                }
+                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
+                {
+                    function.declaration = flag;
+                },
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
                 gimli::DW_AT_frame_base |
@@ -1667,11 +1663,10 @@ where
                         specification = Some(offset);
                     }
                 }
-                gimli::DW_AT_declaration => {
-                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
-                        variable.declaration = flag;
-                    }
-                }
+                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
+                {
+                    variable.declaration = flag;
+                },
                 gimli::DW_AT_location => {
                     match attr.value() {
                         gimli::AttributeValue::Exprloc(expr) => {

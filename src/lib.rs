@@ -1,10 +1,10 @@
 extern crate gimli;
+extern crate goblin;
 #[macro_use]
 extern crate log;
 extern crate memmap;
-extern crate goblin;
-extern crate panopticon_core as panopticon;
 extern crate panopticon_amd64 as amd64;
+extern crate panopticon_core as panopticon;
 extern crate pdb as crate_pdb;
 
 mod file;

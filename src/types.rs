@@ -942,10 +942,9 @@ impl<'input> Print for Member<'input> {
     ) -> Result<()> {
         let bit_size_a = a.bit_size(state.a.hash);
         let bit_size_b = b.bit_size(state.b.hash);
-        state
-            .line(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
-                x.print_name(w, state, bit_size)
-            })?;
+        state.line(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+            x.print_name(w, state, bit_size)
+        })?;
 
         let ty_a = if a.is_inline(state.a.hash) {
             a.ty(state.a.hash)
