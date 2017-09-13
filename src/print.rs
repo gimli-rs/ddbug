@@ -577,18 +577,18 @@ impl<T> MergeResult<T> {
         F: Fn(&T, Arg, &T, Arg) -> cmp::Ordering,
     {
         match x {
-            &MergeResult::Both(ref x_left, _) => match y {
-                &MergeResult::Both(ref y_left, _) => f(x_left, arg_left, y_left, arg_left),
-                &MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
-                &MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
+            &MergeResult::Both(_, ref x_right) => match y {
+                &MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
+                &MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
+                &MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
             },
             &MergeResult::Left(ref x_left) => match y {
-                &MergeResult::Both(ref y_left, _) => f(x_left, arg_left, y_left, arg_left),
+                &MergeResult::Both(_, ref y_right) => f(x_left, arg_left, y_right, arg_right),
                 &MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
                 &MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
             },
             &MergeResult::Right(ref x_right) => match y {
-                &MergeResult::Both(ref y_left, _) => f(x_right, arg_right, y_left, arg_left),
+                &MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
                 &MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
                 &MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
             },
