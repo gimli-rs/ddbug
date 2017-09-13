@@ -105,7 +105,9 @@ impl<'input> Function<'input> {
             state
                 .indent(|state| state.line_option(w, |w, state| self.print_return_type(w, state)))?;
             state.list("parameters", w, unit, &self.parameters)?;
-            state.list("variables", w, unit, &self.variables)?;
+            if state.options.print_function_variables {
+                state.list("variables", w, unit, &self.variables)?;
+            }
             state
                 .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
             if state.options.print_function_calls {
@@ -155,7 +157,7 @@ impl<'input> Function<'input> {
                     |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
                 )?;
             state.list("parameters", w, unit_a, &a.parameters, unit_b, &b.parameters)?;
-            {
+            if state.options.print_function_variables {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
                 variables_a
                     .sort_by(|x, y| LocalVariable::cmp_id(&state.a, x, &state.a, y, state.options));

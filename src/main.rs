@@ -23,6 +23,7 @@ const OPT_PRINT: &'static str = "print";
 const OPT_PRINT_FILE_ADDRESS: &'static str = "file-address";
 const OPT_PRINT_UNIT_ADDRESS: &'static str = "unit-address";
 const OPT_PRINT_FUNCTION_CALLS: &'static str = "function-calls";
+const OPT_PRINT_FUNCTION_VARIABLES: &'static str = "function-variables";
 
 // Print parameters
 const OPT_INLINE_DEPTH: &'static str = "inline-depth";
@@ -97,9 +98,12 @@ fn main() {
                 .multiple(true)
                 .require_delimiter(true)
                 .value_name("FIELD")
-                .possible_values(
-                    &[OPT_PRINT_FILE_ADDRESS, OPT_PRINT_UNIT_ADDRESS, OPT_PRINT_FUNCTION_CALLS],
-                ),
+                .possible_values(&[
+                    OPT_PRINT_FILE_ADDRESS,
+                    OPT_PRINT_UNIT_ADDRESS,
+                    OPT_PRINT_FUNCTION_CALLS,
+                    OPT_PRINT_FUNCTION_VARIABLES,
+                ]),
         )
         .arg(
             clap::Arg::with_name(OPT_INLINE_DEPTH)
@@ -208,6 +212,7 @@ fn main() {
                 OPT_PRINT_FILE_ADDRESS => options.print_file_address = true,
                 OPT_PRINT_UNIT_ADDRESS => options.print_unit_address = true,
                 OPT_PRINT_FUNCTION_CALLS => options.print_function_calls = true,
+                OPT_PRINT_FUNCTION_VARIABLES => options.print_function_variables = true,
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_PRINT, value),
                     clap::ErrorKind::InvalidValue,
@@ -218,6 +223,7 @@ fn main() {
         options.print_file_address = false;
         options.print_unit_address = false;
         options.print_function_calls = false;
+        options.print_function_variables = false;
     }
 
     if let Some(values) = matches.values_of(OPT_FILTER) {
