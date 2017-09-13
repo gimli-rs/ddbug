@@ -15,9 +15,18 @@ impl Range {
         self.end - self.begin
     }
 
-    pub fn print(&self, w: &mut Write) -> Result<()> {
+    pub fn print_address(&self, w: &mut Write) -> Result<()> {
         if self.end > self.begin {
             write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
+        } else {
+            write!(w, "0x{:x}", self.begin)?;
+        }
+        Ok(())
+    }
+
+    pub fn print_address_and_size(&self, w: &mut Write) -> Result<()> {
+        if self.end > self.begin {
+            write!(w, "0x{:x}-0x{:x} ({})", self.begin, self.end - 1, self.end - self.begin)?;
         } else {
             write!(w, "0x{:x}", self.begin)?;
         }
@@ -29,7 +38,7 @@ impl Print for Range {
     type Arg = ();
 
     fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(w, |w, _state| self.print(w))
+        state.line(w, |w, _state| self.print_address_and_size(w))
     }
 
     fn diff(
@@ -40,7 +49,7 @@ impl Print for Range {
         _arg_b: &(),
         b: &Self,
     ) -> Result<()> {
-        state.line(w, a, b, |w, _state, x| x.print(w))
+        state.line(w, a, b, |w, _state, x| x.print_address_and_size(w))
     }
 }
 

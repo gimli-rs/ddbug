@@ -248,7 +248,7 @@ impl<'input> Unit<'input> {
     fn print_address(&self, w: &mut Write, range: Option<Range>) -> Result<()> {
         if let Some(range) = range {
             write!(w, "address: ")?;
-            range.print(w)?;
+            range.print_address(w)?;
         } else if let Some(low_pc) = self.low_pc {
             write!(w, "address: 0x{:x}", low_pc)?;
         }

@@ -223,7 +223,7 @@ impl<'input> Function<'input> {
     fn print_address(&self, w: &mut Write) -> Result<()> {
         if let Some(range) = self.address() {
             write!(w, "address: ")?;
-            range.print(w)?;
+            range.print_address(w)?;
         }
         Ok(())
     }

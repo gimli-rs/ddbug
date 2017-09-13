@@ -385,7 +385,7 @@ impl<'input> Section<'input> {
     fn print_address(&self, w: &mut Write) -> Result<()> {
         if let Some(address) = self.address() {
             write!(w, "address: ")?;
-            address.print(w)?;
+            address.print_address(w)?;
         }
         Ok(())
     }
@@ -468,10 +468,11 @@ impl<'input> Symbol<'input> {
 
     fn print_address(&self, w: &mut Write) -> Result<()> {
         write!(w, "address: ")?;
-        self.address().print(w)?;
+        self.address().print_address(w)?;
         Ok(())
     }
 }
+
 impl<'input> Print for Symbol<'input> {
     type Arg = ();
 
