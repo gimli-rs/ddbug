@@ -98,12 +98,15 @@ impl<'input> Namespace<'input> {
     fn _cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
         debug_assert_eq!(a.len(), b.len());
         match (a.parent.as_ref(), b.parent.as_ref()) {
-            (Some(p1), Some(p2)) => match Self::_cmp(p1, p2) {
-                cmp::Ordering::Equal => a.name.cmp(&b.name),
-                o => o,
-            },
-            _ => cmp::Ordering::Equal,
+            (Some(p1), Some(p2)) => {
+                let ord = Self::_cmp(p1, p2);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            _ => {}
         }
+        a.name.cmp(&b.name)
     }
 
     fn cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
@@ -143,5 +146,17 @@ impl<'input> Namespace<'input> {
             (&None, &Some(_)) => cmp::Ordering::Less,
             (&None, &None) => name1.cmp(&name2),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn cmp() {
+        let ns1 = Namespace::new(&None, Some(b"a"), NamespaceKind::Namespace);
+        let ns2 = Namespace::new(&None, Some(b"b"), NamespaceKind::Namespace);
+        assert_eq!(Namespace::cmp(&ns1, &ns2), cmp::Ordering::Less);
     }
 }
