@@ -275,7 +275,7 @@ impl<'a, 'input> File<'a, 'input> {
             })?;
             state.indent(|state| {
                 let ranges_a = file_a.ranges(state.a.hash);
-                let ranges_b = file_b.ranges(state.a.hash);
+                let ranges_b = file_b.ranges(state.b.hash);
                 let size_a = ranges_a.size();
                 let size_b = ranges_b.size();
                 let fn_size_a = file_a.function_size();
