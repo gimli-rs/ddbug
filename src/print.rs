@@ -196,20 +196,27 @@ where
         }
     }
 
+    // Write output of `f` to a temporary buffer, then only
+    // output that buffer if there were any differences.
     pub fn diff<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &mut DiffState<'a, 'input>) -> Result<()>,
     {
         let mut buf = Vec::new();
+        let prev_a = self.a.diff;
+        let prev_b = self.b.diff;
         self.a.diff = false;
         self.b.diff = false;
         f(&mut buf, self)?;
         if self.a.diff || self.b.diff {
             w.write_all(&*buf)?;
         }
+        self.a.diff = self.a.diff | prev_a;
+        self.b.diff = self.b.diff | prev_b;
         Ok(())
     }
 
+    // Don't allow `f` to update the diff flags.
     pub fn ignore_diff<F>(&mut self, flag: bool, mut f: F) -> Result<()>
     where
         F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
