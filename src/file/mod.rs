@@ -72,7 +72,7 @@ impl<'a, 'input> File<'a, 'input> {
         // Set symbol names on functions/variables.
         for unit in &mut self.units {
             for function in unit.functions.values_mut() {
-                if let Some(address) = function.low_pc {
+                if let Some(address) = function.address {
                     if let Some(symbol) = Self::get_symbol(
                         &*self.symbols,
                         &mut used_symbols,
@@ -128,8 +128,7 @@ impl<'a, 'input> File<'a, 'input> {
                         Function {
                             name: symbol.name,
                             linkage_name: symbol.name,
-                            low_pc: Some(symbol.address),
-                            high_pc: Some(symbol.address + symbol.size),
+                            address: Some(symbol.address),
                             size: Some(symbol.size),
                             ..Default::default()
                         },
@@ -336,9 +335,9 @@ impl<'a, 'input> FileHash<'a, 'input> {
         let mut functions = HashMap::new();
         for unit in &file.units {
             for function in unit.functions.values() {
-                if let Some(low_pc) = function.low_pc {
+                if let Some(address) = function.address {
                     // TODO: handle duplicate addresses
-                    functions.insert(low_pc, function);
+                    functions.insert(address, function);
                 }
             }
         }

@@ -150,6 +150,7 @@ where
                 gimli::DW_AT_entry_pc |
                 gimli::DW_AT_APPLE_optimized |
                 gimli::DW_AT_macro_info |
+                gimli::DW_AT_GNU_macros |
                 gimli::DW_AT_sibling => {}
                 _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
             }
@@ -1175,8 +1176,7 @@ where
         name: None,
         symbol_name: None,
         linkage_name: None,
-        low_pc: None,
-        high_pc: None,
+        address: None,
         size: None,
         inline: false,
         declaration: false,
@@ -1188,6 +1188,7 @@ where
 
     let mut specification = None;
     let mut abstract_origin = false;
+    let mut high_pc = None;
 
     {
         let entry = node.entry();
@@ -1211,12 +1212,14 @@ where
                 gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
                     // TODO: is address 0 ever valid?
                     if addr != 0 {
-                        function.low_pc = Some(addr);
+                        function.address = Some(addr);
                     }
                 },
                 gimli::DW_AT_high_pc => match attr.value() {
-                    gimli::AttributeValue::Addr(addr) => function.high_pc = Some(addr),
-                    gimli::AttributeValue::Udata(size) => function.size = Some(size),
+                    gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
+                    gimli::AttributeValue::Udata(val) => if val != 0 {
+                        function.size = Some(val);
+                    },
                     _ => {}
                 },
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
@@ -1254,11 +1257,9 @@ where
             }
         }
 
-        if let Some(low_pc) = function.low_pc {
-            if let Some(high_pc) = function.high_pc {
-                function.size = high_pc.checked_sub(low_pc);
-            } else if let Some(size) = function.size {
-                function.high_pc = low_pc.checked_add(size);
+        if let (Some(address), Some(high_pc)) = (function.address, high_pc) {
+            if high_pc > address {
+                function.size = Some(high_pc - address);
             }
         }
     }

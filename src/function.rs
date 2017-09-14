@@ -1,3 +1,4 @@
+use std::borrow;
 use std::cmp;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -25,8 +26,7 @@ pub(crate) struct Function<'input> {
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,
     pub symbol_name: Option<&'input [u8]>,
-    pub low_pc: Option<u64>,
-    pub high_pc: Option<u64>,
+    pub address: Option<u64>,
     pub size: Option<u64>,
     pub inline: bool,
     pub declaration: bool,
@@ -44,21 +44,20 @@ impl<'input> Function<'input> {
         unit.functions.get(&offset)
     }
 
+    fn name(&self) -> borrow::Cow<'input, str> {
+        match self.name {
+            Some(name) => String::from_utf8_lossy(name),
+            None => borrow::Cow::Borrowed(&"<anon>"),
+        }
+    }
+
     pub fn address(&self) -> Option<Range> {
-        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
+        if let (Some(address), Some(size)) = (self.address, self.size) {
             Some(Range {
-                begin: low_pc,
-                end: high_pc,
-            })
-        } else if let Some(low_pc) = self.low_pc {
-            Some(Range {
-                begin: low_pc,
-                end: low_pc,
+                begin: address,
+                end: address + size,
             })
         } else {
-            if !self.inline && !self.declaration {
-                debug!("non-inline function with no address");
-            }
             None
         }
     }
@@ -71,11 +70,9 @@ impl<'input> Function<'input> {
     }
 
     fn calls(&self, file: &File) -> Vec<u64> {
-        if let (Some(low_pc), Some(high_pc)) = (self.low_pc, self.high_pc) {
-            if low_pc != 0 {
-                if let Some(code) = file.code() {
-                    return disassemble(code, low_pc, high_pc);
-                }
+        if let Some(address) = self.address() {
+            if let Some(code) = file.code() {
+                return disassemble(code, address);
             }
         }
         Vec::new()
@@ -85,10 +82,7 @@ impl<'input> Function<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name())?;
         Ok(())
     }
 
@@ -198,10 +192,7 @@ impl<'input> Function<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name())?;
         Ok(())
     }
 
@@ -297,7 +288,7 @@ impl<'input> Function<'input> {
     }
 
     pub fn filter(&self, options: &Options) -> bool {
-        if !self.inline && self.low_pc.is_none() {
+        if !self.inline && (self.address.is_none() || self.size.is_none()) {
             // This is either a declaration or a dead function that was removed
             // from the code, but wasn't removed from the debuginfo.
             // TODO: make this configurable?
@@ -373,7 +364,7 @@ impl<'input> SortList for Function<'input> {
     ) -> cmp::Ordering {
         match options.sort {
             // TODO: sort by offset?
-            Sort::None => a.low_pc.cmp(&b.low_pc),
+            Sort::None => a.address.cmp(&b.address),
             Sort::Name => Self::cmp_id_for_sort(state_a, a, state_b, b, options),
             Sort::Size => a.size.cmp(&b.size),
         }
@@ -572,28 +563,23 @@ impl<'input> DiffList for InlinedFunction<'input> {
     }
 }
 
-fn disassemble(code: &CodeRegion, low_pc: u64, high_pc: u64) -> Vec<u64> {
+fn disassemble(code: &CodeRegion, range: Range) -> Vec<u64> {
     match code.machine {
         panopticon::Machine::Amd64 => {
-            disassemble_arch::<amd64::Amd64>(&code.region, low_pc, high_pc, amd64::Mode::Long)
+            disassemble_arch::<amd64::Amd64>(&code.region, range, amd64::Mode::Long)
         }
         _ => Vec::new(),
     }
 }
 
-fn disassemble_arch<A>(
-    region: &panopticon::Region,
-    low_pc: u64,
-    high_pc: u64,
-    cfg: A::Configuration,
-) -> Vec<u64>
+fn disassemble_arch<A>(region: &panopticon::Region, range: Range, cfg: A::Configuration) -> Vec<u64>
 where
     A: panopticon::Architecture + Debug,
     A::Configuration: Debug,
 {
     let mut calls = Vec::new();
     let mut mnemonics = BTreeMap::new();
-    let mut jumps = vec![low_pc];
+    let mut jumps = vec![range.begin];
     while let Some(addr) = jumps.pop() {
         if mnemonics.contains_key(&addr) {
             continue;
@@ -648,7 +634,7 @@ where
 
         for (_origin, target, _guard) in m.jumps {
             if let panopticon::Rvalue::Constant { value, .. } = target {
-                if value > addr && value < high_pc {
+                if value > addr && value < range.end {
                     jumps.push(value);
                 }
             }
