@@ -80,7 +80,11 @@ impl<'input> Variable<'input> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
-            state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))?;
+            let flag = state.options.ignore_variable_symbol_name;
+            state.ignore_diff(
+                flag,
+                |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
+            )?;
             let flag = state.options.ignore_variable_address;
             state.ignore_diff(
                 flag,

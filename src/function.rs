@@ -128,7 +128,11 @@ impl<'input> Function<'input> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
-            state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))?;
+            let flag = state.options.ignore_function_symbol_name;
+            state.ignore_diff(
+                flag,
+                |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
+            )?;
             let flag = state.options.ignore_function_address;
             state.ignore_diff(
                 flag,

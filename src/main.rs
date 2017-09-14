@@ -20,6 +20,7 @@ const OPT_CATEGORY_VARIABLE: &'static str = "variable";
 
 // Print fields
 const OPT_PRINT: &'static str = "print";
+const OPT_PRINT_ADDRESS: &'static str = "address";
 const OPT_PRINT_FILE_ADDRESS: &'static str = "file-address";
 const OPT_PRINT_UNIT_ADDRESS: &'static str = "unit-address";
 const OPT_PRINT_FUNCTION_CALLS: &'static str = "function-calls";
@@ -45,10 +46,14 @@ const OPT_SORT_NAME: &'static str = "name";
 const OPT_IGNORE: &'static str = "ignore";
 const OPT_IGNORE_ADDED: &'static str = "added";
 const OPT_IGNORE_DELETED: &'static str = "deleted";
+const OPT_IGNORE_ADDRESS: &'static str = "address";
+const OPT_IGNORE_SYMBOL_NAME: &'static str = "symbol-name";
 const OPT_IGNORE_FUNCTION_ADDRESS: &'static str = "function-address";
 const OPT_IGNORE_FUNCTION_SIZE: &'static str = "function-size";
 const OPT_IGNORE_FUNCTION_INLINE: &'static str = "function-inline";
+const OPT_IGNORE_FUNCTION_SYMBOL_NAME: &'static str = "function-symbol-name";
 const OPT_IGNORE_VARIABLE_ADDRESS: &'static str = "variable-address";
+const OPT_IGNORE_VARIABLE_SYMBOL_NAME: &'static str = "variable-symbol-name";
 const OPT_PREFIX_MAP: &'static str = "prefix-map";
 
 fn main() {
@@ -99,6 +104,7 @@ fn main() {
                 .require_delimiter(true)
                 .value_name("FIELD")
                 .possible_values(&[
+                    OPT_PRINT_ADDRESS,
                     OPT_PRINT_FILE_ADDRESS,
                     OPT_PRINT_UNIT_ADDRESS,
                     OPT_PRINT_FUNCTION_CALLS,
@@ -143,10 +149,14 @@ fn main() {
                 .possible_values(&[
                     OPT_IGNORE_ADDED,
                     OPT_IGNORE_DELETED,
+                    OPT_IGNORE_ADDRESS,
+                    OPT_IGNORE_SYMBOL_NAME,
                     OPT_IGNORE_FUNCTION_ADDRESS,
                     OPT_IGNORE_FUNCTION_SIZE,
                     OPT_IGNORE_FUNCTION_INLINE,
+                    OPT_IGNORE_FUNCTION_SYMBOL_NAME,
                     OPT_IGNORE_VARIABLE_ADDRESS,
+                    OPT_IGNORE_VARIABLE_SYMBOL_NAME,
                 ]),
         )
         .arg(
@@ -209,6 +219,10 @@ fn main() {
     if let Some(values) = matches.values_of(OPT_PRINT) {
         for value in values {
             match value {
+                OPT_PRINT_ADDRESS => {
+                    options.print_file_address = true;
+                    options.print_unit_address = true;
+                }
                 OPT_PRINT_FILE_ADDRESS => options.print_file_address = true,
                 OPT_PRINT_UNIT_ADDRESS => options.print_unit_address = true,
                 OPT_PRINT_FUNCTION_CALLS => options.print_function_calls = true,
@@ -219,11 +233,6 @@ fn main() {
                 ).exit(),
             }
         }
-    } else {
-        options.print_file_address = false;
-        options.print_unit_address = false;
-        options.print_function_calls = false;
-        options.print_function_variables = false;
     }
 
     if let Some(values) = matches.values_of(OPT_FILTER) {
@@ -274,10 +283,20 @@ fn main() {
             match value {
                 OPT_IGNORE_ADDED => options.ignore_added = true,
                 OPT_IGNORE_DELETED => options.ignore_deleted = true,
+                OPT_IGNORE_ADDRESS => {
+                    options.ignore_function_address = true;
+                    options.ignore_variable_address = true;
+                }
+                OPT_IGNORE_SYMBOL_NAME => {
+                    options.ignore_function_symbol_name = true;
+                    options.ignore_variable_symbol_name = true;
+                }
                 OPT_IGNORE_FUNCTION_ADDRESS => options.ignore_function_address = true,
                 OPT_IGNORE_FUNCTION_SIZE => options.ignore_function_size = true,
                 OPT_IGNORE_FUNCTION_INLINE => options.ignore_function_inline = true,
+                OPT_IGNORE_FUNCTION_SYMBOL_NAME => options.ignore_function_symbol_name = true,
                 OPT_IGNORE_VARIABLE_ADDRESS => options.ignore_variable_address = true,
+                OPT_IGNORE_VARIABLE_SYMBOL_NAME => options.ignore_variable_symbol_name = true,
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_IGNORE, value),
                     clap::ErrorKind::InvalidValue,
