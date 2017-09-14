@@ -771,17 +771,11 @@ where
                         } else {
                             debug!("DW_AT_data_member_location is negative: {}", v)
                         },
-                        gimli::AttributeValue::Exprloc(expr) => {
-                            match evaluate(dwarf_unit.header, expr) {
-                                Some(gimli::Location::Address { address }) => {
-                                    member.bit_offset = address * 8;
-                                }
-                                Some(gimli::Location::Register { .. }) | None => {}
-                                Some(loc) => {
-                                    debug!("unknown DW_AT_data_member_location result: {:?}", loc)
-                                }
-                            }
-                        }
+                        gimli::AttributeValue::Exprloc(expr) => if let Some(offset) =
+                            evaluate_member_location(dwarf_unit.header, expr)
+                        {
+                            member.bit_offset = offset;
+                        },
                         gimli::AttributeValue::DebugLocRef(..) => {
                             // TODO
                         }
@@ -1669,20 +1663,14 @@ where
                 },
                 gimli::DW_AT_location => {
                     match attr.value() {
-                        gimli::AttributeValue::Exprloc(expr) => {
-                            match evaluate(dwarf_unit.header, expr) {
-                                Some(gimli::Location::Address { address }) => {
-                                    // TODO: is address 0 ever valid?
-                                    if address != 0 {
-                                        variable.address = Some(address);
-                                    }
-                                }
-                                Some(gimli::Location::Register { .. }) |
-                                Some(gimli::Location::Scalar { .. }) |
-                                None => {}
-                                Some(loc) => debug!("unknown DW_AT_location result: {:?}", loc),
+                        gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
+                            evaluate_variable_location(dwarf_unit.header, expr)
+                        {
+                            variable.address = Some(address);
+                            if size.is_some() {
+                                variable.size = size;
                             }
-                        }
+                        },
                         gimli::AttributeValue::DebugLocRef(..) => {
                             // TODO
                         }
@@ -1753,20 +1741,14 @@ where
                 },
                 gimli::DW_AT_location => {
                     match attr.value() {
-                        gimli::AttributeValue::Exprloc(expr) => {
-                            match evaluate(dwarf_unit.header, expr) {
-                                Some(gimli::Location::Address { address }) => {
-                                    // TODO: is address 0 ever valid?
-                                    if address != 0 {
-                                        variable.address = Some(address);
-                                    }
-                                }
-                                Some(gimli::Location::Register { .. }) |
-                                Some(gimli::Location::Scalar { .. }) |
-                                None => {}
-                                Some(loc) => debug!("unknown DW_AT_location result: {:?}", loc),
+                        gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
+                            evaluate_variable_location(dwarf_unit.header, expr)
+                        {
+                            variable.address = Some(address);
+                            if size.is_some() {
+                                variable.size = size;
                             }
-                        }
+                        },
                         gimli::AttributeValue::DebugLocRef(..) => {
                             // TODO
                         }
@@ -1819,11 +1801,62 @@ where
     Ok(())
 }
 
+fn evaluate_member_location<'input, Endian>(
+    unit: &gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
+    expression: gimli::Expression<gimli::EndianBuf<'input, Endian>>,
+) -> Option<u64>
+where
+    Endian: gimli::Endianity + 'input,
+{
+    let pieces = evaluate(unit, expression);
+    if pieces.len() != 1 {
+        debug!("unsupported number of evaluation pieces: {:?}", pieces);
+        return None;
+    }
+    match pieces[0].location {
+        gimli::Location::Address { address } => Some(address * 8),
+        gimli::Location::Register { .. } => None,
+        _ => {
+            debug!("unknown DW_AT_data_member_location result: {:?}", pieces);
+            None
+        }
+    }
+}
+
+fn evaluate_variable_location<'input, Endian>(
+    unit: &gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
+    expression: gimli::Expression<gimli::EndianBuf<'input, Endian>>,
+) -> Option<(u64, Option<u64>)>
+where
+    Endian: gimli::Endianity + 'input,
+{
+    let pieces = evaluate(unit, expression);
+    let mut result = None;
+    for piece in &*pieces {
+        match piece.location {
+            gimli::Location::Address { address } => {
+                if result.is_some() {
+                    debug!("unsupported DW_AT_location with multiple addresses: {:?}", pieces);
+                } else {
+                    // TODO: is address 0 ever valid?
+                    if address != 0 {
+                        result = Some((address, piece.size_in_bits.map(|x| (x + 7) / 8)));
+                    }
+                }
+            }
+            gimli::Location::Register { .. } |
+            gimli::Location::Scalar { .. } |
+            gimli::Location::ImplicitPointer { .. } => {}
+            _ => debug!("unknown DW_AT_location piece: {:?}", piece),
+        }
+    }
+    result
+}
 
 fn evaluate<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
     expression: gimli::Expression<gimli::EndianBuf<'input, Endian>>,
-) -> Option<gimli::Location<gimli::EndianBuf<'input, Endian>>>
+) -> Vec<gimli::Piece<gimli::EndianBuf<'input, Endian>>>
 where
     Endian: gimli::Endianity + 'input,
 {
@@ -1833,24 +1866,18 @@ where
     loop {
         match result {
             Ok(gimli::EvaluationResult::Complete) => {
-                let pieces = evaluation.result();
-                if pieces.len() == 1 {
-                    return Some(pieces[0].location);
-                } else {
-                    debug!("unsupported number of evaluation pieces: {}", pieces.len());
-                    return None;
-                }
+                return evaluation.result();
             }
             Ok(gimli::EvaluationResult::RequiresTextBase) => {
                 result = evaluation.resume_with_text_base(0);
             }
             Ok(_) => {
                 //debug!("incomplete evaluation");
-                return None;
+                return Vec::new();
             }
             Err(e) => {
                 debug!("evaluation failed: {}", e);
-                return None;
+                return Vec::new();
             }
         }
     }

@@ -199,6 +199,7 @@ pub(crate) struct LocalVariable<'input> {
     pub name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
     pub address: Option<u64>,
+    pub size: Option<u64>,
 }
 
 impl<'input> LocalVariable<'input> {
@@ -210,7 +211,11 @@ impl<'input> LocalVariable<'input> {
     }
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
-        self.ty(hash).and_then(|t| t.byte_size(hash))
+        if self.size.is_some() {
+            self.size
+        } else {
+            self.ty(hash).and_then(|t| t.byte_size(hash))
+        }
     }
 
     fn print_ref(&self, w: &mut Write) -> Result<()> {
