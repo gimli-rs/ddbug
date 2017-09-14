@@ -119,24 +119,27 @@ impl RangeList {
             loop {
                 match other_range {
                     Some(r) => {
+                        // Is r completely before range?
                         if r.end <= range.begin {
                             other_range = other_ranges.next();
                             continue;
                         }
+                        // Is r completely after range?
                         if r.begin >= range.end {
                             ranges.push(range);
                             break;
                         }
+                        // Do we need to keep the head of the range?
                         if r.begin > range.begin {
                             ranges.push(Range {
                                 begin: range.begin,
                                 end: r.begin,
                             });
-                            range.begin = r.begin;
-                            continue;
                         }
-                        if r.end <= range.end {
+                        // Do we need to keep the tail of the range?
+                        if r.end < range.end {
                             range.begin = r.end;
+                            other_range = other_ranges.next();
                             continue;
                         }
                         break;
