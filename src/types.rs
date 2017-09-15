@@ -921,14 +921,9 @@ impl<'input> Print for Member<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let bit_size = self.bit_size(state.hash);
         state.line(w, |w, state| self.print_name(w, state, bit_size))?;
-        state.indent(|state| {
-            let ty = if self.is_inline(state.hash) {
-                self.ty(state.hash)
-            } else {
-                None
-            };
-            Type::print_members("", w, state, unit, ty)
-        })?;
+        if self.is_inline(state.hash) {
+            Type::print_members("", w, state, unit, self.ty(state.hash))?;
+        }
         state.line_option(w, |w, state| self.print_padding(w, state, bit_size))
     }
 
