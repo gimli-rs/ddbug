@@ -102,7 +102,7 @@ pub(crate) fn parse(
                 parameter_count,
                 argument_list,
             }) => {
-                let return_type = parse_type_index(return_type);
+                let return_type = return_type.and_then(parse_type_index);
                 let argument_list = parse_type_index(argument_list);
                 parse_procedure(
                     &mut unit,
@@ -125,7 +125,7 @@ pub(crate) fn parse(
             }) => {
                 let return_type = parse_type_index(return_type);
                 let class_type = parse_type_index(class_type);
-                let this_pointer_type = parse_type_index(this_pointer_type);
+                let this_pointer_type = this_pointer_type.and_then(parse_type_index);
                 let argument_list = parse_type_index(argument_list);
                 parse_member_function(
                     &mut unit,
@@ -646,14 +646,14 @@ fn parse_field_list<'input>(
             }
             pdb::TypeData::Enumerate { value, name, .. } => {
                 let value = match value {
-                    pdb::EnumValue::U8(val) => val as i64,
-                    pdb::EnumValue::U16(val) => val as i64,
-                    pdb::EnumValue::U32(val) => val as i64,
-                    pdb::EnumValue::U64(val) => val as i64,
-                    pdb::EnumValue::I8(val) => val as i64,
-                    pdb::EnumValue::I16(val) => val as i64,
-                    pdb::EnumValue::I32(val) => val as i64,
-                    pdb::EnumValue::I64(val) => val as i64,
+                    pdb::Variant::U8(val) => val as i64,
+                    pdb::Variant::U16(val) => val as i64,
+                    pdb::Variant::U32(val) => val as i64,
+                    pdb::Variant::U64(val) => val as i64,
+                    pdb::Variant::I8(val) => val as i64,
+                    pdb::Variant::I16(val) => val as i64,
+                    pdb::Variant::I32(val) => val as i64,
+                    pdb::Variant::I64(val) => val as i64,
                 };
                 enumerators.push(Enumerator {
                     name: Some(name.as_bytes()),
