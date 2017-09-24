@@ -298,8 +298,8 @@ impl<'input> Function<'input> {
             // TODO: make this configurable?
             return false;
         }
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace) &&
-            options.filter_function_inline(self.inline)
+        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+            && options.filter_function_inline(self.inline)
     }
 }
 
@@ -555,8 +555,8 @@ impl<'input> DiffList for InlinedFunction<'input> {
         let mut cost = 0;
         let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v)).unwrap();
         let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v)).unwrap();
-        if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options) !=
-            cmp::Ordering::Equal
+        if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
+            != cmp::Ordering::Equal
         {
             cost += 1;
         }

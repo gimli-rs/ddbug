@@ -52,8 +52,8 @@ impl<'input> Namespace<'input> {
     pub fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
         match *namespace {
             Some(ref namespace) => {
-                namespace.kind == NamespaceKind::Type &&
-                    (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
+                namespace.kind == NamespaceKind::Type
+                    && (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
             }
             None => false,
         }
