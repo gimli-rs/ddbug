@@ -12,6 +12,7 @@ mod function;
 mod namespace;
 mod print;
 mod range;
+mod source;
 mod types;
 mod variable;
 mod unit;
@@ -90,6 +91,7 @@ impl Default for Sort {
 
 #[derive(Debug, Default, Clone)]
 pub struct Options<'a> {
+    pub print_source: bool,
     pub print_file_address: bool,
     pub print_unit_address: bool,
     pub print_function_calls: bool,

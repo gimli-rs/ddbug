@@ -7,6 +7,7 @@ use file::FileHash;
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList};
 use range::Range;
+use source::Source;
 use types::{Type, TypeOffset};
 use unit::Unit;
 
@@ -20,9 +21,10 @@ pub(crate) struct Variable<'input> {
     pub linkage_name: Option<&'input [u8]>,
     pub symbol_name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
-    pub declaration: bool,
+    pub source: Source<'input>,
     pub address: Option<u64>,
     pub size: Option<u64>,
+    pub declaration: bool,
 }
 
 impl<'input> Variable<'input> {
@@ -67,6 +69,9 @@ impl<'input> Variable<'input> {
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
             state.line_option(w, |w, _state| self.print_symbol_name(w))?;
+            if state.options.print_source {
+                state.line_option(w, |w, _state| self.print_source(w))?;
+            }
             state.line_option(w, |w, _state| self.print_address(w))?;
             state.line_option(w, |w, state| self.print_size(w, state))?;
             state.line_option(w, |w, _state| self.print_declaration(w))
@@ -85,6 +90,9 @@ impl<'input> Variable<'input> {
                 flag,
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
             )?;
+            if state.options.print_source {
+                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+            }
             let flag = state.options.ignore_variable_address;
             state.ignore_diff(
                 flag,
@@ -115,6 +123,14 @@ impl<'input> Variable<'input> {
     fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
         if let Some(symbol_name) = self.symbol_name {
             write!(w, "symbol name: {}", String::from_utf8_lossy(symbol_name))?;
+        }
+        Ok(())
+    }
+
+    fn print_source(&self, w: &mut Write) -> Result<()> {
+        if self.source.is_some() {
+            write!(w, "source: ")?;
+            self.source.print(w)?;
         }
         Ok(())
     }
@@ -202,6 +218,7 @@ pub(crate) struct LocalVariable<'input> {
     pub offset: VariableOffset,
     pub name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
+    pub source: Source<'input>,
     pub address: Option<u64>,
     pub size: Option<u64>,
 }

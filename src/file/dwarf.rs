@@ -3,10 +3,11 @@ use std::mem;
 
 use gimli;
 
-use range::Range;
 use Result;
 use function::{Function, FunctionOffset, InlinedFunction, Parameter, ParameterOffset};
 use namespace::{Namespace, NamespaceKind};
+use range::Range;
+use source::Source;
 use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member,
             PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
@@ -32,6 +33,12 @@ where
 {
     header: &'state gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
     abbrev: &'state gimli::Abbreviations,
+    line: Option<
+        gimli::StateMachine<
+            gimli::EndianBuf<'input, Endian>,
+            gimli::IncompleteLineNumberProgram<gimli::EndianBuf<'input, Endian>>,
+        >,
+    >,
     subprograms: Vec<DwarfSubprogram<'input>>,
     variables: Vec<DwarfVariable<'input>>,
 }
@@ -93,6 +100,7 @@ where
     let mut dwarf_unit = DwarfUnitState {
         header: unit_header,
         abbrev: abbrev,
+        line: None,
         subprograms: Vec::new(),
         variables: Vec::new(),
     };
@@ -185,6 +193,7 @@ where
                     seq_addr = Some(addr);
                 }
             }
+            dwarf_unit.line = Some(rows);
         } else if let Some(offset) = ranges {
             let low_pc = unit.low_pc.unwrap_or(0);
             let mut ranges =
@@ -399,7 +408,7 @@ where
                 gimli::DW_AT_name => {
                     name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
                 }
-                gimli::DW_AT_decl_file | gimli::DW_AT_decl_line => {}
+                gimli::DW_AT_decl_file | gimli::DW_AT_decl_line | gimli::DW_AT_decl_column => {}
                 _ => debug!("unknown namespace attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -589,7 +598,9 @@ where
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     typedef.ty = Some(offset);
                 },
-                gimli::DW_AT_decl_file | gimli::DW_AT_decl_line => {}
+                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut typedef.source),
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut typedef.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut typedef.source),
                 _ => debug!("unknown typedef attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -633,11 +644,10 @@ where
                 {
                     ty.declaration = flag;
                 },
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line |
-                gimli::DW_AT_containing_type |
-                gimli::DW_AT_alignment |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
+                gimli::DW_AT_containing_type | gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown struct attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -704,10 +714,10 @@ where
                 {
                     ty.declaration = flag;
                 },
-                gimli::DW_AT_alignment |
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
+                gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown union attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -802,6 +812,7 @@ where
                 }
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
+                gimli::DW_AT_decl_column |
                 gimli::DW_AT_external |
                 gimli::DW_AT_accessibility |
                 gimli::DW_AT_artificial |
@@ -898,8 +909,9 @@ where
                 {
                     ty.declaration = flag;
                 },
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line |
+                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
                 gimli::DW_AT_sibling |
                 gimli::DW_AT_type |
                 gimli::DW_AT_alignment |
@@ -1176,6 +1188,7 @@ where
         name: None,
         symbol_name: None,
         linkage_name: None,
+        source: Source::default(),
         address: None,
         size: None,
         inline: false,
@@ -1201,6 +1214,11 @@ where
                 gimli::DW_AT_linkage_name | gimli::DW_AT_MIPS_linkage_name => {
                     function.linkage_name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
                 }
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf_unit, &attr, &mut function.source)
+                }
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut function.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut function.source),
                 gimli::DW_AT_inline => if let gimli::AttributeValue::Inline(val) = attr.value() {
                     match val {
                         gimli::DW_INL_inlined | gimli::DW_INL_declared_inlined => {
@@ -1235,8 +1253,6 @@ where
                 {
                     function.declaration = flag;
                 },
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line |
                 gimli::DW_AT_frame_base |
                 gimli::DW_AT_external |
                 gimli::DW_AT_GNU_all_call_sites |
@@ -1299,6 +1315,9 @@ fn inherit_subprogram<'input>(
     }
     if function.linkage_name.is_none() {
         function.linkage_name = specification.linkage_name;
+    }
+    if function.source.is_none() {
+        function.source = specification.source;
     }
     if function.return_type.is_none() {
         function.return_type = specification.return_type;
@@ -1410,6 +1429,7 @@ where
                 },
                 gimli::DW_AT_decl_file |
                 gimli::DW_AT_decl_line |
+                gimli::DW_AT_decl_column |
                 gimli::DW_AT_location |
                 gimli::DW_AT_artificial |
                 gimli::DW_AT_const_value |
@@ -1662,6 +1682,11 @@ where
                 {
                     variable.declaration = flag;
                 },
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf_unit, &attr, &mut variable.source)
+                }
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
                 gimli::DW_AT_location => {
                     match attr.value() {
                         gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
@@ -1685,9 +1710,7 @@ where
                 gimli::DW_AT_const_value |
                 gimli::DW_AT_external |
                 gimli::DW_AT_accessibility |
-                gimli::DW_AT_alignment |
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line => {}
+                gimli::DW_AT_alignment => {}
                 _ => debug!("unknown variable attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1740,6 +1763,11 @@ where
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     variable.ty = Some(offset);
                 },
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf_unit, &attr, &mut variable.source)
+                }
+                gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
+                gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
                 gimli::DW_AT_location => {
                     match attr.value() {
                         gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
@@ -1761,10 +1789,8 @@ where
                 gimli::DW_AT_alignment |
                 gimli::DW_AT_artificial |
                 gimli::DW_AT_const_value |
-                gimli::DW_AT_external |
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line => {}
-                _ => debug!("unknown variable attribute: {} {:?}", attr.name(), attr.value()),
+                gimli::DW_AT_external => {}
+                _ => debug!("unknown local variable attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
     }
@@ -1965,4 +1991,62 @@ where
     Endian: gimli::Endianity,
 {
     parse_debug_info_offset(dwarf_unit, attr).map(|x| x.into())
+}
+
+fn parse_source_file<'state, 'input, Endian>(
+    dwarf_unit: &DwarfUnitState<'state, 'input, Endian>,
+    attr: &gimli::Attribute<gimli::EndianBuf<'input, Endian>>,
+    source: &mut Source<'input>,
+) where
+    Endian: gimli::Endianity,
+{
+    match attr.value() {
+        gimli::AttributeValue::FileIndex(val) => if val != 0 {
+            if let Some(ref line) = dwarf_unit.line {
+                if let Some(entry) = line.header().file(val) {
+                    source.file = Some(entry.path_name().buf());
+                    if let Some(directory) = entry.directory(line.header()) {
+                        source.directory = Some(directory.buf());
+                    } else {
+                        debug!("invalid directory index {}", entry.directory_index());
+                    }
+                } else {
+                    debug!("invalid file index {}", val);
+                }
+            }
+        },
+        val => {
+            debug!("unknown DW_AT_decl_file attribute value: {:?}", val);
+        }
+    }
+}
+
+fn parse_source_line<Endian>(attr: &gimli::Attribute<gimli::EndianBuf<Endian>>, source: &mut Source)
+where
+    Endian: gimli::Endianity,
+{
+    match attr.value() {
+        gimli::AttributeValue::Udata(val) => if val != 0 {
+            source.line = val;
+        },
+        val => {
+            debug!("unknown DW_AT_decl_line attribute value: {:?}", val);
+        }
+    }
+}
+
+fn parse_source_column<Endian>(
+    attr: &gimli::Attribute<gimli::EndianBuf<Endian>>,
+    source: &mut Source,
+) where
+    Endian: gimli::Endianity,
+{
+    match attr.value() {
+        gimli::AttributeValue::Udata(val) => if val != 0 {
+            source.column = val;
+        },
+        val => {
+            debug!("unknown DW_AT_decl_column attribute value: {:?}", val);
+        }
+    }
 }

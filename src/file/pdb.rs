@@ -251,6 +251,7 @@ pub(crate) fn parse(
                         name: Some(symbol.name()?.as_bytes()),
                         symbol_name: None,
                         linkage_name: None,
+                        source: Default::default(),
                         address: Some(offset as u64),
                         size: None,
                         inline: false,
@@ -387,6 +388,7 @@ fn parse_class<'input>(
             kind: TypeKind::Struct(StructType {
                 namespace: namespace.clone(),
                 name: Some(name.as_bytes()),
+                source: Default::default(),
                 byte_size: byte_size,
                 declaration: declaration,
                 members: members,
@@ -427,6 +429,7 @@ fn parse_union<'input>(
             kind: TypeKind::Union(UnionType {
                 namespace: namespace.clone(),
                 name: Some(name.as_bytes()),
+                source: Default::default(),
                 byte_size: byte_size,
                 declaration: declaration,
                 members: members,
@@ -461,6 +464,7 @@ fn parse_enumeration<'input>(
             kind: TypeKind::Enumeration(EnumerationType {
                 namespace: namespace.clone(),
                 name: Some(name.as_bytes()),
+                source: Default::default(),
                 declaration: declaration,
                 ty: underlying_type,
                 byte_size: None,

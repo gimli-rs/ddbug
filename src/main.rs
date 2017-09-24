@@ -21,6 +21,7 @@ const OPT_CATEGORY_VARIABLE: &'static str = "variable";
 // Print fields
 const OPT_PRINT: &'static str = "print";
 const OPT_PRINT_ADDRESS: &'static str = "address";
+const OPT_PRINT_SOURCE: &'static str = "source";
 const OPT_PRINT_FILE_ADDRESS: &'static str = "file-address";
 const OPT_PRINT_UNIT_ADDRESS: &'static str = "unit-address";
 const OPT_PRINT_FUNCTION_CALLS: &'static str = "function-calls";
@@ -105,6 +106,7 @@ fn main() {
                 .value_name("FIELD")
                 .possible_values(&[
                     OPT_PRINT_ADDRESS,
+                    OPT_PRINT_SOURCE,
                     OPT_PRINT_FILE_ADDRESS,
                     OPT_PRINT_UNIT_ADDRESS,
                     OPT_PRINT_FUNCTION_CALLS,
@@ -223,6 +225,7 @@ fn main() {
                     options.print_file_address = true;
                     options.print_unit_address = true;
                 }
+                OPT_PRINT_SOURCE => options.print_source = true,
                 OPT_PRINT_FILE_ADDRESS => options.print_file_address = true,
                 OPT_PRINT_UNIT_ADDRESS => options.print_unit_address = true,
                 OPT_PRINT_FUNCTION_CALLS => options.print_function_calls = true,

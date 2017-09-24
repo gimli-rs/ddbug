@@ -8,6 +8,7 @@ use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList};
+use source::Source;
 use unit::Unit;
 
 #[derive(Debug)]
@@ -493,6 +494,7 @@ pub(crate) struct TypeDef<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub ty: Option<TypeOffset>,
+    pub source: Source<'input>,
 }
 
 impl<'input> TypeDef<'input> {
@@ -526,6 +528,14 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
+    fn print_source(&self, w: &mut Write) -> Result<()> {
+        if self.source.is_some() {
+            write!(w, "source: ")?;
+            self.source.print(w)?;
+        }
+        Ok(())
+    }
+
     fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
         if let Some(byte_size) = self.byte_size(state.hash) {
             write!(w, "size: {}", byte_size)?;
@@ -537,6 +547,9 @@ impl<'input> TypeDef<'input> {
         let ty = self.ty(state.hash);
         state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, |w, _state| self.print_source(w))?;
+            }
             state.line(w, |w, state| self.print_byte_size(w, state))?;
             if let Some(ty) = ty {
                 if ty.is_anon() {
@@ -559,6 +572,9 @@ impl<'input> TypeDef<'input> {
     ) -> Result<()> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+            }
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
             let ty_b = filter_option(b.ty(state.b.hash), Type::is_anon);
@@ -592,6 +608,7 @@ where
 pub(crate) struct StructType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
+    pub source: Source<'input>,
     pub byte_size: Option<u64>,
     pub declaration: bool,
     pub members: Vec<Member<'input>>,
@@ -627,6 +644,9 @@ impl<'input> StructType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, |w, _state| self.print_source(w))?;
+            }
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_members("members", w, state, unit)
@@ -646,11 +666,22 @@ impl<'input> StructType<'input> {
         // The names should be the same, but we can't be sure.
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+            }
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", w, state, unit_a, a, unit_b, b)
         })?;
         writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_source(&self, w: &mut Write) -> Result<()> {
+        if self.source.is_some() {
+            write!(w, "source: ")?;
+            self.source.print(w)?;
+        }
         Ok(())
     }
 
@@ -708,6 +739,7 @@ impl<'input> StructType<'input> {
 pub(crate) struct UnionType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
+    pub source: Source<'input>,
     pub byte_size: Option<u64>,
     pub declaration: bool,
     pub members: Vec<Member<'input>>,
@@ -743,6 +775,9 @@ impl<'input> UnionType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, |w, _state| self.print_source(w))?;
+            }
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             self.print_members("members", w, state, unit)
@@ -762,11 +797,22 @@ impl<'input> UnionType<'input> {
         // The names should be the same, but we can't be sure.
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+            }
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", w, state, unit_a, a, unit_b, b)
         })?;
         writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_source(&self, w: &mut Write) -> Result<()> {
+        if self.source.is_some() {
+            write!(w, "source: ")?;
+            self.source.print(w)?;
+        }
         Ok(())
     }
 
@@ -1001,6 +1047,7 @@ impl Padding {
 pub(crate) struct EnumerationType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
+    pub source: Source<'input>,
     pub declaration: bool,
     pub ty: Option<TypeOffset>,
     pub byte_size: Option<u64>,
@@ -1038,6 +1085,9 @@ impl<'input> EnumerationType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, |w, _state| self.print_source(w))?;
+            }
             state.line_option(w, |w, _state| self.print_declaration(w))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
             state.list("enumerators", w, unit, &self.enumerators)
@@ -1057,12 +1107,23 @@ impl<'input> EnumerationType<'input> {
         // The names should be the same, but we can't be sure.
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
+            if state.options.print_source {
+                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+            }
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             // TODO: handle reordering better
             state.list("enumerators", w, unit_a, &a.enumerators, unit_b, &b.enumerators)
         })?;
         writeln!(w, "")?;
+        Ok(())
+    }
+
+    fn print_source(&self, w: &mut Write) -> Result<()> {
+        if self.source.is_some() {
+            write!(w, "source: ")?;
+            self.source.print(w)?;
+        }
         Ok(())
     }
 
