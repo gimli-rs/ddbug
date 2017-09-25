@@ -67,6 +67,9 @@ impl<'input> Namespace<'input> {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
+        if self.kind == NamespaceKind::Function {
+            write!(w, "()")?;
+        }
         write!(w, "::")?;
         Ok(())
     }
