@@ -528,10 +528,10 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write) -> Result<()> {
+    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             write!(w, "source: ")?;
-            self.source.print(w)?;
+            self.source.print(w, unit)?;
         }
         Ok(())
     }
@@ -548,7 +548,7 @@ impl<'input> TypeDef<'input> {
         state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, |w, _state| self.print_source(w))?;
+                state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line(w, |w, state| self.print_byte_size(w, state))?;
             if let Some(ty) = ty {
@@ -573,7 +573,12 @@ impl<'input> TypeDef<'input> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_source(w, unit),
+                )?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
@@ -645,7 +650,7 @@ impl<'input> StructType<'input> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, |w, _state| self.print_source(w))?;
+                state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
@@ -667,7 +672,12 @@ impl<'input> StructType<'input> {
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_source(w, unit),
+                )?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
@@ -677,10 +687,10 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write) -> Result<()> {
+    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             write!(w, "source: ")?;
-            self.source.print(w)?;
+            self.source.print(w, unit)?;
         }
         Ok(())
     }
@@ -776,7 +786,7 @@ impl<'input> UnionType<'input> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, |w, _state| self.print_source(w))?;
+                state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
@@ -798,7 +808,12 @@ impl<'input> UnionType<'input> {
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_source(w, unit),
+                )?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
@@ -808,10 +823,10 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write) -> Result<()> {
+    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             write!(w, "source: ")?;
-            self.source.print(w)?;
+            self.source.print(w, unit)?;
         }
         Ok(())
     }
@@ -1086,7 +1101,7 @@ impl<'input> EnumerationType<'input> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, |w, _state| self.print_source(w))?;
+                state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, _state| self.print_declaration(w))?;
             state.line_option(w, |w, state| self.print_byte_size(w, state))?;
@@ -1108,7 +1123,12 @@ impl<'input> EnumerationType<'input> {
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_source(w, unit),
+                )?;
             }
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
@@ -1119,10 +1139,10 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write) -> Result<()> {
+    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             write!(w, "source: ")?;
-            self.source.print(w)?;
+            self.source.print(w, unit)?;
         }
         Ok(())
     }

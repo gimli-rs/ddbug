@@ -94,7 +94,7 @@ impl<'input> Function<'input> {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
             state.line_option(w, |w, _state| self.print_symbol_name(w))?;
             if state.options.print_source {
-                state.line_option(w, |w, _state| self.print_source(w))?;
+                state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, _state| self.print_address(w))?;
             state.line_option(w, |w, _state| self.print_size(w))?;
@@ -139,7 +139,12 @@ impl<'input> Function<'input> {
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
             )?;
             if state.options.print_source {
-                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_source(w, unit),
+                )?;
             }
             let flag = state.options.ignore_function_address;
             state.ignore_diff(
@@ -222,10 +227,10 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write) -> Result<()> {
+    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             write!(w, "source: ")?;
-            self.source.print(w)?;
+            self.source.print(w, unit)?;
         }
         Ok(())
     }

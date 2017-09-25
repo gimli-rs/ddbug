@@ -64,13 +64,13 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    pub fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    pub fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
             state.line_option(w, |w, _state| self.print_symbol_name(w))?;
             if state.options.print_source {
-                state.line_option(w, |w, _state| self.print_source(w))?;
+                state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, _state| self.print_address(w))?;
             state.line_option(w, |w, state| self.print_size(w, state))?;
@@ -81,7 +81,14 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    pub fn diff(w: &mut Write, state: &mut DiffState, a: &Variable, b: &Variable) -> Result<()> {
+    pub fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        unit_a: &Unit,
+        a: &Variable,
+        unit_b: &Unit,
+        b: &Variable,
+    ) -> Result<()> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
@@ -91,7 +98,12 @@ impl<'input> Variable<'input> {
                 |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
             )?;
             if state.options.print_source {
-                state.line_option(w, a, b, |w, _state, x| x.print_source(w))?;
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_source(w, unit),
+                )?;
             }
             let flag = state.options.ignore_variable_address;
             state.ignore_diff(
@@ -127,10 +139,10 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write) -> Result<()> {
+    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             write!(w, "source: ")?;
-            self.source.print(w)?;
+            self.source.print(w, unit)?;
         }
         Ok(())
     }
@@ -168,21 +180,21 @@ impl<'input> Variable<'input> {
 }
 
 impl<'input> Print for Variable<'input> {
-    type Arg = ();
+    type Arg = Unit<'input>;
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
-        self.print(w, state)
+    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        self.print(w, state, unit)
     }
 
     fn diff(
         w: &mut Write,
         state: &mut DiffState,
-        _arg_a: &(),
+        unit_a: &Unit,
         a: &Self,
-        _arg_b: &(),
+        unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        Self::diff(w, state, a, b)
+        Self::diff(w, state, unit_a, a, unit_b, b)
     }
 }
 

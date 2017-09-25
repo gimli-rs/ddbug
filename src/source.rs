@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use Result;
+use unit::Unit;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct Source<'input> {
@@ -19,9 +20,16 @@ impl<'input> Source<'input> {
         self.file.is_some()
     }
 
-    pub fn print(&self, w: &mut Write) -> Result<()> {
+    pub fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        fn is_absolute(directory: &[u8]) -> bool {
+            directory.get(0) == Some(&b'/') || directory.get(1) == Some(&b':')
+        }
+
         if let Some(file) = self.file {
             if let Some(directory) = self.directory {
+                if let (false, Some(unit_dir)) = (is_absolute(directory), unit.dir) {
+                    write!(w, "{}/", String::from_utf8_lossy(unit_dir))?;
+                }
                 write!(w, "{}/", String::from_utf8_lossy(directory))?;
             }
             write!(w, "{}", String::from_utf8_lossy(file))?;

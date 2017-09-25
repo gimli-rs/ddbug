@@ -156,7 +156,7 @@ impl<'input> Unit<'input> {
             state.sort_list(w, self, &mut *self.filter_functions(state.options))?;
         }
         if state.options.category_variable {
-            state.sort_list(w, &(), &mut *self.filter_variables(state.options))?;
+            state.sort_list(w, self, &mut *self.filter_variables(state.options))?;
         }
         Ok(())
     }
@@ -236,9 +236,9 @@ impl<'input> Unit<'input> {
         if state.options.category_variable {
             state.sort_list(
                 w,
-                &(),
+                unit_a,
                 &mut *unit_a.filter_variables(state.options),
-                &(),
+                unit_b,
                 &mut *unit_b.filter_variables(state.options),
             )?;
         }
