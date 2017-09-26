@@ -71,7 +71,7 @@ impl<'input> Function<'input> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn calls(&self, file: &File) -> Vec<u64> {
+    fn calls(&self, file: &File) -> Vec<Call> {
         if let Some(address) = self.address() {
             if let Some(code) = file.code() {
                 return disassemble(code, address);
@@ -288,11 +288,11 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn print_calls(&self, w: &mut Write, state: &mut PrintState, calls: &[u64]) -> Result<()> {
+    fn print_calls(&self, w: &mut Write, state: &mut PrintState, calls: &[Call]) -> Result<()> {
         for call in calls {
             state.line(w, |w, state| {
-                write!(w, "0x{:x}", call)?;
-                if let Some(function) = state.hash.functions.get(call) {
+                write!(w, "0x{:x} -> 0x{:x}", call.from, call.to)?;
+                if let Some(function) = state.hash.functions.get(&call.to) {
                     write!(w, " ")?;
                     function.print_ref(w)?;
                 }
@@ -305,8 +305,8 @@ impl<'input> Function<'input> {
     fn diff_calls(
         _w: &mut Write,
         _state: &mut DiffState,
-        _calls_a: &[u64],
-        _calls_b: &[u64],
+        _calls_a: &[Call],
+        _calls_b: &[Call],
     ) -> Result<()> {
         // TODO
         Ok(())
@@ -588,7 +588,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
     }
 }
 
-fn disassemble(code: &CodeRegion, range: Range) -> Vec<u64> {
+fn disassemble(code: &CodeRegion, range: Range) -> Vec<Call> {
     match code.machine {
         panopticon::Machine::Amd64 => {
             disassemble_arch::<amd64::Amd64>(&code.region, range, amd64::Mode::Long)
@@ -597,7 +597,11 @@ fn disassemble(code: &CodeRegion, range: Range) -> Vec<u64> {
     }
 }
 
-fn disassemble_arch<A>(region: &panopticon::Region, range: Range, cfg: A::Configuration) -> Vec<u64>
+fn disassemble_arch<A>(
+    region: &panopticon::Region,
+    range: Range,
+    cfg: A::Configuration,
+) -> Vec<Call>
 where
     A: panopticon::Architecture + Debug,
     A::Configuration: Debug,
@@ -646,7 +650,10 @@ where
                         ..
                     } => match *call {
                         panopticon::Rvalue::Constant { ref value, .. } => {
-                            calls.push(*value);
+                            calls.push(Call {
+                                from: mnemonic.area.start,
+                                to: *value,
+                            });
                         }
                         _ => {}
                     },
@@ -666,4 +673,9 @@ where
         }
     }
     calls
+}
+
+struct Call {
+    from: u64,
+    to: u64,
 }
