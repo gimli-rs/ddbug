@@ -111,10 +111,7 @@ impl<'input> Function<'input> {
                 .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
             if state.options.print_function_calls {
                 let calls = self.calls(state.file);
-                if !calls.is_empty() {
-                    state.line(w, |w, _state| self.print_calls_label(w))?;
-                    state.indent(|state| self.print_calls(w, state, &calls))?;
-                }
+                state.list("calls", w, &(), &calls)?;
             }
             Ok(())
         })?;
@@ -186,17 +183,10 @@ impl<'input> Function<'input> {
                     &b.inlined_functions,
                 )
             })?;
-            // TODO
-            if false && state.options.print_function_calls {
+            if state.options.print_function_calls {
                 let calls_a = a.calls(state.a.file);
                 let calls_b = b.calls(state.b.file);
-                state.line_option(w, (a, &calls_a), (b, &calls_b), |w, _state, (x, calls)| {
-                    if !calls.is_empty() {
-                        x.print_calls_label(w)?;
-                    }
-                    Ok(())
-                })?;
-                state.indent(|state| Function::diff_calls(w, state, &calls_a, &calls_b))?;
+                state.list("calls", w, &(), &calls_a, &(), &calls_b)?;
             }
             Ok(())
         })?;
@@ -280,35 +270,6 @@ impl<'input> Function<'input> {
             write!(w, "\t")?;
             Type::print_ref_from_offset(w, state, self.return_type)?;
         }
-        Ok(())
-    }
-
-    fn print_calls_label(&self, w: &mut Write) -> Result<()> {
-        write!(w, "calls:")?;
-        Ok(())
-    }
-
-    fn print_calls(&self, w: &mut Write, state: &mut PrintState, calls: &[Call]) -> Result<()> {
-        for call in calls {
-            state.line(w, |w, state| {
-                write!(w, "0x{:x} -> 0x{:x}", call.from, call.to)?;
-                if let Some(function) = state.hash.functions.get(&call.to) {
-                    write!(w, " ")?;
-                    function.print_ref(w)?;
-                }
-                Ok(())
-            })?;
-        }
-        Ok(())
-    }
-
-    fn diff_calls(
-        _w: &mut Write,
-        _state: &mut DiffState,
-        _calls_a: &[Call],
-        _calls_b: &[Call],
-    ) -> Result<()> {
-        // TODO
         Ok(())
     }
 
@@ -678,4 +639,65 @@ where
 struct Call {
     from: u64,
     to: u64,
+}
+
+impl Call {
+    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+        if !state.options.ignore_function_address {
+            // FIXME: it would be nice to display this in a way that doesn't clutter the output
+            // when diffing
+            write!(w, "0x{:x} -> 0x{:x} ", self.from, self.to)?;
+        }
+        if let Some(function) = state.hash.functions.get(&self.to) {
+            function.print_ref(w)?;
+        } else if state.options.ignore_function_address {
+            // We haven't displayed an address yet, so we need to display something.
+            write!(w, "0x{:x}", self.to)?;
+        }
+        Ok(())
+    }
+}
+
+impl Print for Call {
+    type Arg = ();
+
+    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
+        state.line(w, |w, state| self.print(w, state))
+    }
+
+    fn diff(
+        w: &mut Write,
+        state: &mut DiffState,
+        arg_a: &(),
+        a: &Self,
+        arg_b: &(),
+        b: &Self,
+    ) -> Result<()> {
+        let flag = Call::diff_cost(state, arg_a, a, arg_b, b) == 0;
+        state.ignore_diff(flag, |state| state.line(w, a, b, |w, state, x| x.print(w, state)))
+    }
+}
+
+impl DiffList for Call {
+    fn step_cost() -> usize {
+        1
+    }
+
+    fn diff_cost(state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
+        let mut cost = 0;
+        match (state.a.hash.functions.get(&a.to), state.b.hash.functions.get(&b.to)) {
+            (Some(function_a), Some(function_b)) => {
+                if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
+                    != cmp::Ordering::Equal
+                {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+        cost
+    }
 }
