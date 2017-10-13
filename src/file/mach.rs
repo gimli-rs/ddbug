@@ -24,14 +24,14 @@ pub(crate) fn parse(
         }
         let section_name = name;
 
-        for segment in &*macho.segments {
+        for segment in &macho.segments {
             if let Ok(name) = segment.name() {
                 if name == "__DWARF" {
-                    if let Ok(sections) = segment.sections() {
-                        for section in sections {
+                    for section in segment {
+                        if let Ok((section, data)) = section {
                             if let Ok(name) = section.name() {
                                 if name.as_bytes() == &*section_name {
-                                    return section.data;
+                                    return data;
                                 }
                             }
                         }

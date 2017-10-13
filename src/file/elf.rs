@@ -2,6 +2,8 @@ use gimli;
 use goblin;
 use panopticon;
 
+use std::result;
+
 use Result;
 use file::{dwarf, CodeRegion, File, Section, Symbol, SymbolType};
 
@@ -50,7 +52,7 @@ pub(crate) fn parse(
 
     let mut sections = Vec::new();
     for sh in &elf.section_headers {
-        let name = elf.shdr_strtab.get(sh.sh_name).ok().map(str::as_bytes);
+        let name = elf.shdr_strtab.get(sh.sh_name).and_then(result::Result::ok).map(str::as_bytes);
         let address = if sh.sh_addr != 0 {
             Some(sh.sh_addr)
         } else {
@@ -86,7 +88,7 @@ pub(crate) fn parse(
             _ => continue,
         };
 
-        let name = elf.strtab.get(sym.st_name).ok().map(str::as_bytes);
+        let name = elf.strtab.get(sym.st_name).and_then(result::Result::ok).map(str::as_bytes);
 
         symbols.push(Symbol {
             name,
@@ -99,7 +101,7 @@ pub(crate) fn parse(
     // Code based on 'object' crate
     let get_section = |section_name: &str| -> &[u8] {
         for sh in &elf.section_headers {
-            if let Ok(name) = elf.shdr_strtab.get(sh.sh_name) {
+            if let Some(Ok(name)) = elf.shdr_strtab.get(sh.sh_name) {
                 if name == section_name {
                     return &input[sh.sh_offset as usize..][..sh.sh_size as usize];
                 }
