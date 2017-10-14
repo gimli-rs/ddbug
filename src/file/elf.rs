@@ -106,7 +106,10 @@ pub(crate) fn parse(
     // Code based on 'object' crate
     let get_section = |section_name: &str| -> &[u8] {
         for sh in &elf.section_headers {
-            if let Some(Ok(name)) = elf.shdr_strtab.get(sh.sh_name) {
+            if let Some(Ok(mut name)) = elf.shdr_strtab.get(sh.sh_name) {
+                while name.starts_with(".") {
+                    name = &name[1..];
+                }
                 if name == section_name {
                     return &input[sh.sh_offset as usize..][..sh.sh_size as usize];
                 }

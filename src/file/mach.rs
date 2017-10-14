@@ -18,21 +18,16 @@ pub(crate) fn parse(
 
     // Code based on 'object' crate
     let get_section = |section_name: &str| -> &[u8] {
-        let mut name = Vec::with_capacity(section_name.len() + 1);
-        name.push(b'_');
-        name.push(b'_');
-        for ch in &section_name.as_bytes()[1..] {
-            name.push(*ch);
-        }
-        let section_name = name;
-
         for segment in &macho.segments {
             if let Ok(name) = segment.name() {
                 if name == "__DWARF" {
                     for section in segment {
                         if let Ok((section, data)) = section {
-                            if let Ok(name) = section.name() {
-                                if name.as_bytes() == &*section_name {
+                            if let Ok(mut name) = section.name() {
+                                while name.starts_with("_") {
+                                    name = &name[1..];
+                                }
+                                if name == section_name {
                                     return data;
                                 }
                             }
