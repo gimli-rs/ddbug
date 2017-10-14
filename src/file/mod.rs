@@ -1,3 +1,4 @@
+use std::borrow;
 use std::cmp;
 use std::collections::HashMap;
 use std::fs;
@@ -358,7 +359,8 @@ impl<'a, 'input> FileHash<'a, 'input> {
 
 #[derive(Debug)]
 pub(crate) struct Section<'input> {
-    name: Option<&'input [u8]>,
+    name: Option<borrow::Cow<'input, [u8]>>,
+    segment: Option<borrow::Cow<'input, [u8]>>,
     address: Option<u64>,
     size: u64,
 }
@@ -374,8 +376,11 @@ impl<'input> Section<'input> {
     }
 
     fn print_name(&self, w: &mut Write) -> Result<()> {
+        if let Some(ref segment) = self.segment {
+            write!(w, "{},", String::from_utf8_lossy(&*segment))?;
+        }
         match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            Some(ref name) => write!(w, "{}", String::from_utf8_lossy(&*name))?,
             None => write!(w, "<anon-section>")?,
         }
         Ok(())
@@ -424,7 +429,9 @@ impl<'input> DiffList for Section<'input> {
 
     fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
         let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+        if a.name.cmp(&b.name) != cmp::Ordering::Equal
+            || a.segment.cmp(&b.segment) != cmp::Ordering::Equal
+        {
             cost += 2;
         }
         cost

@@ -2,6 +2,7 @@ use gimli;
 use goblin;
 use panopticon;
 
+use std::borrow;
 use std::result;
 
 use Result;
@@ -52,7 +53,10 @@ pub(crate) fn parse(
 
     let mut sections = Vec::new();
     for sh in &elf.section_headers {
-        let name = elf.shdr_strtab.get(sh.sh_name).and_then(result::Result::ok).map(str::as_bytes);
+        let name = elf.shdr_strtab
+            .get(sh.sh_name)
+            .and_then(result::Result::ok)
+            .map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
         let address = if sh.sh_addr != 0 {
             Some(sh.sh_addr)
         } else {
@@ -62,6 +66,7 @@ pub(crate) fn parse(
         if size != 0 {
             sections.push(Section {
                 name,
+                segment: None,
                 address,
                 size,
             });
