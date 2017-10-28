@@ -477,6 +477,7 @@ pub(crate) struct InlinedFunction<'input> {
     pub parameters: Vec<Parameter<'input>>,
     pub variables: Vec<LocalVariable<'input>>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
+    pub call_source: Source<'input>,
 }
 
 impl<'input> InlinedFunction<'input> {
@@ -492,6 +493,14 @@ impl<'input> InlinedFunction<'input> {
         }
         Ok(())
     }
+
+    fn print_call_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        if self.call_source.is_some() {
+            write!(w, "call source: ")?;
+            self.call_source.print(w, unit)?;
+        }
+        Ok(())
+    }
 }
 
 impl<'input> Print for InlinedFunction<'input> {
@@ -499,7 +508,13 @@ impl<'input> Print for InlinedFunction<'input> {
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
-        // TODO: print parameters and variables?
+        state.indent(|state| {
+            // TODO: print parameters and variables?
+            if state.options.print_source {
+                state.line_option(w, |w, _state| self.print_call_source(w, unit))?;
+            }
+            Ok(())
+        })?;
         state.inline(|state| state.list("", w, unit, &self.inlined_functions))?;
         Ok(())
     }
@@ -518,7 +533,18 @@ impl<'input> Print for InlinedFunction<'input> {
             (unit_b, b),
             |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
         )?;
-        // TODO: diff parameters and variables?
+        state.indent(|state| {
+            // TODO: diff parameters and variables?
+            if state.options.print_source {
+                state.line_option(
+                    w,
+                    (unit_a, a),
+                    (unit_b, b),
+                    |w, _state, (unit, x)| x.print_call_source(w, unit),
+                )?;
+            }
+            Ok(())
+        })?;
 
         state.inline(
             |state| state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions),

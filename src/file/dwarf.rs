@@ -1569,10 +1569,12 @@ where
                         ranges = Some(val);
                     }
                 }
-                gimli::DW_AT_call_file |
-                gimli::DW_AT_call_line |
-                gimli::DW_AT_entry_pc |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_call_file => {
+                    parse_source_file(dwarf_unit, &attr, &mut function.call_source)
+                }
+                gimli::DW_AT_call_line => parse_source_line(&attr, &mut function.call_source),
+                gimli::DW_AT_call_column => parse_source_column(&attr, &mut function.call_source),
+                gimli::DW_AT_entry_pc | gimli::DW_AT_sibling => {}
                 _ => debug!(
                     "unknown inlined_subroutine attribute: {} {:?}",
                     attr.name(),
