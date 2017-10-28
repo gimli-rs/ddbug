@@ -448,6 +448,7 @@ pub(crate) enum SymbolType {
 pub(crate) struct Symbol<'input> {
     name: Option<&'input [u8]>,
     ty: SymbolType,
+    section: usize,
     address: u64,
     size: u64,
 }

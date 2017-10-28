@@ -98,6 +98,7 @@ pub(crate) fn parse(
         symbols.push(Symbol {
             name,
             ty,
+            section: sym.st_shndx,
             address,
             size,
         });
