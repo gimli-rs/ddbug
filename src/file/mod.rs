@@ -45,14 +45,14 @@ impl<'a, 'input> File<'a, 'input> {
             }
         };
 
-        let file = match memmap::Mmap::open(&file, memmap::Protection::Read) {
+        let file = match unsafe { memmap::Mmap::map(&file) } {
             Ok(file) => file,
             Err(e) => {
                 return Err(format!("memmap failed: {}", e).into());
             }
         };
 
-        let input = unsafe { file.as_slice() };
+        let input = &*file;
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
             pdb::parse(input, path, cb)
         } else {
