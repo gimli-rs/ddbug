@@ -1,6 +1,7 @@
 use std::borrow;
 use std::cmp;
 use std::collections::HashMap;
+use std::default::Default;
 use std::fs;
 use std::io::{self, Write};
 
@@ -9,8 +10,10 @@ mod elf;
 mod mach;
 mod pdb;
 
+use gimli;
 use goblin;
 use memmap;
+use object::{self, ObjectSection};
 use panopticon;
 
 use {Options, Result};
@@ -27,7 +30,7 @@ pub(crate) struct CodeRegion {
     pub region: panopticon::Region,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct File<'a, 'input> {
     path: &'a str,
     code: Option<CodeRegion>,
@@ -38,21 +41,21 @@ pub struct File<'a, 'input> {
 
 impl<'a, 'input> File<'a, 'input> {
     pub fn parse(path: &'a str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
-        let file = match fs::File::open(path) {
-            Ok(file) => file,
+        let handle = match fs::File::open(path) {
+            Ok(handle) => handle,
             Err(e) => {
                 return Err(format!("open failed: {}", e).into());
             }
         };
 
-        let file = match unsafe { memmap::Mmap::map(&file) } {
-            Ok(file) => file,
+        let map = match unsafe { memmap::Mmap::map(&handle) } {
+            Ok(map) => map,
             Err(e) => {
                 return Err(format!("memmap failed: {}", e).into());
             }
         };
 
-        let input = &*file;
+        let input = &*map;
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
             pdb::parse(input, path, cb)
         } else {
@@ -64,6 +67,73 @@ impl<'a, 'input> File<'a, 'input> {
                 Err(e) => Err(format!("file identification failed: {}", e).into()),
             }
         }
+    }
+
+    fn parse_object<Object: object::Object<'input>>(
+        &mut self,
+        object: &'input Object,
+    ) -> Result<()> {
+        let mut sections = Vec::new();
+        for section in object.get_sections() {
+            let name = section.name().map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
+            let segment = section.segment_name().map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
+            let address = if section.address() != 0 {
+                Some(section.address())
+            } else {
+                None
+            };
+            let size = section.size();
+            if size != 0 {
+                sections.push(Section {
+                    name,
+                    segment,
+                    address,
+                    size,
+                });
+            }
+        }
+
+        let mut symbols = Vec::new();
+        for symbol in object.get_symbols() {
+            // TODO: handle relocatable objects
+            let address = symbol.address();
+            if address == 0 {
+                continue;
+            }
+
+            let size = symbol.size();
+            if size == 0 {
+                continue;
+            }
+
+            // TODO: handle SymbolKind::File
+            let ty = match symbol.kind() {
+                object::SymbolKind::Text => SymbolType::Function,
+                object::SymbolKind::Data | object::SymbolKind::Unknown => SymbolType::Variable,
+                _ => continue,
+            };
+
+            let name = symbol.name();
+            let name = if name.is_empty() { None } else { Some(name) };
+
+            symbols.push(Symbol {
+                name,
+                ty,
+                address,
+                size,
+            });
+        }
+
+        let units = if object.is_little_endian() {
+            dwarf::parse(gimli::LittleEndian, object)?
+        } else {
+            dwarf::parse(gimli::BigEndian, object)?
+        };
+
+        self.sections = sections;
+        self.symbols = symbols;
+        self.units = units;
+        Ok(())
     }
 
     fn normalize(&mut self) {
@@ -448,7 +518,6 @@ pub(crate) enum SymbolType {
 pub(crate) struct Symbol<'input> {
     name: Option<&'input [u8]>,
     ty: SymbolType,
-    section: usize,
     address: u64,
     size: u64,
 }

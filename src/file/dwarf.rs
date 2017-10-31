@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::mem;
 
 use gimli;
+use object;
 
 use Result;
 use function::{Function, FunctionOffset, InlinedFunction, Parameter, ParameterOffset};
@@ -56,20 +57,24 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub(crate) fn parse<'input, Endian, F>(endian: Endian, get_section: F) -> Result<Vec<Unit<'input>>>
+pub(crate) fn parse<'input, Endian, Object>(
+    endian: Endian,
+    object: &Object,
+) -> Result<Vec<Unit<'input>>>
 where
     Endian: gimli::Endianity,
-    F: Fn(&str) -> &'input [u8],
+    Object: object::Object<'input>,
 {
-    let debug_abbrev = get_section("debug_abbrev");
+    let get_section = |name| object.get_section(name).unwrap_or(&[]);
+    let debug_abbrev = get_section(".debug_abbrev");
     let debug_abbrev = gimli::DebugAbbrev::new(debug_abbrev, endian);
-    let debug_info = get_section("debug_info");
+    let debug_info = get_section(".debug_info");
     let debug_info = gimli::DebugInfo::new(debug_info, endian);
-    let debug_line = get_section("debug_line");
+    let debug_line = get_section(".debug_line");
     let debug_line = gimli::DebugLine::new(debug_line, endian);
-    let debug_str = get_section("debug_str");
+    let debug_str = get_section(".debug_str");
     let debug_str = gimli::DebugStr::new(debug_str, endian);
-    let debug_ranges = get_section("debug_ranges");
+    let debug_ranges = get_section(".debug_ranges");
     let debug_ranges = gimli::DebugRanges::new(debug_ranges, endian);
 
     let dwarf = DwarfFileState {
