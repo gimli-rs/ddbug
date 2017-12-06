@@ -91,7 +91,7 @@ dependencies = [
  "object 0.6.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "panopticon-amd64 0.16.0 (git+https://github.com/das-labor/panopticon)",
  "panopticon-core 0.16.0 (git+https://github.com/das-labor/panopticon)",
- "pdb 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pdb 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -340,7 +340,7 @@ dependencies = [
 
 [[package]]
 name = "pdb"
-version = "0.1.6"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "byteorder 1.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -621,7 +621,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum panopticon-amd64 0.16.0 (git+https://github.com/das-labor/panopticon)" = "<none>"
 "checksum panopticon-core 0.16.0 (git+https://github.com/das-labor/panopticon)" = "<none>"
 "checksum panopticon-graph-algos 0.11.0 (git+https://github.com/das-labor/panopticon)" = "<none>"
-"checksum pdb 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)" = "4ddc0e9edfd863382ffbd7149848fcf23174380fbe4170e5a63cd83c328d6f0c"
+"checksum pdb 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "1556e0a0d4a174614569d521a59e0d9f6b5880ea9ff68125fd9d19b4c00436a1"
 "checksum plain 0.2.3 (registry+https://github.com/rust-lang/crates.io-index)" = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 "checksum quickcheck 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)" = "0b333da40686cc05db13d933f8e7b450f403cfc5a4d005154d8d4a5ba9d14605"
 "checksum quote 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)" = "7a6e920b65c65f10b2ae65c831a81a073a89edd28c7cce89475bff467ab4167a"

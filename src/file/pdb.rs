@@ -37,115 +37,24 @@ pub(crate) fn parse(
         let index = ty.type_index() as usize;
         // debug!("Type: {} {:?}", index, ty.parse());
         match ty.parse() {
-            Ok(pdb::TypeData::Class {
-                properties,
-                fields,
-                size,
-                name,
-                ..
-            }) => {
-                // TODO: derived_from, vtable_shape
-                let fields = fields.and_then(parse_type_index);
-                parse_class(
-                    &mut unit,
-                    &member_lists,
-                    &namespace,
-                    index,
-                    properties,
-                    fields,
-                    size,
-                    name,
-                )?;
+            Ok(pdb::TypeData::Class(ref data)) => {
+                parse_class(&mut unit, &member_lists, &namespace, index, data)?;
             }
-            Ok(pdb::TypeData::Union {
-                properties,
-                fields,
-                size,
-                name,
-                ..
-            }) => {
-                let fields = parse_type_index(fields);
-                parse_union(
-                    &mut unit,
-                    &member_lists,
-                    &namespace,
-                    index,
-                    properties,
-                    fields,
-                    size,
-                    name,
-                )?;
+            Ok(pdb::TypeData::Union(ref data)) => {
+                parse_union(&mut unit, &member_lists, &namespace, index, data)?;
             }
-            Ok(pdb::TypeData::Enumeration {
-                properties,
-                underlying_type,
-                fields,
-                name,
-                ..
-            }) => {
-                let underlying_type = parse_type_index(underlying_type);
-                let fields = parse_type_index(fields);
-                parse_enumeration(
-                    &mut unit,
-                    &enumerator_lists,
-                    &namespace,
-                    index,
-                    properties,
-                    underlying_type,
-                    fields,
-                    name,
-                )?;
+            Ok(pdb::TypeData::Enumeration(ref data)) => {
+                parse_enumeration(&mut unit, &enumerator_lists, &namespace, index, data)?;
             }
-            Ok(pdb::TypeData::Procedure {
-                return_type,
-                attributes,
-                parameter_count,
-                argument_list,
-            }) => {
-                let return_type = return_type.and_then(parse_type_index);
-                let argument_list = parse_type_index(argument_list);
-                parse_procedure(
-                    &mut unit,
-                    &argument_lists,
-                    index,
-                    return_type,
-                    attributes,
-                    parameter_count,
-                    argument_list,
-                )?;
+            Ok(pdb::TypeData::Procedure(ref data)) => {
+                parse_procedure(&mut unit, &argument_lists, index, data)?;
             }
-            Ok(pdb::TypeData::MemberFunction {
-                return_type,
-                class_type,
-                this_pointer_type,
-                attributes,
-                parameter_count,
-                argument_list,
-                this_adjustment,
-            }) => {
-                let return_type = parse_type_index(return_type);
-                let class_type = parse_type_index(class_type);
-                let this_pointer_type = this_pointer_type.and_then(parse_type_index);
-                let argument_list = parse_type_index(argument_list);
-                parse_member_function(
-                    &mut unit,
-                    &argument_lists,
-                    index,
-                    return_type,
-                    class_type,
-                    this_pointer_type,
-                    attributes,
-                    parameter_count,
-                    argument_list,
-                    this_adjustment,
-                )?;
+            Ok(pdb::TypeData::MemberFunction(ref data)) => {
+                parse_member_function(&mut unit, &argument_lists, index, data)?;
             }
-            Ok(pdb::TypeData::Pointer {
-                underlying_type,
-                attributes,
-            }) => {
-                let underlying_type = parse_type_index(underlying_type);
-                let byte_size = attributes.size() as u64;
+            Ok(pdb::TypeData::Pointer(ref data)) => {
+                let underlying_type = parse_type_index(data.underlying_type);
+                let byte_size = data.attributes.size() as u64;
                 let byte_size = if byte_size == 0 {
                     None
                 } else {
@@ -165,14 +74,10 @@ pub(crate) fn parse(
                     },
                 );
             }
-            Ok(pdb::TypeData::Modifier {
-                underlying_type,
-                constant,
-                ..
-            }) => {
-                let underlying_type = parse_type_index(underlying_type);
+            Ok(pdb::TypeData::Modifier(ref data)) => {
+                let underlying_type = parse_type_index(data.underlying_type);
                 // TODO: volatile, unaligned
-                let kind = if constant {
+                let kind = if data.constant {
                     TypeModifierKind::Const
                 } else {
                     TypeModifierKind::Other
@@ -191,39 +96,23 @@ pub(crate) fn parse(
                     },
                 );
             }
-            Ok(pdb::TypeData::Bitfield {
-                underlying_type,
-                length,
-                position,
-            }) => {
-                bitfields.insert(index, (underlying_type, position, length));
+            Ok(pdb::TypeData::Bitfield(data)) => {
+                bitfields.insert(index, data);
             }
-            Ok(pdb::TypeData::Array {
-                element_type,
-                indexing_type,
-                stride,
-                dimensions,
-            }) => {
-                let element_type = parse_type_index(element_type);
-                let indexing_type = parse_type_index(indexing_type);
-                parse_array(&mut unit, index, element_type, indexing_type, stride, dimensions)?;
+            Ok(pdb::TypeData::Array(ref data)) => {
+                parse_array(&mut unit, index, data)?;
             }
-            Ok(pdb::TypeData::FieldList {
-                fields,
-                continuation,
-            }) => {
-                let continuation = continuation.and_then(parse_type_index);
+            Ok(pdb::TypeData::FieldList(ref data)) => {
                 parse_field_list(
                     &mut member_lists,
                     &mut enumerator_lists,
                     &bitfields,
                     index,
-                    fields,
-                    continuation,
+                    data,
                 )?;
             }
-            Ok(pdb::TypeData::ArgumentList { arguments }) => {
-                argument_lists.insert(index, arguments);
+            Ok(pdb::TypeData::ArgumentList(data)) => {
+                argument_lists.insert(index, data.arguments);
             }
             Ok(other) => {
                 debug!("PDB unimplemented type {} {:?}", index, other);
@@ -241,9 +130,7 @@ pub(crate) fn parse(
     let mut symbol_index = 0;
     while let Some(symbol) = symbols.next()? {
         match symbol.parse()? {
-            pdb::SymbolData::PublicSymbol {
-                function, offset, ..
-            } => if function {
+            pdb::SymbolData::PublicSymbol(data) => if data.function {
                 unit.functions.insert(
                     FunctionOffset(symbol_index),
                     Function {
@@ -252,7 +139,7 @@ pub(crate) fn parse(
                         symbol_name: None,
                         linkage_name: None,
                         source: Default::default(),
-                        address: Some(offset as u64),
+                        address: Some(data.offset as u64),
                         size: None,
                         inline: false,
                         declaration: false,
@@ -362,13 +249,16 @@ fn parse_class<'input>(
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
     namespace: &Option<Rc<Namespace<'input>>>,
     index: usize,
-    properties: pdb::TypeProperties,
-    fields: Option<TypeOffset>,
-    size: u16,
-    name: pdb::RawString<'input>,
+    data: &pdb::ClassType<'input>,
 ) -> Result<()> {
-    let declaration = properties.forward_reference();
-    let byte_size = if declaration { None } else { Some(size as u64) };
+    // TODO: derived_from, vtable_shape
+    let fields = data.fields.and_then(parse_type_index);
+    let declaration = data.properties.forward_reference();
+    let byte_size = if declaration {
+        None
+    } else {
+        Some(data.size as u64)
+    };
     let mut members = match fields {
         Some(ref fields) => match member_lists.get(&fields.0) {
             Some(members) => members.clone(),
@@ -387,7 +277,7 @@ fn parse_class<'input>(
             offset: TypeOffset(index),
             kind: TypeKind::Struct(StructType {
                 namespace: namespace.clone(),
-                name: Some(name.as_bytes()),
+                name: Some(data.name.as_bytes()),
                 source: Default::default(),
                 byte_size: byte_size,
                 declaration: declaration,
@@ -403,13 +293,15 @@ fn parse_union<'input>(
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
     namespace: &Option<Rc<Namespace<'input>>>,
     index: usize,
-    properties: pdb::TypeProperties,
-    fields: Option<TypeOffset>,
-    size: u32,
-    name: pdb::RawString<'input>,
+    data: &pdb::UnionType<'input>,
 ) -> Result<()> {
-    let declaration = properties.forward_reference();
-    let byte_size = if declaration { None } else { Some(size as u64) };
+    let fields = parse_type_index(data.fields);
+    let declaration = data.properties.forward_reference();
+    let byte_size = if declaration {
+        None
+    } else {
+        Some(data.size as u64)
+    };
     let mut members = match fields {
         Some(fields) => match member_lists.get(&fields.0) {
             Some(members) => members.clone(),
@@ -428,7 +320,7 @@ fn parse_union<'input>(
             offset: TypeOffset(index),
             kind: TypeKind::Union(UnionType {
                 namespace: namespace.clone(),
-                name: Some(name.as_bytes()),
+                name: Some(data.name.as_bytes()),
                 source: Default::default(),
                 byte_size: byte_size,
                 declaration: declaration,
@@ -444,12 +336,11 @@ fn parse_enumeration<'input>(
     enumerator_lists: &BTreeMap<usize, Vec<Enumerator<'input>>>,
     namespace: &Option<Rc<Namespace<'input>>>,
     index: usize,
-    properties: pdb::TypeProperties,
-    underlying_type: Option<TypeOffset>,
-    fields: Option<TypeOffset>,
-    name: pdb::RawString<'input>,
+    data: &pdb::EnumerationType<'input>,
 ) -> Result<()> {
-    let declaration = properties.forward_reference();
+    let underlying_type = parse_type_index(data.underlying_type);
+    let fields = parse_type_index(data.fields);
+    let declaration = data.properties.forward_reference();
     let enumerators = match fields {
         Some(ref fields) => match enumerator_lists.get(&fields.0) {
             Some(enumerators) => enumerators.clone(),
@@ -463,7 +354,7 @@ fn parse_enumeration<'input>(
             offset: TypeOffset(index),
             kind: TypeKind::Enumeration(EnumerationType {
                 namespace: namespace.clone(),
-                name: Some(name.as_bytes()),
+                name: Some(data.name.as_bytes()),
                 source: Default::default(),
                 declaration: declaration,
                 ty: underlying_type,
@@ -479,15 +370,15 @@ fn parse_procedure<'input>(
     unit: &mut Unit<'input>,
     argument_lists: &BTreeMap<usize, Vec<pdb::TypeIndex>>,
     index: usize,
-    return_type: Option<TypeOffset>,
-    _attributes: pdb::FunctionAttributes,
-    parameter_count: u16,
-    argument_list: Option<TypeOffset>,
+    data: &pdb::ProcedureType,
 ) -> Result<()> {
+    let return_type = data.return_type.and_then(parse_type_index);
+    let argument_list = parse_type_index(data.argument_list);
+    let parameter_count = data.parameter_count as usize;
     let parameters = match argument_list {
         Some(ref argument_list) => match argument_lists.get(&argument_list.0) {
             Some(arguments) => {
-                if arguments.len() != parameter_count as usize {
+                if arguments.len() != parameter_count {
                     debug!("PDB parameter count mismatch {}, {}", arguments.len(), parameter_count);
                 }
                 arguments
@@ -525,15 +416,14 @@ fn parse_member_function<'input>(
     unit: &mut Unit<'input>,
     argument_lists: &BTreeMap<usize, Vec<pdb::TypeIndex>>,
     index: usize,
-    return_type: Option<TypeOffset>,
-    _class_type: Option<TypeOffset>,
-    this_pointer_type: Option<TypeOffset>,
-    _attributes: pdb::FunctionAttributes,
-    parameter_count: u16,
-    argument_list: Option<TypeOffset>,
-    _this_adjustment: u32,
+    data: &pdb::MemberFunctionType,
 ) -> Result<()> {
-    let mut parameters = Vec::with_capacity(parameter_count as usize + 1);
+    let return_type = parse_type_index(data.return_type);
+    //let class_type = parse_type_index(data.class_type);
+    let this_pointer_type = data.this_pointer_type.and_then(parse_type_index);
+    let argument_list = parse_type_index(data.argument_list);
+    let parameter_count = data.parameter_count as usize;
+    let mut parameters = Vec::with_capacity(parameter_count + 1);
     match this_pointer_type {
         None | Some(TypeOffset(3)) => {}
         ty => {
@@ -547,7 +437,7 @@ fn parse_member_function<'input>(
     if let Some(ref argument_list) = argument_list {
         match argument_lists.get(&argument_list.0) {
             Some(arguments) => {
-                if arguments.len() != parameter_count as usize {
+                if arguments.len() != parameter_count {
                     debug!("PDB parameter count mismatch {}, {}", arguments.len(), parameter_count);
                 }
                 for argument in arguments {
@@ -577,18 +467,13 @@ fn parse_member_function<'input>(
     Ok(())
 }
 
-fn parse_array<'input>(
-    unit: &mut Unit<'input>,
-    index: usize,
-    element_type: Option<TypeOffset>,
-    _indexing_type: Option<TypeOffset>,
-    _stride: Option<u32>,
-    dimensions: Vec<u32>,
-) -> Result<()> {
-    if dimensions.len() != 1 {
+fn parse_array<'input>(unit: &mut Unit<'input>, index: usize, data: &pdb::ArrayType) -> Result<()> {
+    if data.dimensions.len() != 1 {
         return Err("Unsupported multi-dimensional array".into());
     }
-    let byte_size = Some(dimensions[0] as u64);
+    let element_type = parse_type_index(data.element_type);
+    //let indexing_type = parse_type_index(indexing_type);
+    let byte_size = Some(data.dimensions[0] as u64);
     unit.types.insert(
         TypeOffset(index),
         // TODO: indexing_type, stride
@@ -607,45 +492,40 @@ fn parse_array<'input>(
 fn parse_field_list<'input>(
     member_lists: &mut BTreeMap<usize, Vec<Member<'input>>>,
     enumerator_lists: &mut BTreeMap<usize, Vec<Enumerator<'input>>>,
-    bitfields: &BTreeMap<usize, (pdb::TypeIndex, u8, u8)>,
+    bitfields: &BTreeMap<usize, pdb::BitfieldType>,
     index: usize,
-    fields: Vec<pdb::TypeData<'input>>,
-    continuation: Option<TypeOffset>,
+    data: &pdb::FieldList<'input>,
 ) -> Result<()> {
+    let continuation = data.continuation.and_then(parse_type_index);
     if continuation.is_some() {
         return Err("Unsupported PDB field list continuation".into());
     }
     let mut members = Vec::new();
     let mut enumerators = Vec::new();
-    for field in fields {
+    for field in &data.fields {
         match field {
-            pdb::TypeData::Member {
-                field_type,
-                offset,
-                name,
-                ..
-            } => {
-                let mut ty = parse_type_index(field_type);
-                let mut bit_offset = offset as u64 * 8;
+            &pdb::TypeData::Member(ref member) => {
+                let mut ty = parse_type_index(member.field_type);
+                let mut bit_offset = member.offset as u64 * 8;
                 let mut bit_size = None;
-                match bitfields.get(&(field_type as usize)) {
-                    Some(&(bitfield_type, bitfield_offset, bitfield_size)) => {
-                        ty = parse_type_index(bitfield_type);
-                        bit_offset += bitfield_offset as u64;
-                        bit_size = Some(bitfield_size as u64);
+                match bitfields.get(&(member.field_type as usize)) {
+                    Some(bitfield) => {
+                        ty = parse_type_index(bitfield.underlying_type);
+                        bit_offset += bitfield.position as u64;
+                        bit_size = Some(bitfield.length as u64);
                     }
                     None => {}
                 }
                 members.push(Member {
-                    name: Some(name.as_bytes()),
+                    name: Some(member.name.as_bytes()),
                     ty: ty,
                     bit_offset: bit_offset,
                     bit_size: bit_size,
                     next_bit_offset: None,
                 });
             }
-            pdb::TypeData::Enumerate { value, name, .. } => {
-                let value = match value {
+            &pdb::TypeData::Enumerate(ref enumerate) => {
+                let value = match enumerate.value {
                     pdb::Variant::U8(val) => val as i64,
                     pdb::Variant::U16(val) => val as i64,
                     pdb::Variant::U32(val) => val as i64,
@@ -656,7 +536,7 @@ fn parse_field_list<'input>(
                     pdb::Variant::I64(val) => val as i64,
                 };
                 enumerators.push(Enumerator {
-                    name: Some(name.as_bytes()),
+                    name: Some(enumerate.name.as_bytes()),
                     value: Some(value),
                 });
             }
