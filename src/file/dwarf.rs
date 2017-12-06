@@ -65,7 +65,7 @@ where
     Endian: gimli::Endianity,
     Object: object::Object<'input>,
 {
-    let get_section = |name| object.get_section(name).unwrap_or(&[]);
+    let get_section = |name| object.section_data_by_name(name).unwrap_or(&[]);
     let debug_abbrev = get_section(".debug_abbrev");
     let debug_abbrev = gimli::DebugAbbrev::new(debug_abbrev, endian);
     let debug_info = get_section(".debug_info");

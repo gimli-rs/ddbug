@@ -3,17 +3,14 @@ use std::cmp;
 use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
-use std::io::{self, Write};
+use std::io::Write;
 
 mod dwarf;
-mod elf;
-mod mach;
 mod pdb;
 
 use gimli;
-use goblin;
 use memmap;
-use object::{self, ObjectSection};
+use object::{self, Object, ObjectSection, ObjectSegment};
 use panopticon;
 
 use {Options, Result};
@@ -59,22 +56,39 @@ impl<'a, 'input> File<'a, 'input> {
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
             pdb::parse(input, path, cb)
         } else {
-            let mut cursor = io::Cursor::new(input);
-            match goblin::peek(&mut cursor) {
-                Ok(goblin::Hint::Elf(_)) => elf::parse(input, path, cb),
-                Ok(goblin::Hint::Mach(_)) => mach::parse(input, path, cb),
-                Ok(_) => Err("unrecognized file format".into()),
-                Err(e) => Err(format!("file identification failed: {}", e).into()),
-            }
+            Self::parse_object(input, path, cb)
         }
     }
 
-    fn parse_object<Object: object::Object<'input>>(
-        &mut self,
-        object: &'input Object,
+    fn parse_object(
+        input: &[u8],
+        path: &str,
+        cb: &mut FnMut(&mut File) -> Result<()>,
     ) -> Result<()> {
+        let object = object::File::parse(input)?;
+
+        let machine = match object.machine() {
+            object::Machine::X86_64 => {
+                let region = panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
+                Some((panopticon::Machine::Amd64, region))
+            }
+            _ => None,
+        };
+
+        let mut code = None;
+        if let Some((machine, mut region)) = machine {
+            for segment in object.segments() {
+                let data = segment.data();
+                let address = segment.address();
+                let bound = panopticon::Bound::new(address, address + data.len() as u64);
+                let layer = panopticon::Layer::wrap(data.to_vec());
+                region.cover(bound, layer);
+            }
+            code = Some(CodeRegion { machine, region });
+        }
+
         let mut sections = Vec::new();
-        for section in object.get_sections() {
+        for section in object.sections() {
             let name = section.name().map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
             let segment = section.segment_name().map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
             let address = if section.address() != 0 {
@@ -94,7 +108,7 @@ impl<'a, 'input> File<'a, 'input> {
         }
 
         let mut symbols = Vec::new();
-        for symbol in object.get_symbols() {
+        for symbol in object.symbols() {
             // TODO: handle relocatable objects
             let address = symbol.address();
             if address == 0 {
@@ -113,8 +127,7 @@ impl<'a, 'input> File<'a, 'input> {
                 _ => continue,
             };
 
-            let name = symbol.name();
-            let name = if name.is_empty() { None } else { Some(name) };
+            let name = symbol.name().map(str::as_bytes);
 
             symbols.push(Symbol {
                 name,
@@ -125,15 +138,21 @@ impl<'a, 'input> File<'a, 'input> {
         }
 
         let units = if object.is_little_endian() {
-            dwarf::parse(gimli::LittleEndian, object)?
+            dwarf::parse(gimli::LittleEndian, &object)?
         } else {
-            dwarf::parse(gimli::BigEndian, object)?
+            dwarf::parse(gimli::BigEndian, &object)?
         };
 
-        self.sections = sections;
-        self.symbols = symbols;
-        self.units = units;
-        Ok(())
+        let mut file = File {
+            path,
+            code,
+            sections,
+            symbols,
+            units,
+            ..Default::default()
+        };
+        file.normalize();
+        cb(&mut file)
     }
 
     fn normalize(&mut self) {

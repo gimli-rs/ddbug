@@ -10,13 +10,13 @@ categories = ["development-tools::debugging"]
 license = "Apache-2.0/MIT"
 
 [dependencies]
-clap = "2.26.0"
-env_logger = "0.3.5"
-gimli = "0.14.0"
+clap = "2.26"
+env_logger = "0.3"
+gimli = "0.14"
 goblin = "0.0.11"
-log = "0.3.6"
-memmap = "0.6.0"
-object = { git = "https://github.com/gimli-rs/object" }
+log = "0.3"
+memmap = "0.6"
+object = "0.6"
 panopticon-core = { git = "https://github.com/das-labor/panopticon" }
 panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
-pdb = "0.1.5"
+pdb = "0.1"
