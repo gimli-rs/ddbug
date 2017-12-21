@@ -1,15 +1,10 @@
 use std::borrow;
 use std::cmp;
-use std::collections::BTreeMap;
-use std::fmt::Debug;
 use std::io::Write;
 use std::rc::Rc;
 
-use amd64;
-use panopticon;
-
 use {Options, Result, Sort};
-use file::{CodeRegion, File, FileHash};
+use file::{File, FileHash};
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList};
 use range::Range;
@@ -71,12 +66,7 @@ impl<'input> Function<'input> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn calls(&self, file: &File) -> Vec<Call> {
-        if let Some(address) = self.address() {
-            if let Some(code) = file.code() {
-                return disassemble(code, address);
-            }
-        }
+    fn calls(&self, _file: &File) -> Vec<Call> {
         Vec::new()
     }
 
@@ -573,93 +563,6 @@ impl<'input> DiffList for InlinedFunction<'input> {
         }
         cost
     }
-}
-
-fn disassemble(code: &CodeRegion, range: Range) -> Vec<Call> {
-    match code.machine {
-        panopticon::Machine::Amd64 => {
-            disassemble_arch::<amd64::Amd64>(&code.region, range, amd64::Mode::Long)
-        }
-        _ => Vec::new(),
-    }
-}
-
-fn disassemble_arch<A>(
-    region: &panopticon::Region,
-    range: Range,
-    cfg: A::Configuration,
-) -> Vec<Call>
-where
-    A: panopticon::Architecture + Debug,
-    A::Configuration: Debug,
-{
-    let mut calls = Vec::new();
-    let mut mnemonics = BTreeMap::new();
-    let mut jumps = vec![range.begin];
-    while let Some(addr) = jumps.pop() {
-        if mnemonics.contains_key(&addr) {
-            continue;
-        }
-
-        let m = match A::decode(region, addr, &cfg) {
-            Ok(m) => m,
-            Err(e) => {
-                error!("failed to disassemble: {}", e);
-                return calls;
-            }
-        };
-
-        for mnemonic in m.mnemonics {
-            /*
-            //writeln!(w, "\t{:?}", mnemonic);
-            write!(w, "\t{}", mnemonic.opcode);
-            let mut first = true;
-            for operand in &mnemonic.operands {
-                if first {
-                    write!(w, "\t");
-                    first = false;
-                } else {
-                    write!(w, ", ");
-                }
-                match *operand {
-                    panopticon::Rvalue::Variable { ref name, .. } => write!(w, "{}", name),
-                    panopticon::Rvalue::Constant { ref value, .. } => write!(w, "0x{:x}", value),
-                    _ => write!(w, "?"),
-                }
-            }
-            writeln!(w, "");
-            */
-
-            for instruction in &mnemonic.instructions {
-                match *instruction {
-                    panopticon::Statement {
-                        op: panopticon::Operation::Call(ref call),
-                        ..
-                    } => match *call {
-                        panopticon::Rvalue::Constant { ref value, .. } => {
-                            calls.push(Call {
-                                from: mnemonic.area.start,
-                                to: *value,
-                            });
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
-            // FIXME: mnemonic is large, insert boxed value
-            mnemonics.insert(mnemonic.area.start, mnemonic);
-        }
-
-        for (_origin, target, _guard) in m.jumps {
-            if let panopticon::Rvalue::Constant { value, .. } = target {
-                if value > addr && value < range.end {
-                    jumps.push(value);
-                }
-            }
-        }
-    }
-    calls
 }
 
 struct Call {

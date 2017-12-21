@@ -24,7 +24,6 @@ const OPT_PRINT_ADDRESS: &'static str = "address";
 const OPT_PRINT_SOURCE: &'static str = "source";
 const OPT_PRINT_FILE_ADDRESS: &'static str = "file-address";
 const OPT_PRINT_UNIT_ADDRESS: &'static str = "unit-address";
-const OPT_PRINT_FUNCTION_CALLS: &'static str = "function-calls";
 const OPT_PRINT_FUNCTION_VARIABLES: &'static str = "function-variables";
 
 // Print parameters
@@ -109,7 +108,6 @@ fn main() {
                     OPT_PRINT_SOURCE,
                     OPT_PRINT_FILE_ADDRESS,
                     OPT_PRINT_UNIT_ADDRESS,
-                    OPT_PRINT_FUNCTION_CALLS,
                     OPT_PRINT_FUNCTION_VARIABLES,
                 ]),
         )
@@ -228,7 +226,6 @@ fn main() {
                 OPT_PRINT_SOURCE => options.print_source = true,
                 OPT_PRINT_FILE_ADDRESS => options.print_file_address = true,
                 OPT_PRINT_UNIT_ADDRESS => options.print_unit_address = true,
-                OPT_PRINT_FUNCTION_CALLS => options.print_function_calls = true,
                 OPT_PRINT_FUNCTION_VARIABLES => options.print_function_variables = true,
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_PRINT, value),

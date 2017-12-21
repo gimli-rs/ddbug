@@ -3,8 +3,6 @@ extern crate gimli;
 extern crate log;
 extern crate memmap;
 extern crate object;
-extern crate panopticon_amd64 as amd64;
-extern crate panopticon_core as panopticon;
 extern crate pdb as crate_pdb;
 
 mod file;

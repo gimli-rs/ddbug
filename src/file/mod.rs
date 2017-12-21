@@ -10,8 +10,7 @@ mod pdb;
 
 use gimli;
 use memmap;
-use object::{self, Object, ObjectSection, ObjectSegment};
-use panopticon;
+use object::{self, Object, ObjectSection};
 
 use {Options, Result};
 use function::{Function, FunctionOffset};
@@ -23,8 +22,6 @@ use variable::{Variable, VariableOffset};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {
-    pub machine: panopticon::Machine,
-    pub region: panopticon::Region,
 }
 
 #[derive(Debug, Default)]
@@ -66,26 +63,6 @@ impl<'a, 'input> File<'a, 'input> {
         cb: &mut FnMut(&mut File) -> Result<()>,
     ) -> Result<()> {
         let object = object::File::parse(input)?;
-
-        let machine = match object.machine() {
-            object::Machine::X86_64 => {
-                let region = panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
-                Some((panopticon::Machine::Amd64, region))
-            }
-            _ => None,
-        };
-
-        let mut code = None;
-        if let Some((machine, mut region)) = machine {
-            for segment in object.segments() {
-                let data = segment.data();
-                let address = segment.address();
-                let bound = panopticon::Bound::new(address, address + data.len() as u64);
-                let layer = panopticon::Layer::wrap(data.to_vec());
-                region.cover(bound, layer);
-            }
-            code = Some(CodeRegion { machine, region });
-        }
 
         let mut sections = Vec::new();
         for section in object.sections() {
@@ -145,7 +122,7 @@ impl<'a, 'input> File<'a, 'input> {
 
         let mut file = File {
             path,
-            code,
+            code: None,
             sections,
             symbols,
             units,
@@ -271,6 +248,7 @@ impl<'a, 'input> File<'a, 'input> {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn code(&self) -> Option<&CodeRegion> {
         self.code.as_ref()
     }
