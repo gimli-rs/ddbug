@@ -30,6 +30,10 @@ After installing [Rust](https://www.rust-lang.org/), run:
 ```
 cargo install ddbug
 ```
+or
+```
+cargo install --git https://github.com/gimli-rs/ddbug
+```
 
 ## Running
 

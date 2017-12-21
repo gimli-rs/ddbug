@@ -1,5 +1,4 @@
 extern crate gimli;
-extern crate goblin;
 #[macro_use]
 extern crate log;
 extern crate memmap;
