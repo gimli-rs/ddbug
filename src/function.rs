@@ -131,38 +131,31 @@ impl<'input> Function<'input> {
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
             let flag = state.options.ignore_function_symbol_name;
-            state.ignore_diff(
-                flag,
-                |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
-            )?;
+            state.ignore_diff(flag, |state| {
+                state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))
+            })?;
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_source(w, unit)
+                })?;
             }
             let flag = state.options.ignore_function_address;
-            state.ignore_diff(
-                flag,
-                |state| state.line_option(w, a, b, |w, _state, x| x.print_address(w)),
-            )?;
+            state.ignore_diff(flag, |state| {
+                state.line_option(w, a, b, |w, _state, x| x.print_address(w))
+            })?;
             let flag = state.options.ignore_function_size;
-            state.ignore_diff(
-                flag,
-                |state| state.line_option(w, a, b, |w, _state, x| x.print_size(w)),
-            )?;
+            state.ignore_diff(flag, |state| {
+                state.line_option(w, a, b, |w, _state, x| x.print_size(w))
+            })?;
             let flag = state.options.ignore_function_inline;
-            state.ignore_diff(
-                flag,
-                |state| state.line_option(w, a, b, |w, _state, x| x.print_inline(w)),
-            )?;
+            state.ignore_diff(flag, |state| {
+                state.line_option(w, a, b, |w, _state, x| x.print_inline(w))
+            })?;
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, _state, x| x.print_return_type_label(w))?;
-            state.indent(
-                |state| state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state)),
-            )?;
+            state.indent(|state| {
+                state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state))
+            })?;
             state.list("parameters", w, unit_a, &a.parameters, unit_b, &b.parameters)?;
             if state.options.print_function_variables {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
@@ -527,28 +520,22 @@ impl<'input> Print for InlinedFunction<'input> {
         unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        state.line(
-            w,
-            (unit_a, a),
-            (unit_b, b),
-            |w, state, (unit, x)| x.print_size_and_decl(w, state, unit),
-        )?;
+        state.line(w, (unit_a, a), (unit_b, b), |w, state, (unit, x)| {
+            x.print_size_and_decl(w, state, unit)
+        })?;
         state.indent(|state| {
             // TODO: diff parameters and variables?
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_call_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_call_source(w, unit)
+                })?;
             }
             Ok(())
         })?;
 
-        state.inline(
-            |state| state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions),
-        )?;
+        state.inline(|state| {
+            state.list("", w, unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
+        })?;
 
         Ok(())
     }
@@ -644,7 +631,10 @@ where
                         op: panopticon::Operation::Call(ref call),
                         ..
                     } => match *call {
-                        panopticon::Rvalue::Constant { ref value, .. } => {
+                        panopticon::Rvalue::Constant {
+                            ref value,
+                            ..
+                        } => {
                             calls.push(Call {
                                 from: mnemonic.area.start,
                                 to: *value,
@@ -660,7 +650,11 @@ where
         }
 
         for (_origin, target, _guard) in m.jumps {
-            if let panopticon::Rvalue::Constant { value, .. } = target {
+            if let panopticon::Rvalue::Constant {
+                value,
+                ..
+            } = target
+            {
                 if value > addr && value < range.end {
                     jumps.push(value);
                 }

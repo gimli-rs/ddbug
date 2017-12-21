@@ -69,7 +69,8 @@ impl<'a, 'input> File<'a, 'input> {
 
         let machine = match object.machine() {
             object::Machine::X86_64 => {
-                let region = panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
+                let region =
+                    panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
                 Some((panopticon::Machine::Amd64, region))
             }
             _ => None,
@@ -84,7 +85,10 @@ impl<'a, 'input> File<'a, 'input> {
                 let layer = panopticon::Layer::wrap(data.to_vec());
                 region.cover(bound, layer);
             }
-            code = Some(CodeRegion { machine, region });
+            code = Some(CodeRegion {
+                machine,
+                region,
+            });
         }
 
         let mut sections = Vec::new();
@@ -456,11 +460,9 @@ pub(crate) struct Section<'input> {
 
 impl<'input> Section<'input> {
     fn address(&self) -> Option<Range> {
-        self.address.map(|address| {
-            Range {
-                begin: address,
-                end: address + self.size,
-            }
+        self.address.map(|address| Range {
+            begin: address,
+            end: address + self.size,
         })
     }
 

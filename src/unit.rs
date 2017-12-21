@@ -91,9 +91,11 @@ impl<'input> Unit<'input> {
             }
 
             // Find all inline members.
-            ty.visit_members(&mut |t| if t.is_inline(state.hash) {
-                if let Some(offset) = t.ty {
-                    inline_types.insert(offset.0);
+            ty.visit_members(&mut |t| {
+                if t.is_inline(state.hash) {
+                    if let Some(offset) = t.ty {
+                        inline_types.insert(offset.0);
+                    }
                 }
             });
         }
@@ -274,12 +276,12 @@ impl<'input> Unit<'input> {
                     }
                 }
                 TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
-                TypeKind::Base(..) |
-                TypeKind::Array(..) |
-                TypeKind::Function(..) |
-                TypeKind::Unspecified(..) |
-                TypeKind::PointerToMember(..) |
-                TypeKind::Modifier(..) => return false,
+                TypeKind::Base(..)
+                | TypeKind::Array(..)
+                | TypeKind::Function(..)
+                | TypeKind::Unspecified(..)
+                | TypeKind::PointerToMember(..)
+                | TypeKind::Modifier(..) => return false,
             }
             // Filter out inline types.
             !inline_types.contains(&t.offset.0)

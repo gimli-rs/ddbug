@@ -383,12 +383,10 @@ fn parse_procedure<'input>(
                 }
                 arguments
                     .iter()
-                    .map(|argument| {
-                        Parameter {
-                            offset: None,
-                            name: None,
-                            ty: parse_type_index(*argument),
-                        }
+                    .map(|argument| Parameter {
+                        offset: None,
+                        name: None,
+                        ty: parse_type_index(*argument),
                     })
                     .collect()
             }

@@ -93,23 +93,18 @@ impl<'input> Variable<'input> {
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
             let flag = state.options.ignore_variable_symbol_name;
-            state.ignore_diff(
-                flag,
-                |state| state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w)),
-            )?;
+            state.ignore_diff(flag, |state| {
+                state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))
+            })?;
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_source(w, unit)
+                })?;
             }
             let flag = state.options.ignore_variable_address;
-            state.ignore_diff(
-                flag,
-                |state| state.line_option(w, a, b, |w, _state, x| x.print_address(w)),
-            )?;
+            state.ignore_diff(flag, |state| {
+                state.line_option(w, a, b, |w, _state, x| x.print_address(w))
+            })?;
             state.line_option(w, a, b, |w, state, x| x.print_size(w, state))?;
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))
         })?;

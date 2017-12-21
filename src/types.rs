@@ -90,14 +90,14 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.is_anon(),
             TypeKind::Union(ref val) => val.is_anon(),
-            TypeKind::Base(..) |
-            TypeKind::Def(..) |
-            TypeKind::Enumeration(..) |
-            TypeKind::Array(..) |
-            TypeKind::Function(..) |
-            TypeKind::Unspecified(..) |
-            TypeKind::PointerToMember(..) |
-            TypeKind::Modifier(..) => false,
+            TypeKind::Base(..)
+            | TypeKind::Def(..)
+            | TypeKind::Enumeration(..)
+            | TypeKind::Array(..)
+            | TypeKind::Function(..)
+            | TypeKind::Unspecified(..)
+            | TypeKind::PointerToMember(..)
+            | TypeKind::Modifier(..) => false,
         }
     }
 
@@ -112,13 +112,13 @@ impl<'input> Type<'input> {
                 Some(ty) => ty.is_function(hash),
                 None => false,
             },
-            TypeKind::Struct(..) |
-            TypeKind::Union(..) |
-            TypeKind::Base(..) |
-            TypeKind::Enumeration(..) |
-            TypeKind::Array(..) |
-            TypeKind::Unspecified(..) |
-            TypeKind::PointerToMember(..) => false,
+            TypeKind::Struct(..)
+            | TypeKind::Union(..)
+            | TypeKind::Base(..)
+            | TypeKind::Enumeration(..)
+            | TypeKind::Array(..)
+            | TypeKind::Unspecified(..)
+            | TypeKind::PointerToMember(..) => false,
         }
     }
 
@@ -126,14 +126,14 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.visit_members(f),
             TypeKind::Union(ref val) => val.visit_members(f),
-            TypeKind::Enumeration(..) |
-            TypeKind::Def(..) |
-            TypeKind::Base(..) |
-            TypeKind::Array(..) |
-            TypeKind::Function(..) |
-            TypeKind::Unspecified(..) |
-            TypeKind::PointerToMember(..) |
-            TypeKind::Modifier(..) => {}
+            TypeKind::Enumeration(..)
+            | TypeKind::Def(..)
+            | TypeKind::Base(..)
+            | TypeKind::Array(..)
+            | TypeKind::Function(..)
+            | TypeKind::Unspecified(..)
+            | TypeKind::PointerToMember(..)
+            | TypeKind::Modifier(..) => {}
         }
     }
 
@@ -143,12 +143,12 @@ impl<'input> Type<'input> {
             TypeKind::Struct(ref val) => val.print(w, state, unit),
             TypeKind::Union(ref val) => val.print(w, state, unit),
             TypeKind::Enumeration(ref val) => val.print(w, state, unit),
-            TypeKind::Base(..) |
-            TypeKind::Array(..) |
-            TypeKind::Function(..) |
-            TypeKind::Unspecified(..) |
-            TypeKind::PointerToMember(..) |
-            TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
+            TypeKind::Base(..)
+            | TypeKind::Array(..)
+            | TypeKind::Function(..)
+            | TypeKind::Unspecified(..)
+            | TypeKind::PointerToMember(..)
+            | TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
         }
     }
 
@@ -255,11 +255,11 @@ impl<'input> Type<'input> {
             TypeKind::Union(ref val) => val.filter(options),
             TypeKind::Enumeration(ref val) => val.filter(options),
             TypeKind::Unspecified(ref val) => val.filter(options),
-            TypeKind::Base(..) |
-            TypeKind::Array(..) |
-            TypeKind::Function(..) |
-            TypeKind::PointerToMember(..) |
-            TypeKind::Modifier(..) => options.filter_name.is_none(),
+            TypeKind::Base(..)
+            | TypeKind::Array(..)
+            | TypeKind::Function(..)
+            | TypeKind::PointerToMember(..)
+            | TypeKind::Modifier(..) => options.filter_name.is_none(),
         }
     }
 
@@ -399,16 +399,16 @@ impl<'input> TypeModifier<'input> {
             return self.byte_size;
         }
         match self.kind {
-            TypeModifierKind::Const |
-            TypeModifierKind::Packed |
-            TypeModifierKind::Volatile |
-            TypeModifierKind::Restrict |
-            TypeModifierKind::Shared |
-            TypeModifierKind::Atomic |
-            TypeModifierKind::Other => self.ty(hash).and_then(|v| v.byte_size(hash)),
-            TypeModifierKind::Pointer |
-            TypeModifierKind::Reference |
-            TypeModifierKind::RvalueReference => self.address_size,
+            TypeModifierKind::Const
+            | TypeModifierKind::Packed
+            | TypeModifierKind::Volatile
+            | TypeModifierKind::Restrict
+            | TypeModifierKind::Shared
+            | TypeModifierKind::Atomic
+            | TypeModifierKind::Other => self.ty(hash).and_then(|v| v.byte_size(hash)),
+            TypeModifierKind::Pointer
+            | TypeModifierKind::Reference
+            | TypeModifierKind::RvalueReference => self.address_size,
         }
     }
 
@@ -422,10 +422,10 @@ impl<'input> TypeModifier<'input> {
                 TypeModifierKind::Const => write!(w, "const ")?,
                 TypeModifierKind::Volatile => write!(w, "volatile ")?,
                 TypeModifierKind::Restrict => write!(w, "restrict ")?,
-                TypeModifierKind::Packed |
-                TypeModifierKind::Shared |
-                TypeModifierKind::Atomic |
-                TypeModifierKind::Other => {}
+                TypeModifierKind::Packed
+                | TypeModifierKind::Shared
+                | TypeModifierKind::Atomic
+                | TypeModifierKind::Other => {}
             }
             Type::print_ref_from_offset(w, state, self.ty)?;
         }
@@ -573,12 +573,9 @@ impl<'input> TypeDef<'input> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_source(w, unit)
+                })?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
@@ -606,7 +603,13 @@ where
     T: Copy,
     F: FnOnce(T) -> bool,
 {
-    o.and_then(|v| if f(v) { Some(v) } else { None })
+    o.and_then(|v| {
+        if f(v) {
+            Some(v)
+        } else {
+            None
+        }
+    })
 }
 
 #[derive(Debug, Default)]
@@ -672,12 +675,9 @@ impl<'input> StructType<'input> {
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_source(w, unit)
+                })?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
@@ -808,12 +808,9 @@ impl<'input> UnionType<'input> {
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_source(w, unit)
+                })?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
@@ -1123,12 +1120,9 @@ impl<'input> EnumerationType<'input> {
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options.print_source {
-                state.line_option(
-                    w,
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| x.print_source(w, unit),
-                )?;
+                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    x.print_source(w, unit)
+                })?;
             }
             state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
@@ -1445,10 +1439,12 @@ impl PointerToMemberType {
             return self.byte_size;
         }
         // TODO: this probably depends on the ABI
-        self.ty(hash).and_then(|ty| if ty.is_function(hash) {
-            self.address_size.map(|v| v * 2)
-        } else {
-            self.address_size
+        self.ty(hash).and_then(|ty| {
+            if ty.is_function(hash) {
+                self.address_size.map(|v| v * 2)
+            } else {
+                self.address_size
+            }
         })
     }
 

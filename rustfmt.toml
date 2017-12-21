@@ -1,5 +1,1 @@
-write_mode = "Overwrite"
-closure_block_indent_threshold = 1
-array_width = 100
-chain_one_line_max = 100
-fn_call_width = 100
+use_small_heuristics = false

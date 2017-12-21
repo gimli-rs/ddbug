@@ -73,7 +73,6 @@ where
         ret
     }
 
-
     fn prefix<F>(&mut self, prefix: DiffPrefix, mut f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
@@ -374,12 +373,9 @@ where
         }
 
         self.indent(|state| {
-            let path = shortest_path(
-                list_a,
-                list_b,
-                T::step_cost(),
-                |a, b| T::diff_cost(state, arg_a, a, arg_b, b),
-            );
+            let path = shortest_path(list_a, list_b, T::step_cost(), |a, b| {
+                T::diff_cost(state, arg_a, a, arg_b, b)
+            });
             let mut iter_a = list_a.iter();
             let mut iter_b = list_b.iter();
             for dir in path {
@@ -465,11 +461,9 @@ where
         list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.a, x, &self.a, y, self.options));
         list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.b, x, &self.b, y, self.options));
 
-        let mut list: Vec<_> = MergeIterator::new(
-            list_a.iter(),
-            list_b.iter(),
-            |a, b| T::cmp_id(&self.a, a, &self.b, b, self.options),
-        ).collect();
+        let mut list: Vec<_> = MergeIterator::new(list_a.iter(), list_b.iter(), |a, b| {
+            T::cmp_id(&self.a, a, &self.b, b, self.options)
+        }).collect();
         list.sort_by(|x, y| {
             MergeResult::cmp(x, y, &self.a, &self.b, |x, state_x, y, state_y| {
                 T::cmp_by(state_x, x, state_y, y, self.options)
@@ -764,7 +758,12 @@ where
     // simpler, and also means we can backtrack in order.
     push(&mut node[len - 1], &mut heap, len1 - 1, len2 - 1, 0, Direction::None);
 
-    while let Some(State { index1, index2, .. }) = heap.pop() {
+    while let Some(State {
+        index1,
+        index2,
+        ..
+    }) = heap.pop()
+    {
         if (index1, index2) == (0, 0) {
             let mut result = Vec::new();
             let mut index1 = 0;

@@ -159,12 +159,12 @@ where
                         ranges = Some(val);
                     }
                 }
-                gimli::DW_AT_producer |
-                gimli::DW_AT_entry_pc |
-                gimli::DW_AT_APPLE_optimized |
-                gimli::DW_AT_macro_info |
-                gimli::DW_AT_GNU_macros |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_producer
+                | gimli::DW_AT_entry_pc
+                | gimli::DW_AT_APPLE_optimized
+                | gimli::DW_AT_macro_info
+                | gimli::DW_AT_GNU_macros
+                | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -465,33 +465,60 @@ where
         gimli::DW_TAG_ptr_to_member_type => TypeKind::PointerToMember(
             parse_pointer_to_member_type(dwarf, dwarf_unit, namespace, node)?,
         ),
-        gimli::DW_TAG_pointer_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Pointer)?,
-        ),
-        gimli::DW_TAG_reference_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Reference)?,
-        ),
-        gimli::DW_TAG_const_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Const)?,
-        ),
-        gimli::DW_TAG_packed_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Packed)?,
-        ),
-        gimli::DW_TAG_volatile_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Volatile)?,
-        ),
-        gimli::DW_TAG_restrict_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Restrict)?,
-        ),
-        gimli::DW_TAG_shared_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Shared)?,
-        ),
-        gimli::DW_TAG_rvalue_reference_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::RvalueReference)?,
-        ),
-        gimli::DW_TAG_atomic_type => TypeKind::Modifier(
-            parse_type_modifier(dwarf, dwarf_unit, node, TypeModifierKind::Atomic)?,
-        ),
+        gimli::DW_TAG_pointer_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Pointer,
+        )?),
+        gimli::DW_TAG_reference_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Reference,
+        )?),
+        gimli::DW_TAG_const_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Const,
+        )?),
+        gimli::DW_TAG_packed_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Packed,
+        )?),
+        gimli::DW_TAG_volatile_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Volatile,
+        )?),
+        gimli::DW_TAG_restrict_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Restrict,
+        )?),
+        gimli::DW_TAG_shared_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Shared,
+        )?),
+        gimli::DW_TAG_rvalue_reference_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::RvalueReference,
+        )?),
+        gimli::DW_TAG_atomic_type => TypeKind::Modifier(parse_type_modifier(
+            dwarf,
+            dwarf_unit,
+            node,
+            TypeModifierKind::Atomic,
+        )?),
         _ => return Ok(None),
     };
     Ok(Some(ty))
@@ -668,10 +695,10 @@ where
             gimli::DW_TAG_member => {
                 parse_member(&mut ty.members, unit, dwarf, dwarf_unit, &namespace, child)?;
             }
-            gimli::DW_TAG_inheritance |
-            gimli::DW_TAG_template_type_parameter |
-            gimli::DW_TAG_template_value_parameter |
-            gimli::DW_TAG_GNU_template_parameter_pack => {}
+            gimli::DW_TAG_inheritance
+            | gimli::DW_TAG_template_type_parameter
+            | gimli::DW_TAG_template_value_parameter
+            | gimli::DW_TAG_GNU_template_parameter_pack => {}
             tag => {
                 let offset = child.entry().offset();
                 let offset = offset.to_debug_info_offset(dwarf_unit.header);
@@ -815,15 +842,15 @@ where
                 gimli::DW_AT_declaration => {
                     declaration = true;
                 }
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line |
-                gimli::DW_AT_decl_column |
-                gimli::DW_AT_external |
-                gimli::DW_AT_accessibility |
-                gimli::DW_AT_artificial |
-                gimli::DW_AT_const_value |
-                gimli::DW_AT_alignment |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_decl_file
+                | gimli::DW_AT_decl_line
+                | gimli::DW_AT_decl_column
+                | gimli::DW_AT_external
+                | gimli::DW_AT_accessibility
+                | gimli::DW_AT_artificial
+                | gimli::DW_AT_const_value
+                | gimli::DW_AT_alignment
+                | gimli::DW_AT_sibling => {}
                 _ => {
                     debug!("unknown member attribute: {} {:?}", attr.name(), attr.value());
                 }
@@ -917,10 +944,10 @@ where
                 gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
-                gimli::DW_AT_sibling |
-                gimli::DW_AT_type |
-                gimli::DW_AT_alignment |
-                gimli::DW_AT_enum_class => {}
+                gimli::DW_AT_sibling
+                | gimli::DW_AT_type
+                | gimli::DW_AT_alignment
+                | gimli::DW_AT_enum_class => {}
                 _ => debug!("unknown enumeration attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1258,22 +1285,22 @@ where
                 {
                     function.declaration = flag;
                 },
-                gimli::DW_AT_frame_base |
-                gimli::DW_AT_external |
-                gimli::DW_AT_GNU_all_call_sites |
-                gimli::DW_AT_GNU_all_tail_call_sites |
-                gimli::DW_AT_prototyped |
-                gimli::DW_AT_accessibility |
-                gimli::DW_AT_explicit |
-                gimli::DW_AT_artificial |
-                gimli::DW_AT_object_pointer |
-                gimli::DW_AT_virtuality |
-                gimli::DW_AT_vtable_elem_location |
-                gimli::DW_AT_containing_type |
-                gimli::DW_AT_main_subprogram |
-                gimli::DW_AT_APPLE_optimized |
-                gimli::DW_AT_APPLE_omit_frame_ptr |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_frame_base
+                | gimli::DW_AT_external
+                | gimli::DW_AT_GNU_all_call_sites
+                | gimli::DW_AT_GNU_all_tail_call_sites
+                | gimli::DW_AT_prototyped
+                | gimli::DW_AT_accessibility
+                | gimli::DW_AT_explicit
+                | gimli::DW_AT_artificial
+                | gimli::DW_AT_object_pointer
+                | gimli::DW_AT_virtuality
+                | gimli::DW_AT_vtable_elem_location
+                | gimli::DW_AT_containing_type
+                | gimli::DW_AT_main_subprogram
+                | gimli::DW_AT_APPLE_optimized
+                | gimli::DW_AT_APPLE_omit_frame_ptr
+                | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown subprogram attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1362,9 +1389,12 @@ where
                 parse_local_variable(&mut function.variables, unit, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                function
-                    .inlined_functions
-                    .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
+                function.inlined_functions.push(parse_inlined_subroutine(
+                    unit,
+                    dwarf,
+                    dwarf_unit,
+                    child,
+                )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1380,14 +1410,14 @@ where
             gimli::DW_TAG_subprogram => {
                 parse_subprogram(unit, dwarf, dwarf_unit, &namespace, child)?;
             }
-            gimli::DW_TAG_unspecified_parameters |
-            gimli::DW_TAG_template_type_parameter |
-            gimli::DW_TAG_template_value_parameter |
-            gimli::DW_TAG_GNU_template_parameter_pack |
-            gimli::DW_TAG_label |
-            gimli::DW_TAG_imported_declaration |
-            gimli::DW_TAG_imported_module |
-            gimli::DW_TAG_GNU_call_site => {}
+            gimli::DW_TAG_unspecified_parameters
+            | gimli::DW_TAG_template_type_parameter
+            | gimli::DW_TAG_template_value_parameter
+            | gimli::DW_TAG_GNU_template_parameter_pack
+            | gimli::DW_TAG_label
+            | gimli::DW_TAG_imported_declaration
+            | gimli::DW_TAG_imported_module
+            | gimli::DW_TAG_GNU_call_site => {}
             tag => {
                 let offset = child.entry().offset();
                 let offset = offset.to_debug_info_offset(dwarf_unit.header);
@@ -1432,13 +1462,13 @@ where
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     parameter.ty = Some(offset);
                 },
-                gimli::DW_AT_decl_file |
-                gimli::DW_AT_decl_line |
-                gimli::DW_AT_decl_column |
-                gimli::DW_AT_location |
-                gimli::DW_AT_artificial |
-                gimli::DW_AT_const_value |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_decl_file
+                | gimli::DW_AT_decl_line
+                | gimli::DW_AT_decl_column
+                | gimli::DW_AT_location
+                | gimli::DW_AT_artificial
+                | gimli::DW_AT_const_value
+                | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown parameter attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1490,10 +1520,10 @@ where
         let mut attrs = node.entry().attrs();
         while let Some(attr) = attrs.next()? {
             match attr.name() {
-                gimli::DW_AT_low_pc |
-                gimli::DW_AT_high_pc |
-                gimli::DW_AT_ranges |
-                gimli::DW_AT_sibling => {}
+                gimli::DW_AT_low_pc
+                | gimli::DW_AT_high_pc
+                | gimli::DW_AT_ranges
+                | gimli::DW_AT_sibling => {}
                 _ => debug!("unknown lexical_block attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1519,11 +1549,11 @@ where
                     child,
                 )?;
             }
-            gimli::DW_TAG_formal_parameter |
-            gimli::DW_TAG_label |
-            gimli::DW_TAG_imported_declaration |
-            gimli::DW_TAG_imported_module |
-            gimli::DW_TAG_GNU_call_site => {}
+            gimli::DW_TAG_formal_parameter
+            | gimli::DW_TAG_label
+            | gimli::DW_TAG_imported_declaration
+            | gimli::DW_TAG_imported_module
+            | gimli::DW_TAG_GNU_call_site => {}
             tag => {
                 let offset = child.entry().offset();
                 let offset = offset.to_debug_info_offset(dwarf_unit.header);
@@ -1628,9 +1658,12 @@ where
                 parse_local_variable(&mut function.variables, unit, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                function
-                    .inlined_functions
-                    .push(parse_inlined_subroutine(unit, dwarf, dwarf_unit, child)?);
+                function.inlined_functions.push(parse_inlined_subroutine(
+                    unit,
+                    dwarf,
+                    dwarf_unit,
+                    child,
+                )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1712,12 +1745,12 @@ where
                         }
                     }
                 }
-                gimli::DW_AT_abstract_origin |
-                gimli::DW_AT_artificial |
-                gimli::DW_AT_const_value |
-                gimli::DW_AT_external |
-                gimli::DW_AT_accessibility |
-                gimli::DW_AT_alignment => {}
+                gimli::DW_AT_abstract_origin
+                | gimli::DW_AT_artificial
+                | gimli::DW_AT_const_value
+                | gimli::DW_AT_external
+                | gimli::DW_AT_accessibility
+                | gimli::DW_AT_alignment => {}
                 _ => debug!("unknown variable attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1793,10 +1826,10 @@ where
                         }
                     }
                 }
-                gimli::DW_AT_alignment |
-                gimli::DW_AT_artificial |
-                gimli::DW_AT_const_value |
-                gimli::DW_AT_external => {}
+                gimli::DW_AT_alignment
+                | gimli::DW_AT_artificial
+                | gimli::DW_AT_const_value
+                | gimli::DW_AT_external => {}
                 _ => debug!("unknown local variable attribute: {} {:?}", attr.name(), attr.value()),
             }
         }
@@ -1848,8 +1881,12 @@ where
         return None;
     }
     match pieces[0].location {
-        gimli::Location::Address { address } => Some(address * 8),
-        gimli::Location::Register { .. } => None,
+        gimli::Location::Address {
+            address,
+        } => Some(address * 8),
+        gimli::Location::Register {
+            ..
+        } => None,
         _ => {
             debug!("unknown DW_AT_data_member_location result: {:?}", pieces);
             None
@@ -1868,7 +1905,9 @@ where
     let mut result = None;
     for piece in &*pieces {
         match piece.location {
-            gimli::Location::Address { address } => {
+            gimli::Location::Address {
+                address,
+            } => {
                 if result.is_some() {
                     debug!("unsupported DW_AT_location with multiple addresses: {:?}", pieces);
                 } else {
@@ -1878,9 +1917,15 @@ where
                     }
                 }
             }
-            gimli::Location::Register { .. } |
-            gimli::Location::Scalar { .. } |
-            gimli::Location::ImplicitPointer { .. } => {}
+            gimli::Location::Register {
+                ..
+            }
+            | gimli::Location::Scalar {
+                ..
+            }
+            | gimli::Location::ImplicitPointer {
+                ..
+            } => {}
             _ => debug!("unknown DW_AT_location piece: {:?}", piece),
         }
     }
