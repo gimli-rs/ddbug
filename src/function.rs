@@ -561,12 +561,20 @@ impl<'input> DiffList for InlinedFunction<'input> {
 
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v)).unwrap();
-        let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v)).unwrap();
-        if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
-            != cmp::Ordering::Equal
-        {
-            cost += 1;
+        let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v));
+        let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v));
+        match (function_a, function_b) {
+            (Some(function_a), Some(function_b)) => {
+                if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
+                    != cmp::Ordering::Equal
+                {
+                    cost += 1;
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
         }
         if a.size != b.size {
             cost += 1;
