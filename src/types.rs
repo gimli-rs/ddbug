@@ -1018,7 +1018,7 @@ impl<'input> Print for Member<'input> {
 }
 
 impl<'input> DiffList for Member<'input> {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         1
     }
 
@@ -1213,7 +1213,7 @@ impl<'input> Print for Enumerator<'input> {
 }
 
 impl<'input> DiffList for Enumerator<'input> {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         3
     }
 

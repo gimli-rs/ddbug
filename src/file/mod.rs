@@ -514,7 +514,7 @@ impl<'input> Print for Section<'input> {
 }
 
 impl<'input> DiffList for Section<'input> {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &()) -> usize {
         1
     }
 
@@ -598,7 +598,7 @@ impl<'input> Print for Symbol<'input> {
 }
 
 impl<'input> DiffList for Symbol<'input> {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &()) -> usize {
         1
     }
 

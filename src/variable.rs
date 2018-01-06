@@ -301,7 +301,7 @@ impl<'input> Print for LocalVariable<'input> {
 }
 
 impl<'a, 'input> DiffList for &'a LocalVariable<'input> {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         1
     }
 

@@ -439,7 +439,7 @@ impl<'input> Print for Parameter<'input> {
 }
 
 impl<'input> DiffList for Parameter<'input> {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         1
     }
 
@@ -542,10 +542,15 @@ impl<'input> Print for InlinedFunction<'input> {
 }
 
 impl<'input> DiffList for InlinedFunction<'input> {
-    fn step_cost() -> usize {
-        1
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
+        1 + self.size.unwrap_or(0) as usize
     }
 
+    // Make the cost proportional to the size, so that we give priority to matching large
+    // functions. Probably not ideal, but seemed to help for one test case.
+    // TODO: other options to consider:
+    // - match on call site
+    // - include diff cost of lower levels of inlined functions
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
         let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v));
@@ -555,16 +560,20 @@ impl<'input> DiffList for InlinedFunction<'input> {
                 if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
                     != cmp::Ordering::Equal
                 {
-                    cost += 1;
+                    cost += 2 + (a.size.unwrap_or(0) + b.size.unwrap_or(0)) as usize;
                 }
             }
             (None, None) => {}
             _ => {
-                cost += 1;
+                cost += 2 + (a.size.unwrap_or(0) + b.size.unwrap_or(0)) as usize;
             }
         }
-        if a.size != b.size {
-            cost += 1;
+        let size_a = a.size.unwrap_or(0) as usize;
+        let size_b = b.size.unwrap_or(0) as usize;
+        if size_a < size_b {
+            cost += size_b - size_a;
+        } else {
+            cost += size_a - size_b;
         }
         cost
     }
@@ -707,7 +716,7 @@ impl Print for Call {
 }
 
 impl DiffList for Call {
-    fn step_cost() -> usize {
+    fn step_cost(&self, _state: &DiffState, _arg: &()) -> usize {
         1
     }
 

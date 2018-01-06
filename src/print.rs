@@ -373,9 +373,13 @@ where
         }
 
         self.indent(|state| {
-            let path = shortest_path(list_a, list_b, T::step_cost(), |a, b| {
-                T::diff_cost(state, arg_a, a, arg_b, b)
-            });
+            let path = shortest_path(
+                list_a,
+                list_b,
+                |a| a.step_cost(state, arg_a),
+                |b| b.step_cost(state, arg_b),
+                |a, b| T::diff_cost(state, arg_a, a, arg_b, b),
+            );
             let mut iter_a = list_a.iter();
             let mut iter_b = list_b.iter();
             for dir in path {
@@ -526,7 +530,7 @@ where
 }
 
 pub(crate) trait DiffList: Print {
-    fn step_cost() -> usize;
+    fn step_cost(&self, state: &DiffState, arg: &Self::Arg) -> usize;
 
     fn diff_cost(
         state: &DiffState,
@@ -711,14 +715,17 @@ impl PartialOrd for State {
 //     0 for items that are completely equal
 //     (2 * step_cost) for items that are completely different
 //     values in between for items that are partially equal
-fn shortest_path<Item, F>(
+fn shortest_path<Item, Step1, Step2, Diff>(
     item1: &[Item],
     item2: &[Item],
-    step_cost: usize,
-    diff_cost: F,
+    step_cost1: Step1,
+    step_cost2: Step2,
+    diff_cost: Diff,
 ) -> Vec<Direction>
 where
-    F: Fn(&Item, &Item) -> usize,
+    Step1: Fn(&Item) -> usize,
+    Step2: Fn(&Item) -> usize,
+    Diff: Fn(&Item, &Item) -> usize,
 {
     // len + 1 because we need to allow for the 0 items state too.
     let len1 = item1.len() + 1;
@@ -800,7 +807,7 @@ where
             let next2 = index2 - 1;
             let next = index - len1;
             if !node[next].done {
-                let cost = node[index].cost + step_cost;
+                let cost = node[index].cost + step_cost2(&item2[next2]);
                 push(&mut node[next], &mut heap, index1, next2, cost, Direction::Vertical);
             }
         }
@@ -808,7 +815,7 @@ where
             let next1 = index1 - 1;
             let next = index - 1;
             if !node[next].done {
-                let cost = node[index].cost + step_cost;
+                let cost = node[index].cost + step_cost1(&item1[next1]);
                 push(&mut node[next], &mut heap, next1, index2, cost, Direction::Horizontal);
             }
         }
@@ -817,8 +824,9 @@ where
             let next2 = index2 - 1;
             let next = index - len1 - 1;
             if !node[next].done {
+                let step_cost = step_cost1(&item1[next1]) + step_cost2(&item2[next2]);
                 let diff_cost = diff_cost(&item1[next1], &item2[next2]);
-                if diff_cost < 2 * step_cost {
+                if diff_cost < step_cost {
                     let cost = node[index].cost + diff_cost;
                     push(&mut node[next], &mut heap, next1, next2, cost, Direction::Diagonal);
                 }
