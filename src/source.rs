@@ -20,19 +20,29 @@ impl<'input> Source<'input> {
         self.file.is_some()
     }
 
-    pub fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    pub fn path(&self, unit: &Unit) -> Option<Vec<u8>> {
         fn is_absolute(directory: &[u8]) -> bool {
             directory.get(0) == Some(&b'/') || directory.get(1) == Some(&b':')
         }
 
-        if let Some(file) = self.file {
+        self.file.map(|file| {
+            let mut path = Vec::new();
             if let Some(directory) = self.directory {
                 if let (false, Some(unit_dir)) = (is_absolute(directory), unit.dir) {
-                    write!(w, "{}/", String::from_utf8_lossy(unit_dir))?;
+                    path.extend_from_slice(unit_dir);
+                    path.push(b'/');
                 }
-                write!(w, "{}/", String::from_utf8_lossy(directory))?;
+                path.extend_from_slice(directory);
+                path.push(b'/');
             }
-            write!(w, "{}", String::from_utf8_lossy(file))?;
+            path.extend_from_slice(file);
+            path
+        })
+    }
+
+    pub fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+        if let Some(path) = self.path(unit) {
+            write!(w, "{}", String::from_utf8_lossy(&*path))?;
             if self.line != 0 {
                 write!(w, ":{}", self.line)?;
                 if self.column != 0 {

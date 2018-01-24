@@ -542,14 +542,14 @@ impl<'input> Print for InlinedFunction<'input> {
 }
 
 impl<'input> DiffList for InlinedFunction<'input> {
-    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
-        1 + self.size.unwrap_or(0) as usize
-    }
-
     // Make the cost proportional to the size, so that we give priority to matching large
     // functions. Probably not ideal, but seemed to help for one test case.
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
+        // Ensure cost is at least 1.
+        1 + 4 * self.size.unwrap_or(0) as usize
+    }
+
     // TODO: other options to consider:
-    // - match on call site
     // - include diff cost of lower levels of inlined functions
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
@@ -560,21 +560,27 @@ impl<'input> DiffList for InlinedFunction<'input> {
                 if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
                     != cmp::Ordering::Equal
                 {
-                    cost += 2 + (a.size.unwrap_or(0) + b.size.unwrap_or(0)) as usize;
+                    cost += 3;
                 }
             }
             (None, None) => {}
             _ => {
-                cost += 2 + (a.size.unwrap_or(0) + b.size.unwrap_or(0)) as usize;
+                cost += 3;
             }
         }
-        let size_a = a.size.unwrap_or(0) as usize;
-        let size_b = b.size.unwrap_or(0) as usize;
-        if size_a < size_b {
-            cost += size_b - size_a;
-        } else {
-            cost += size_a - size_b;
+
+        let path_a = a.call_source.path(unit_a);
+        let path_b = b.call_source.path(unit_b);
+        if path_a.cmp(&path_b) != cmp::Ordering::Equal
+            || a.call_source.line.cmp(&b.call_source.line) != cmp::Ordering::Equal
+            || a.call_source.column.cmp(&b.call_source.column) != cmp::Ordering::Equal
+        {
+            cost += 1;
         }
+
+        // max diff_cost needs be a.step_cost + b.step_cost = 2 + 4 * a.size + 4 * b.size
+        // max cost so far is 4
+        cost *= 1 + (a.size.unwrap_or(0) + b.size.unwrap_or(0)) as usize;
         cost
     }
 }
