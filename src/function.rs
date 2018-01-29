@@ -1,6 +1,6 @@
 use std::borrow;
 use std::cmp;
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::io::Write;
 use std::rc::Rc;
@@ -604,10 +604,10 @@ where
     A::Configuration: Debug,
 {
     let mut calls = Vec::new();
-    let mut mnemonics = BTreeMap::new();
-    let mut jumps = vec![range.begin];
-    while let Some(addr) = jumps.pop() {
-        if mnemonics.contains_key(&addr) {
+    let mut done = BTreeSet::new();
+    let mut todo = vec![range.begin];
+    while let Some(addr) = todo.pop() {
+        if done.contains(&addr) {
             continue;
         }
 
@@ -660,8 +660,14 @@ where
                     _ => {}
                 }
             }
-            // FIXME: mnemonic is large, insert boxed value
-            mnemonics.insert(mnemonic.area.start, mnemonic);
+
+            done.insert(mnemonic.area.start);
+            if mnemonic.area.end < range.end {
+                // Always decode the following instruction, even if
+                // there's no control flow there.
+                // TODO: delay processing these until after jumps.
+                todo.push(mnemonic.area.end);
+            }
         }
 
         for (_origin, target, _guard) in m.jumps {
@@ -670,12 +676,13 @@ where
                 ..
             } = target
             {
-                if value > addr && value < range.end {
-                    jumps.push(value);
+                if value > range.begin && value < range.end {
+                    todo.push(value);
                 }
             }
         }
     }
+    calls.sort_by_key(|x| x.from);
     calls
 }
 
@@ -716,8 +723,7 @@ impl Print for Call {
         arg_b: &(),
         b: &Self,
     ) -> Result<()> {
-        let flag = Call::diff_cost(state, arg_a, a, arg_b, b) == 0;
-        state.ignore_diff(flag, |state| state.line(w, a, b, |w, state, x| x.print(w, state)))
+        state.line(w, a, b, |w, state, x| x.print(w, state))
     }
 }
 
