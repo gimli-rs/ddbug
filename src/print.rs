@@ -4,7 +4,7 @@ use std::io::Write;
 use std::usize;
 
 use {Options, Result};
-use file::{File, FileHash};
+use file::FileHash;
 
 #[derive(Debug, Clone, Copy)]
 enum DiffPrefix {
@@ -25,7 +25,6 @@ where
     inline_depth: usize,
 
     // The remaining fields contain information that is commonly needed in print methods.
-    pub file: &'a File<'a, 'input>,
     pub hash: &'a FileHash<'a, 'input>,
     pub options: &'a Options<'a>,
 }
@@ -34,17 +33,12 @@ impl<'a, 'input> PrintState<'a, 'input>
 where
     'input: 'a,
 {
-    pub fn new(
-        file: &'a File<'a, 'input>,
-        hash: &'a FileHash<'a, 'input>,
-        options: &'a Options<'a>,
-    ) -> Self {
+    pub fn new(hash: &'a FileHash<'a, 'input>, options: &'a Options<'a>) -> Self {
         PrintState {
             indent: 0,
             prefix: DiffPrefix::None,
             diff: false,
             inline_depth: options.inline_depth,
-            file: file,
             hash: hash,
             options: options,
         }
@@ -113,7 +107,7 @@ where
         F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
     {
         let mut buf = Vec::new();
-        let mut state = PrintState::new(self.file, self.hash, self.options);
+        let mut state = PrintState::new(self.hash, self.options);
         f(&mut buf, &mut state)?;
         if !buf.is_empty() {
             self.line(w, |w, _state| w.write_all(&*buf).map_err(From::from))?;
@@ -182,15 +176,13 @@ where
     'input: 'a,
 {
     pub fn new(
-        file_a: &'a File<'a, 'input>,
-        hash_a: &'a FileHash<'a, 'input>,
-        file_b: &'a File<'a, 'input>,
-        hash_b: &'a FileHash<'a, 'input>,
+        file_a: &'a FileHash<'a, 'input>,
+        file_b: &'a FileHash<'a, 'input>,
         options: &'a Options<'a>,
     ) -> Self {
         DiffState {
-            a: PrintState::new(file_a, hash_a, options),
-            b: PrintState::new(file_b, hash_b, options),
+            a: PrintState::new(file_a, options),
+            b: PrintState::new(file_b, options),
             options: options,
         }
     }
@@ -304,11 +296,11 @@ where
         F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
         let mut a = Vec::new();
-        let mut state = PrintState::new(self.a.file, self.a.hash, self.a.options);
+        let mut state = PrintState::new(self.a.hash, self.a.options);
         f(&mut a, &mut state, arg_a)?;
 
         let mut b = Vec::new();
-        let mut state = PrintState::new(self.b.file, self.b.hash, self.b.options);
+        let mut state = PrintState::new(self.b.hash, self.b.options);
         f(&mut b, &mut state, arg_b)?;
 
         if a == b {

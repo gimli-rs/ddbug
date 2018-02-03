@@ -327,7 +327,7 @@ impl<'a, 'input> File<'a, 'input> {
 
     pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
         let hash = FileHash::new(self);
-        let mut state = PrintState::new(self, &hash, options);
+        let mut state = PrintState::new(&hash, options);
 
         if options.category_file {
             state.line(w, |w, _state| {
@@ -359,7 +359,7 @@ impl<'a, 'input> File<'a, 'input> {
     pub fn diff(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
         let hash_a = FileHash::new(file_a);
         let hash_b = FileHash::new(file_b);
-        let mut state = DiffState::new(file_a, &hash_a, file_b, &hash_b, options);
+        let mut state = DiffState::new(&hash_a, &hash_b, options);
 
         if options.category_file {
             state.line(w, file_a, file_b, |w, _state, x| {
@@ -410,6 +410,7 @@ pub(crate) struct FileHash<'a, 'input>
 where
     'input: 'a,
 {
+    pub file: &'a File<'a, 'input>,
     // All functions by address.
     pub functions: HashMap<u64, &'a Function<'input>>,
     // All types by offset.
@@ -419,6 +420,7 @@ where
 impl<'a, 'input> FileHash<'a, 'input> {
     fn new(file: &'a File<'a, 'input>) -> Self {
         FileHash {
+            file,
             functions: Self::functions(file),
             types: Self::types(file),
         }

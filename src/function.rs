@@ -110,7 +110,7 @@ impl<'input> Function<'input> {
             state
                 .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
             if state.options.print_function_calls {
-                let calls = self.calls(state.file);
+                let calls = self.calls(state.hash.file);
                 state.list("calls", w, &(), &calls)?;
             }
             Ok(())
@@ -177,8 +177,8 @@ impl<'input> Function<'input> {
                 )
             })?;
             if state.options.print_function_calls {
-                let calls_a = a.calls(state.a.file);
-                let calls_b = b.calls(state.b.file);
+                let calls_a = a.calls(state.a.hash.file);
+                let calls_b = b.calls(state.b.hash.file);
                 state.list("calls", w, &(), &calls_a, &(), &calls_b)?;
             }
             Ok(())
@@ -718,9 +718,9 @@ impl Print for Call {
     fn diff(
         w: &mut Write,
         state: &mut DiffState,
-        arg_a: &(),
+        _arg_a: &(),
         a: &Self,
-        arg_b: &(),
+        _arg_b: &(),
         b: &Self,
     ) -> Result<()> {
         state.line(w, a, b, |w, state, x| x.print(w, state))
