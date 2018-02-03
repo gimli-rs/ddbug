@@ -242,9 +242,8 @@ impl<'input> Type<'input> {
         }
 
         // Different types, so don't try to diff the members.
-        state.prefix_diff(|state| {
-            Type::print_members(label, w, &mut state.a, unit_a, type_a)?;
-            Type::print_members(label, w, &mut state.b, unit_b, type_b)
+        state.block(w, (unit_a, type_a), (unit_b, type_b), |w, state, (unit, x)| {
+            Type::print_members(label, w, state, unit, x)
         })
     }
 

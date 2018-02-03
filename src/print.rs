@@ -20,8 +20,6 @@ where
 {
     indent: usize,
     prefix: DiffPrefix,
-    // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
-    diff: bool,
     inline_depth: usize,
 
     // The remaining fields contain information that is commonly needed in print methods.
@@ -37,7 +35,6 @@ where
         PrintState {
             indent: 0,
             prefix: DiffPrefix::None,
-            diff: false,
             inline_depth: options.inline_depth,
             hash: hash,
             options: options,
@@ -67,15 +64,12 @@ where
         ret
     }
 
-    fn prefix<F>(&mut self, prefix: DiffPrefix, mut f: F) -> Result<()>
+    fn prefix<F>(&mut self, prefix: DiffPrefix, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnOnce(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        let prev = self.prefix;
         self.prefix = prefix;
-        let ret = f(self);
-        self.prefix = prev;
-        ret
+        f(self)
     }
 
     pub fn line<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
@@ -87,11 +81,9 @@ where
             DiffPrefix::Equal => write!(w, "  ")?,
             DiffPrefix::Less => {
                 write!(w, "- ")?;
-                self.diff = true;
             }
             DiffPrefix::Greater => {
                 write!(w, "+ ")?;
-                self.diff = true;
             }
         }
         for _ in 0..self.indent {
@@ -169,6 +161,8 @@ where
     pub a: PrintState<'a, 'input>,
     pub b: PrintState<'a, 'input>,
     pub options: &'a Options<'a>,
+    // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
+    diff: bool,
 }
 
 impl<'a, 'input> DiffState<'a, 'input>
@@ -184,6 +178,7 @@ where
             a: PrintState::new(file_a, options),
             b: PrintState::new(file_b, options),
             options: options,
+            diff: false,
         }
     }
 
@@ -194,30 +189,25 @@ where
         F: FnMut(&mut Write, &mut DiffState<'a, 'input>) -> Result<()>,
     {
         let mut buf = Vec::new();
-        let prev_a = self.a.diff;
-        let prev_b = self.b.diff;
-        self.a.diff = false;
-        self.b.diff = false;
+        let prev_diff = self.diff;
+        self.diff = false;
         f(&mut buf, self)?;
-        if self.a.diff || self.b.diff {
+        if self.diff {
             w.write_all(&*buf)?;
         }
-        self.a.diff = self.a.diff | prev_a;
-        self.b.diff = self.b.diff | prev_b;
+        self.diff |= prev_diff;
         Ok(())
     }
 
-    // Don't allow `f` to update the diff flags.
+    // Don't allow `f` to update self.diff if flag is true.
     pub fn ignore_diff<F>(&mut self, flag: bool, mut f: F) -> Result<()>
     where
         F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
-        let a_diff = self.a.diff;
-        let b_diff = self.b.diff;
+        let diff = self.diff;
         f(self)?;
         if flag {
-            self.a.diff = a_diff;
-            self.b.diff = b_diff;
+            self.diff = diff;
         }
         Ok(())
     }
@@ -249,46 +239,46 @@ where
         ret
     }
 
-    fn prefix_equal<F>(&mut self, mut f: F) -> Result<()>
+    fn prefix_equal<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        let prev_a = self.a.prefix;
-        let prev_b = self.b.prefix;
-        self.a.prefix = DiffPrefix::Equal;
-        self.b.prefix = DiffPrefix::Equal;
-        let ret = f(self);
-        self.a.prefix = prev_a;
-        self.b.prefix = prev_b;
-        ret
+        self.a.prefix(DiffPrefix::Equal, f)
     }
 
     fn prefix_less<F>(&mut self, f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        self.a.prefix(DiffPrefix::Less, f)
+        self.a.prefix(DiffPrefix::Less, f)?;
+        // Assume something is always written.
+        self.diff = true;
+        Ok(())
     }
 
     fn prefix_greater<F>(&mut self, f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        self.b.prefix(DiffPrefix::Greater, f)
+        self.b.prefix(DiffPrefix::Greater, f)?;
+        // Assume something is always written.
+        self.diff = true;
+        Ok(())
     }
 
-    pub fn prefix_diff<F>(&mut self, mut f: F) -> Result<()>
+    // Multiline blocks that are always different.
+    pub fn block<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
-        let prev_a = self.a.prefix;
-        let prev_b = self.b.prefix;
-        self.a.prefix = DiffPrefix::Less;
-        self.b.prefix = DiffPrefix::Greater;
-        let ret = f(self);
-        self.a.prefix = prev_a;
-        self.b.prefix = prev_b;
-        ret
+        let mut buf = Vec::new();
+        self.a.prefix(DiffPrefix::Less, |state| f(&mut buf, state, arg_a))?;
+        self.b.prefix(DiffPrefix::Greater, |state| f(&mut buf, state, arg_b))?;
+        if !buf.is_empty() {
+            w.write_all(&*buf)?;
+            self.diff = true;
+        }
+        Ok(())
     }
 
     pub fn line<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
@@ -304,23 +294,24 @@ where
         f(&mut b, &mut state, arg_b)?;
 
         if a == b {
-            self.prefix_equal(|state| {
-                if !a.is_empty() {
-                    state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
-                }
-                Ok(())
-            })
+            if !a.is_empty() {
+                self.prefix_equal(|state| {
+                    state.line(w, |w, _state| w.write_all(&*a).map_err(From::from))
+                })?;
+            }
         } else {
-            self.prefix_diff(|state| {
-                if !a.is_empty() {
-                    state.a.line(w, |w, _state| w.write_all(&*a).map_err(From::from))?;
-                }
-                if !b.is_empty() {
-                    state.b.line(w, |w, _state| w.write_all(&*b).map_err(From::from))?;
-                }
-                Ok(())
-            })
+            if !a.is_empty() {
+                self.prefix_less(|state| {
+                    state.line(w, |w, _state| w.write_all(&*a).map_err(From::from))
+                })?;
+            }
+            if !b.is_empty() {
+                self.prefix_greater(|state| {
+                    state.line(w, |w, _state| w.write_all(&*b).map_err(From::from))
+                })?;
+            }
         }
+        Ok(())
     }
 
     /// This is the same as `Self::line`. It exists for symmetry with `PrintState::line_option`.
