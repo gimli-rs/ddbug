@@ -69,7 +69,7 @@ impl<'input> Variable<'input> {
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
             state.line_option(w, |w, _state| self.print_symbol_name(w))?;
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, _state| self.print_address(w))?;
@@ -92,16 +92,16 @@ impl<'input> Variable<'input> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
-            let flag = state.options.ignore_variable_symbol_name;
+            let flag = state.options().ignore_variable_symbol_name;
             state.ignore_diff(flag, |state| {
                 state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))
             })?;
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            let flag = state.options.ignore_variable_address;
+            let flag = state.options().ignore_variable_address;
             state.ignore_diff(flag, |state| {
                 state.line_option(w, a, b, |w, _state, x| x.print_address(w))
             })?;
@@ -150,7 +150,7 @@ impl<'input> Variable<'input> {
     }
 
     fn print_size(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(state.hash) {
+        if let Some(byte_size) = self.byte_size(state.hash()) {
             write!(w, "size: {}", byte_size)?;
         } else if !self.declaration {
             debug!("variable with no size");
@@ -195,9 +195,9 @@ impl<'input> Print for Variable<'input> {
 
 impl<'input> SortList for Variable<'input> {
     fn cmp_id(
-        _state_a: &PrintState,
+        _hash_a: &FileHash,
         a: &Self,
-        _state_b: &PrintState,
+        _hash_b: &FileHash,
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
@@ -205,17 +205,17 @@ impl<'input> SortList for Variable<'input> {
     }
 
     fn cmp_by(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
         match options.sort {
             // TODO: sort by offset?
             Sort::None => a.address.cmp(&b.address),
-            Sort::Name => Self::cmp_id(state_a, a, state_b, b, options),
-            Sort::Size => a.byte_size(state_a.hash).cmp(&b.byte_size(state_b.hash)),
+            Sort::Name => Self::cmp_id(hash_a, a, hash_b, b, options),
+            Sort::Size => a.byte_size(hash_a).cmp(&b.byte_size(hash_b)),
         }
     }
 }
@@ -262,7 +262,7 @@ impl<'input> LocalVariable<'input> {
     }
 
     fn print_size_and_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        match self.byte_size(state.hash) {
+        match self.byte_size(state.hash()) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
@@ -271,9 +271,9 @@ impl<'input> LocalVariable<'input> {
     }
 
     pub fn cmp_id(
-        _state_a: &PrintState,
+        _hash_a: &FileHash,
         a: &Self,
-        _state_b: &PrintState,
+        _hash_b: &FileHash,
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
@@ -310,9 +310,10 @@ impl<'a, 'input> DiffList for &'a LocalVariable<'input> {
         if a.name.cmp(&b.name) != cmp::Ordering::Equal {
             cost += 1;
         }
-        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+        match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
             (Some(ty_a), Some(ty_b)) => {
-                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
+                {
                     cost += 1;
                 }
             }

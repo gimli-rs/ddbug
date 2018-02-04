@@ -23,14 +23,24 @@ where
     inline_depth: usize,
 
     // The remaining fields contain information that is commonly needed in print methods.
-    pub hash: &'a FileHash<'a, 'input>,
-    pub options: &'a Options<'a>,
+    hash: &'a FileHash<'a, 'input>,
+    options: &'a Options<'a>,
 }
 
 impl<'a, 'input> PrintState<'a, 'input>
 where
     'input: 'a,
 {
+    #[inline]
+    pub fn hash(&self) -> &'a FileHash<'a, 'input> {
+        self.hash
+    }
+
+    #[inline]
+    pub fn options(&self) -> &'a Options<'a> {
+        self.options
+    }
+
     pub fn new(hash: &'a FileHash<'a, 'input>, options: &'a Options<'a>) -> Self {
         PrintState {
             indent: 0,
@@ -146,7 +156,7 @@ where
         arg: &T::Arg,
         list: &mut [&T],
     ) -> Result<()> {
-        list.sort_by(|a, b| T::cmp_by(self, a, self, b, self.options));
+        list.sort_by(|a, b| T::cmp_by(self.hash, a, self.hash, b, self.options));
         for item in list {
             item.print(w, self, arg)?;
         }
@@ -158,9 +168,9 @@ pub(crate) struct DiffState<'a, 'input>
 where
     'input: 'a,
 {
-    pub a: PrintState<'a, 'input>,
-    pub b: PrintState<'a, 'input>,
-    pub options: &'a Options<'a>,
+    a: PrintState<'a, 'input>,
+    b: PrintState<'a, 'input>,
+    options: &'a Options<'a>,
     // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
     diff: bool,
 }
@@ -169,6 +179,21 @@ impl<'a, 'input> DiffState<'a, 'input>
 where
     'input: 'a,
 {
+    #[inline]
+    pub fn hash_a(&self) -> &'a FileHash<'a, 'input> {
+        self.a.hash
+    }
+
+    #[inline]
+    pub fn hash_b(&self) -> &'a FileHash<'a, 'input> {
+        self.b.hash
+    }
+
+    #[inline]
+    pub fn options(&self) -> &'a Options<'a> {
+        self.options
+    }
+
     pub fn new(
         file_a: &'a FileHash<'a, 'input>,
         file_b: &'a FileHash<'a, 'input>,
@@ -445,15 +470,15 @@ where
         arg_b: &T::Arg,
         list_b: &mut [&T],
     ) -> Result<()> {
-        list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.a, x, &self.a, y, self.options));
-        list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.b, x, &self.b, y, self.options));
+        list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.a.hash, x, &self.a.hash, y, self.options));
+        list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.b.hash, x, &self.b.hash, y, self.options));
 
         let mut list: Vec<_> = MergeIterator::new(list_a.iter(), list_b.iter(), |a, b| {
-            T::cmp_id(&self.a, a, &self.b, b, self.options)
+            T::cmp_id(&self.a.hash, a, &self.b.hash, b, self.options)
         }).collect();
         list.sort_by(|x, y| {
-            MergeResult::cmp(x, y, &self.a, &self.b, |x, state_x, y, state_y| {
-                T::cmp_by(state_x, x, state_y, y, self.options)
+            MergeResult::cmp(x, y, &self.a.hash, &self.b.hash, |x, hash_x, y, hash_y| {
+                T::cmp_by(hash_x, x, hash_y, y, self.options)
             })
         });
 
@@ -526,27 +551,27 @@ pub(crate) trait DiffList: Print {
 
 pub(crate) trait SortList: Print {
     fn cmp_id(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering;
 
     fn cmp_id_for_sort(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
-        Self::cmp_id(state_a, a, state_b, b, options)
+        Self::cmp_id(hash_a, a, hash_b, b, options)
     }
 
     fn cmp_by(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering;

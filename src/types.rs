@@ -173,7 +173,7 @@ impl<'input> Type<'input> {
         offset: Option<TypeOffset>,
     ) -> Result<()> {
         match offset {
-            Some(offset) => match Type::from_offset(state.hash, offset) {
+            Some(offset) => match Type::from_offset(state.hash(), offset) {
                 Some(ty) => ty.print_ref(w, state)?,
                 None => write!(w, "<invalid-type {}>", offset.0)?,
             },
@@ -318,26 +318,26 @@ impl<'input> Print for Type<'input> {
 impl<'input> SortList for Type<'input> {
     /// This must only be called for types that have identifiers.
     fn cmp_id(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         type_a: &Type,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         type_b: &Type,
         _options: &Options,
     ) -> cmp::Ordering {
-        Type::cmp_id(state_a.hash, type_a, state_b.hash, type_b)
+        Type::cmp_id(hash_a, type_a, hash_b, type_b)
     }
 
     fn cmp_by(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
         match options.sort {
             Sort::None => a.offset.0.cmp(&b.offset.0),
-            Sort::Name => Type::cmp_id(state_a.hash, a, state_b.hash, b),
-            Sort::Size => a.byte_size(state_a.hash).cmp(&b.byte_size(state_b.hash)),
+            Sort::Name => Type::cmp_id(hash_a, a, hash_b, b),
+            Sort::Size => a.byte_size(hash_a).cmp(&b.byte_size(hash_b)),
         }
     }
 }
@@ -536,17 +536,17 @@ impl<'input> TypeDef<'input> {
     }
 
     fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(state.hash) {
+        if let Some(byte_size) = self.byte_size(state.hash()) {
             write!(w, "size: {}", byte_size)?;
         }
         Ok(())
     }
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        let ty = self.ty(state.hash);
+        let ty = self.ty(state.hash());
         state.line(w, |w, state| self.print_name(w, state))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line(w, |w, state| self.print_byte_size(w, state))?;
@@ -571,14 +571,14 @@ impl<'input> TypeDef<'input> {
     ) -> Result<()> {
         state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
             state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            let ty_a = filter_option(a.ty(state.a.hash), Type::is_anon);
-            let ty_b = filter_option(b.ty(state.b.hash), Type::is_anon);
+            let ty_a = filter_option(a.ty(state.hash_a()), Type::is_anon);
+            let ty_b = filter_option(b.ty(state.hash_b()), Type::is_anon);
             Type::diff_members("members", w, state, unit_a, ty_a, unit_b, ty_b)
         })?;
         writeln!(w, "")?;
@@ -651,7 +651,7 @@ impl<'input> StructType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
@@ -673,7 +673,7 @@ impl<'input> StructType<'input> {
         // The names should be the same, but we can't be sure.
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
@@ -784,7 +784,7 @@ impl<'input> UnionType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, state| self.print_declaration(w, state))?;
@@ -806,7 +806,7 @@ impl<'input> UnionType<'input> {
         // The names should be the same, but we can't be sure.
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
@@ -976,10 +976,11 @@ impl<'input> Print for Member<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        let bit_size = self.bit_size(state.hash);
+        let hash = state.hash();
+        let bit_size = self.bit_size(hash);
         state.line(w, |w, state| self.print_name(w, state, bit_size))?;
-        if self.is_inline(state.hash) {
-            Type::print_members("", w, state, unit, self.ty(state.hash))?;
+        if self.is_inline(hash) {
+            Type::print_members("", w, state, unit, self.ty(hash))?;
         }
         state.line_option(w, |w, state| self.print_padding(w, state, bit_size))
     }
@@ -992,19 +993,19 @@ impl<'input> Print for Member<'input> {
         unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        let bit_size_a = a.bit_size(state.a.hash);
-        let bit_size_b = b.bit_size(state.b.hash);
+        let bit_size_a = a.bit_size(state.hash_a());
+        let bit_size_b = b.bit_size(state.hash_b());
         state.line(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_name(w, state, bit_size)
         })?;
 
-        let ty_a = if a.is_inline(state.a.hash) {
-            a.ty(state.a.hash)
+        let ty_a = if a.is_inline(state.hash_a()) {
+            a.ty(state.hash_a())
         } else {
             None
         };
-        let ty_b = if b.is_inline(state.b.hash) {
-            b.ty(state.b.hash)
+        let ty_b = if b.is_inline(state.hash_b()) {
+            b.ty(state.hash_b())
         } else {
             None
         };
@@ -1026,9 +1027,10 @@ impl<'input> DiffList for Member<'input> {
         if a.name.cmp(&b.name) != cmp::Ordering::Equal {
             cost += 1;
         }
-        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+        match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
             (Some(ty_a), Some(ty_b)) => {
-                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
+                {
                     cost += 1;
                 }
             }
@@ -1096,7 +1098,7 @@ impl<'input> EnumerationType<'input> {
     fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.line(w, |w, _state| self.print_ref(w))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, _state| self.print_declaration(w))?;
@@ -1118,7 +1120,7 @@ impl<'input> EnumerationType<'input> {
         // The names should be the same, but we can't be sure.
         state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
@@ -1148,7 +1150,7 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if let Some(size) = self.byte_size(state.hash) {
+        if let Some(size) = self.byte_size(state.hash()) {
             write!(w, "size: {}", size)?;
         } else {
             debug!("enum with no size");
@@ -1269,7 +1271,7 @@ impl<'input> ArrayType<'input> {
     fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         write!(w, "[")?;
         Type::print_ref_from_offset(w, state, self.ty)?;
-        if let Some(count) = self.count(state.hash) {
+        if let Some(count) = self.count(state.hash()) {
             write!(w, "; {}", count)?;
         }
         write!(w, "]")?;
@@ -1331,7 +1333,7 @@ impl<'input> FunctionType<'input> {
         }
         write!(w, ")")?;
 
-        if let Some(return_type) = self.return_type(state.hash) {
+        if let Some(return_type) = self.return_type(state.hash()) {
             write!(w, " -> ")?;
             return_type.print_ref(w, state)?;
         }

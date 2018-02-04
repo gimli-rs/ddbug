@@ -80,7 +80,7 @@ impl<'input> Unit<'input> {
     }
 
     /// The offsets of types that should be printed inline.
-    fn inline_types(&self, state: &PrintState) -> HashSet<usize> {
+    fn inline_types(&self, hash: &FileHash) -> HashSet<usize> {
         let mut inline_types = HashSet::new();
         for ty in self.types.values() {
             // Assume all anonymous types are inline. We don't actually check
@@ -92,7 +92,7 @@ impl<'input> Unit<'input> {
 
             // Find all inline members.
             ty.visit_members(&mut |t| {
-                if t.is_inline(state.hash) {
+                if t.is_inline(hash) {
                     if let Some(offset) = t.ty {
                         inline_types.insert(offset.0);
                     }
@@ -111,16 +111,17 @@ impl<'input> Unit<'input> {
     }
 
     pub fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if state.options.category_unit {
+        let options = state.options();
+        if options.category_unit {
             state.line(w, |w, _state| {
                 write!(w, "unit ")?;
                 self.print_ref(w)
             })?;
             state.indent(|state| {
-                let unknown_ranges = self.unknown_ranges(state.hash);
+                let unknown_ranges = self.unknown_ranges(state.hash());
 
-                if state.options.print_unit_address {
-                    let ranges = self.ranges(state.hash);
+                if options.print_unit_address {
+                    let ranges = self.ranges(state.hash());
                     if ranges.list().len() > 1 {
                         state.list("addresses", w, &(), ranges.list())?;
                     } else {
@@ -136,7 +137,7 @@ impl<'input> Unit<'input> {
                     state.line_u64(w, "fn size", fn_size)?;
                 }
 
-                let var_size = self.variable_size(state.hash);
+                let var_size = self.variable_size(state.hash());
                 if var_size != 0 {
                     state.line_u64(w, "var size", var_size)?;
                 }
@@ -150,32 +151,33 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if state.options.category_type {
-            let mut types = self.filter_types(state, false);
+        if options.category_type {
+            let mut types = self.filter_types(state.hash(), options, false);
             state.sort_list(w, self, &mut *types)?;
         }
-        if state.options.category_function {
-            state.sort_list(w, self, &mut *self.filter_functions(state.options))?;
+        if options.category_function {
+            state.sort_list(w, self, &mut *self.filter_functions(options))?;
         }
-        if state.options.category_variable {
-            state.sort_list(w, self, &mut *self.filter_variables(state.options))?;
+        if options.category_variable {
+            state.sort_list(w, self, &mut *self.filter_variables(options))?;
         }
         Ok(())
     }
 
     pub fn diff(w: &mut Write, state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
-        if state.options.category_unit {
+        let options = state.options();
+        if options.category_unit {
             state.line(w, unit_a, unit_b, |w, _state, unit| {
                 write!(w, "unit ")?;
                 unit.print_ref(w)
             })?;
             state.indent(|state| {
-                let unknown_ranges_a = unit_a.unknown_ranges(state.a.hash);
-                let unknown_ranges_b = unit_b.unknown_ranges(state.b.hash);
+                let unknown_ranges_a = unit_a.unknown_ranges(state.hash_a());
+                let unknown_ranges_b = unit_b.unknown_ranges(state.hash_b());
 
-                if state.options.print_unit_address {
-                    let ranges_a = unit_a.ranges(state.a.hash);
-                    let ranges_b = unit_b.ranges(state.b.hash);
+                if options.print_unit_address {
+                    let ranges_a = unit_a.ranges(state.hash_a());
+                    let ranges_b = unit_b.ranges(state.hash_b());
                     if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
                         state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
                     } else {
@@ -205,8 +207,8 @@ impl<'input> Unit<'input> {
                     state.line_u64(w, "fn size", fn_size_a, fn_size_b)?;
                 }
 
-                let var_size_a = unit_a.variable_size(state.a.hash);
-                let var_size_b = unit_b.variable_size(state.b.hash);
+                let var_size_a = unit_a.variable_size(state.hash_a());
+                let var_size_b = unit_b.variable_size(state.hash_b());
                 if var_size_a != 0 || var_size_b != 0 {
                     state.line_u64(w, "var size", var_size_a, var_size_b)?;
                 }
@@ -221,27 +223,27 @@ impl<'input> Unit<'input> {
             writeln!(w, "")?;
         }
 
-        if state.options.category_type {
-            let mut types_a = unit_a.filter_types(&state.a, true);
-            let mut types_b = unit_b.filter_types(&state.b, true);
+        if options.category_type {
+            let mut types_a = unit_a.filter_types(state.hash_a(), options, true);
+            let mut types_b = unit_b.filter_types(state.hash_b(), options, true);
             state.sort_list(w, unit_a, &mut *types_a, unit_b, &mut *types_b)?;
         }
-        if state.options.category_function {
+        if options.category_function {
             state.sort_list(
                 w,
                 unit_a,
-                &mut *unit_a.filter_functions(state.options),
+                &mut *unit_a.filter_functions(options),
                 unit_b,
-                &mut *unit_b.filter_functions(state.options),
+                &mut *unit_b.filter_functions(options),
             )?;
         }
-        if state.options.category_variable {
+        if options.category_variable {
             state.sort_list(
                 w,
                 unit_a,
-                &mut *unit_a.filter_variables(state.options),
+                &mut *unit_a.filter_variables(options),
                 unit_b,
-                &mut *unit_b.filter_variables(state.options),
+                &mut *unit_b.filter_variables(options),
             )?;
         }
         Ok(())
@@ -259,11 +261,11 @@ impl<'input> Unit<'input> {
 
     /// Filter and the list of types using the options.
     /// Perform additional filtering when diffing.
-    fn filter_types(&self, state: &PrintState, diff: bool) -> Vec<&Type> {
-        let inline_types = self.inline_types(state);
+    fn filter_types(&self, hash: &FileHash, options: &Options, diff: bool) -> Vec<&Type> {
+        let inline_types = self.inline_types(hash);
         let filter_type = |t: &Type| {
             // Filter by user options.
-            if !t.filter(state.options) {
+            if !t.filter(options) {
                 return false;
             }
             match t.kind {
@@ -340,9 +342,9 @@ impl<'input> Print for Unit<'input> {
 
 impl<'input> SortList for Unit<'input> {
     fn cmp_id(
-        _state_a: &PrintState,
+        _hash_a: &FileHash,
         a: &Self,
-        _state_b: &PrintState,
+        _hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
@@ -354,17 +356,17 @@ impl<'input> SortList for Unit<'input> {
     }
 
     fn cmp_by(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
         match options.sort {
             // TODO: sort by offset?
             Sort::None => cmp::Ordering::Equal,
-            Sort::Name => Self::cmp_id(state_a, a, state_b, b, options),
-            Sort::Size => a.size(state_a.hash).cmp(&b.size(state_b.hash)),
+            Sort::Name => Self::cmp_id(hash_a, a, hash_b, b, options),
+            Sort::Size => a.size(hash_a).cmp(&b.size(hash_b)),
         }
     }
 }

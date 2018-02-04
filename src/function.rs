@@ -93,7 +93,7 @@ impl<'input> Function<'input> {
         state.indent(|state| {
             state.line_option(w, |w, _state| self.print_linkage_name(w))?;
             state.line_option(w, |w, _state| self.print_symbol_name(w))?;
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_source(w, unit))?;
             }
             state.line_option(w, |w, _state| self.print_address(w))?;
@@ -104,13 +104,13 @@ impl<'input> Function<'input> {
             state
                 .indent(|state| state.line_option(w, |w, state| self.print_return_type(w, state)))?;
             state.list("parameters", w, unit, &self.parameters)?;
-            if state.options.print_function_variables {
+            if state.options().print_function_variables {
                 state.list("variables", w, unit, &self.variables)?;
             }
             state
                 .inline(|state| state.list("inlined functions", w, unit, &self.inlined_functions))?;
-            if state.options.print_function_calls {
-                let calls = self.calls(state.hash.file);
+            if state.options().print_function_calls {
+                let calls = self.calls(state.hash().file);
                 state.list("calls", w, &(), &calls)?;
             }
             Ok(())
@@ -130,24 +130,24 @@ impl<'input> Function<'input> {
         state.line(w, a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
             state.line_option(w, a, b, |w, _state, x| x.print_linkage_name(w))?;
-            let flag = state.options.ignore_function_symbol_name;
+            let flag = state.options().ignore_function_symbol_name;
             state.ignore_diff(flag, |state| {
                 state.line_option(w, a, b, |w, _state, x| x.print_symbol_name(w))
             })?;
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            let flag = state.options.ignore_function_address;
+            let flag = state.options().ignore_function_address;
             state.ignore_diff(flag, |state| {
                 state.line_option(w, a, b, |w, _state, x| x.print_address(w))
             })?;
-            let flag = state.options.ignore_function_size;
+            let flag = state.options().ignore_function_size;
             state.ignore_diff(flag, |state| {
                 state.line_option(w, a, b, |w, _state, x| x.print_size(w))
             })?;
-            let flag = state.options.ignore_function_inline;
+            let flag = state.options().ignore_function_inline;
             state.ignore_diff(flag, |state| {
                 state.line_option(w, a, b, |w, _state, x| x.print_inline(w))
             })?;
@@ -157,13 +157,15 @@ impl<'input> Function<'input> {
                 state.line_option(w, a, b, |w, state, x| x.print_return_type(w, state))
             })?;
             state.list("parameters", w, unit_a, &a.parameters, unit_b, &b.parameters)?;
-            if state.options.print_function_variables {
+            if state.options().print_function_variables {
                 let mut variables_a: Vec<_> = a.variables.iter().collect();
-                variables_a
-                    .sort_by(|x, y| LocalVariable::cmp_id(&state.a, x, &state.a, y, state.options));
+                variables_a.sort_by(|x, y| {
+                    LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y, state.options())
+                });
                 let mut variables_b: Vec<_> = b.variables.iter().collect();
-                variables_b
-                    .sort_by(|x, y| LocalVariable::cmp_id(&state.b, x, &state.b, y, state.options));
+                variables_b.sort_by(|x, y| {
+                    LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
+                });
                 state.list("variables", w, unit_a, &variables_a, unit_b, &variables_b)?;
             }
             state.inline(|state| {
@@ -176,9 +178,9 @@ impl<'input> Function<'input> {
                     &b.inlined_functions,
                 )
             })?;
-            if state.options.print_function_calls {
-                let calls_a = a.calls(state.a.hash.file);
-                let calls_b = b.calls(state.b.hash.file);
+            if state.options().print_function_calls {
+                let calls_a = a.calls(state.hash_a().file);
+                let calls_b = b.calls(state.hash_b().file);
                 state.list("calls", w, &(), &calls_a, &(), &calls_b)?;
             }
             Ok(())
@@ -256,7 +258,7 @@ impl<'input> Function<'input> {
 
     fn print_return_type(&self, w: &mut Write, state: &PrintState) -> Result<()> {
         if self.return_type.is_some() {
-            match self.return_type(state.hash).and_then(|t| t.byte_size(state.hash)) {
+            match self.return_type(state.hash()).and_then(|t| t.byte_size(state.hash())) {
                 Some(byte_size) => write!(w, "[{}]", byte_size)?,
                 None => write!(w, "[??]")?,
             }
@@ -299,9 +301,9 @@ impl<'input> Print for Function<'input> {
 
 impl<'input> SortList for Function<'input> {
     fn cmp_id(
-        _state_a: &PrintState,
+        _hash_a: &FileHash,
         a: &Self,
-        _state_b: &PrintState,
+        _hash_b: &FileHash,
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
@@ -313,19 +315,19 @@ impl<'input> SortList for Function<'input> {
     // of overloading, while still coping with changed function signatures.
     // TODO: do something smarter
     fn cmp_id_for_sort(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
-        let ord = Self::cmp_id(state_a, a, state_b, b, options);
+        let ord = Self::cmp_id(hash_a, a, hash_b, b, options);
         if ord != cmp::Ordering::Equal {
             return ord;
         }
 
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_type(state_a.hash, parameter_a, state_b.hash, parameter_b);
+            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -335,16 +337,16 @@ impl<'input> SortList for Function<'input> {
     }
 
     fn cmp_by(
-        state_a: &PrintState,
+        hash_a: &FileHash,
         a: &Self,
-        state_b: &PrintState,
+        hash_b: &FileHash,
         b: &Self,
         options: &Options,
     ) -> cmp::Ordering {
         match options.sort {
             // TODO: sort by offset?
             Sort::None => a.address.cmp(&b.address),
-            Sort::Name => Self::cmp_id_for_sort(state_a, a, state_b, b, options),
+            Sort::Name => Self::cmp_id_for_sort(hash_a, a, hash_b, b, options),
             Sort::Size => a.size.cmp(&b.size),
         }
     }
@@ -376,7 +378,7 @@ impl<'input> Parameter<'input> {
         if let Some(name) = self.name {
             write!(w, "{}: ", String::from_utf8_lossy(name))?;
         }
-        match self.ty(state.hash) {
+        match self.ty(state.hash()) {
             Some(ty) => ty.print_ref(w, state)?,
             None => write!(w, "<anon>")?,
         }
@@ -384,7 +386,7 @@ impl<'input> Parameter<'input> {
     }
 
     fn print_size_and_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        match self.byte_size(state.hash) {
+        match self.byte_size(state.hash()) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
@@ -448,9 +450,10 @@ impl<'input> DiffList for Parameter<'input> {
         if a.name.cmp(&b.name) != cmp::Ordering::Equal {
             cost += 1;
         }
-        match (a.ty(state.a.hash), b.ty(state.b.hash)) {
+        match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
             (Some(ty_a), Some(ty_b)) => {
-                if Type::cmp_id(state.a.hash, ty_a, state.b.hash, ty_b) != cmp::Ordering::Equal {
+                if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
+                {
                     cost += 1;
                 }
             }
@@ -503,7 +506,7 @@ impl<'input> Print for InlinedFunction<'input> {
         state.line(w, |w, state| self.print_size_and_decl(w, state, unit))?;
         state.indent(|state| {
             // TODO: print parameters and variables?
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, |w, _state| self.print_call_source(w, unit))?;
             }
             Ok(())
@@ -525,7 +528,7 @@ impl<'input> Print for InlinedFunction<'input> {
         })?;
         state.indent(|state| {
             // TODO: diff parameters and variables?
-            if state.options.print_source {
+            if state.options().print_source {
                 state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_call_source(w, unit)
                 })?;
@@ -557,8 +560,13 @@ impl<'input> DiffList for InlinedFunction<'input> {
         let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v));
         match (function_a, function_b) {
             (Some(function_a), Some(function_b)) => {
-                if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
-                    != cmp::Ordering::Equal
+                if Function::cmp_id(
+                    state.hash_a(),
+                    function_a,
+                    state.hash_b(),
+                    function_b,
+                    state.options(),
+                ) != cmp::Ordering::Equal
                 {
                     cost += 3;
                 }
@@ -693,14 +701,14 @@ struct Call {
 
 impl Call {
     fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.options.ignore_function_address {
+        if !state.options().ignore_function_address {
             // FIXME: it would be nice to display this in a way that doesn't clutter the output
             // when diffing
             write!(w, "0x{:x} -> 0x{:x} ", self.from, self.to)?;
         }
-        if let Some(function) = state.hash.functions.get(&self.to) {
+        if let Some(function) = state.hash().functions.get(&self.to) {
             function.print_ref(w)?;
-        } else if state.options.ignore_function_address {
+        } else if state.options().ignore_function_address {
             // We haven't displayed an address yet, so we need to display something.
             write!(w, "0x{:x}", self.to)?;
         }
@@ -734,10 +742,15 @@ impl DiffList for Call {
 
     fn diff_cost(state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
         let mut cost = 0;
-        match (state.a.hash.functions.get(&a.to), state.b.hash.functions.get(&b.to)) {
+        match (state.hash_a().functions.get(&a.to), state.hash_b().functions.get(&b.to)) {
             (Some(function_a), Some(function_b)) => {
-                if Function::cmp_id(&state.a, function_a, &state.b, function_b, state.options)
-                    != cmp::Ordering::Equal
+                if Function::cmp_id(
+                    state.hash_a(),
+                    function_a,
+                    state.hash_b(),
+                    function_b,
+                    state.options(),
+                ) != cmp::Ordering::Equal
                 {
                     cost += 1;
                 }

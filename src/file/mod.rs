@@ -335,10 +335,10 @@ impl<'a, 'input> File<'a, 'input> {
                 Ok(())
             })?;
             state.indent(|state| {
-                let ranges = self.ranges(state.hash);
+                let ranges = self.ranges(state.hash());
                 let size = ranges.size();
                 let fn_size = self.function_size();
-                let var_size = self.variable_size(state.hash);
+                let var_size = self.variable_size(state.hash());
                 let other_size = size - fn_size - var_size;
                 if options.print_file_address {
                     state.list("addresses", w, &(), ranges.list())?;
@@ -353,7 +353,7 @@ impl<'a, 'input> File<'a, 'input> {
             writeln!(w, "")?;
         }
 
-        state.sort_list(w, &(), &mut *self.filter_units(state.options))
+        state.sort_list(w, &(), &mut *self.filter_units(options))
     }
 
     pub fn diff(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
@@ -367,14 +367,14 @@ impl<'a, 'input> File<'a, 'input> {
                 Ok(())
             })?;
             state.indent(|state| {
-                let ranges_a = file_a.ranges(state.a.hash);
-                let ranges_b = file_b.ranges(state.b.hash);
+                let ranges_a = file_a.ranges(state.hash_a());
+                let ranges_b = file_b.ranges(state.hash_b());
                 let size_a = ranges_a.size();
                 let size_b = ranges_b.size();
                 let fn_size_a = file_a.function_size();
                 let fn_size_b = file_b.function_size();
-                let var_size_a = file_a.variable_size(state.a.hash);
-                let var_size_b = file_b.variable_size(state.b.hash);
+                let var_size_a = file_a.variable_size(state.hash_a());
+                let var_size_b = file_b.variable_size(state.hash_b());
                 let other_size_a = size_a - fn_size_a - var_size_a;
                 let other_size_b = size_b - fn_size_b - var_size_b;
                 if options.print_file_address {
@@ -394,9 +394,9 @@ impl<'a, 'input> File<'a, 'input> {
         state.sort_list(
             w,
             &(),
-            &mut *file_a.filter_units(state.options),
+            &mut *file_a.filter_units(options),
             &(),
-            &mut *file_b.filter_units(state.options),
+            &mut *file_b.filter_units(options),
         )
     }
 
