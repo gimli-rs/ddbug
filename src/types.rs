@@ -137,12 +137,12 @@ impl<'input> Type<'input> {
         }
     }
 
-    pub fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         match self.kind {
-            TypeKind::Def(ref val) => val.print(w, state, unit),
-            TypeKind::Struct(ref val) => val.print(w, state, unit),
-            TypeKind::Union(ref val) => val.print(w, state, unit),
-            TypeKind::Enumeration(ref val) => val.print(w, state, unit),
+            TypeKind::Def(ref val) => val.print(state, unit),
+            TypeKind::Struct(ref val) => val.print(state, unit),
+            TypeKind::Union(ref val) => val.print(state, unit),
+            TypeKind::Enumeration(ref val) => val.print(state, unit),
             TypeKind::Base(..)
             | TypeKind::Array(..)
             | TypeKind::Function(..)
@@ -183,7 +183,6 @@ impl<'input> Type<'input> {
     }
 
     pub fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         type_a: &Type,
@@ -192,11 +191,11 @@ impl<'input> Type<'input> {
     ) -> Result<()> {
         use self::TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
-            (&Def(ref a), &Def(ref b)) => TypeDef::diff(w, state, unit_a, a, unit_b, b),
-            (&Struct(ref a), &Struct(ref b)) => StructType::diff(w, state, unit_a, a, unit_b, b),
-            (&Union(ref a), &Union(ref b)) => UnionType::diff(w, state, unit_a, a, unit_b, b),
+            (&Def(ref a), &Def(ref b)) => TypeDef::diff(state, unit_a, a, unit_b, b),
+            (&Struct(ref a), &Struct(ref b)) => StructType::diff(state, unit_a, a, unit_b, b),
+            (&Union(ref a), &Union(ref b)) => UnionType::diff(state, unit_a, a, unit_b, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => {
-                EnumerationType::diff(w, state, unit_a, a, unit_b, b)
+                EnumerationType::diff(state, unit_a, a, unit_b, b)
             }
             _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
         }?;
@@ -205,15 +204,14 @@ impl<'input> Type<'input> {
 
     fn print_members(
         label: &str,
-        w: &mut Write,
         state: &mut PrintState,
         unit: &Unit,
         ty: Option<&Type>,
     ) -> Result<()> {
         if let Some(ty) = ty {
             match ty.kind {
-                TypeKind::Struct(ref t) => return t.print_members(label, w, state, unit),
-                TypeKind::Union(ref t) => return t.print_members(label, w, state, unit),
+                TypeKind::Struct(ref t) => return t.print_members(label, state, unit),
+                TypeKind::Union(ref t) => return t.print_members(label, state, unit),
                 _ => return Err(format!("can't print members {:?}", ty).into()),
             }
         }
@@ -222,7 +220,6 @@ impl<'input> Type<'input> {
 
     fn diff_members(
         label: &str,
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         type_a: Option<&Type>,
@@ -232,18 +229,18 @@ impl<'input> Type<'input> {
         if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
             match (&type_a.kind, &type_b.kind) {
                 (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
-                    return StructType::diff_members(label, w, state, unit_a, a, unit_b, b);
+                    return StructType::diff_members(label, state, unit_a, a, unit_b, b);
                 }
                 (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
-                    return UnionType::diff_members(label, w, state, unit_a, a, unit_b, b);
+                    return UnionType::diff_members(label, state, unit_a, a, unit_b, b);
                 }
                 _ => {}
             }
         }
 
         // Different types, so don't try to diff the members.
-        state.block(w, (unit_a, type_a), (unit_b, type_b), |w, state, (unit, x)| {
-            Type::print_members(label, w, state, unit, x)
+        state.block((unit_a, type_a), (unit_b, type_b), |state, (unit, x)| {
+            Type::print_members(label, state, unit, x)
         })
     }
 
@@ -299,19 +296,18 @@ impl<'input> Type<'input> {
 impl<'input> Print for Type<'input> {
     type Arg = Unit<'input>;
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
-        self.print(w, state, unit)
+    fn print(&self, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
+        self.print(state, unit)
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Self::Arg,
         a: &Self,
         unit_b: &Self::Arg,
         b: &Self,
     ) -> Result<()> {
-        Self::diff(w, state, unit_a, a, unit_b, b)
+        Self::diff(state, unit_a, a, unit_b, b)
     }
 }
 
@@ -542,46 +538,45 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let ty = self.ty(state.hash());
-        state.line(w, |w, state| self.print_name(w, state))?;
+        state.line(|w, state| self.print_name(w, state))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, |w, _state| self.print_source(w, unit))?;
+                state.line_option(|w, _state| self.print_source(w, unit))?;
             }
-            state.line(w, |w, state| self.print_byte_size(w, state))?;
+            state.line(|w, state| self.print_byte_size(w, state))?;
             if let Some(ty) = ty {
                 if ty.is_anon() {
-                    Type::print_members("members", w, state, unit, Some(ty))?;
+                    Type::print_members("members", state, unit, Some(ty))?;
                 }
             }
             Ok(())
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         a: &TypeDef,
         unit_b: &Unit,
         b: &TypeDef,
     ) -> Result<()> {
-        state.line(w, a, b, |w, state, x| x.print_name(w, state))?;
+        state.line(a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
+            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.hash_a()), Type::is_anon);
             let ty_b = filter_option(b.ty(state.hash_b()), Type::is_anon);
-            Type::diff_members("members", w, state, unit_a, ty_a, unit_b, ty_b)
+            Type::diff_members("members", state, unit_a, ty_a, unit_b, ty_b)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
@@ -648,22 +643,21 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(w, |w, _state| self.print_ref(w))?;
+    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.line(|w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, |w, _state| self.print_source(w, unit))?;
+                state.line_option(|w, _state| self.print_source(w, unit))?;
             }
-            state.line_option(w, |w, state| self.print_declaration(w, state))?;
-            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            self.print_members("members", w, state, unit)
+            state.line_option(|w, state| self.print_declaration(w, state))?;
+            state.line_option(|w, state| self.print_byte_size(w, state))?;
+            self.print_members("members", state, unit)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         a: &StructType,
@@ -671,18 +665,18 @@ impl<'input> StructType<'input> {
         b: &StructType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
-        state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
+        state.line(a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
-            state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            Self::diff_members("members", w, state, unit_a, a, unit_b, b)
+            state.line_option(a, b, |w, state, x| x.print_declaration(w, state))?;
+            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
+            Self::diff_members("members", state, unit_a, a, unit_b, b)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
@@ -710,26 +704,19 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_members(
-        &self,
-        label: &str,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-    ) -> Result<()> {
-        state.list(label, w, unit, &self.members)
+    fn print_members(&self, label: &str, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.list(label, unit, &self.members)
     }
 
     fn diff_members(
         label: &str,
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         a: &StructType,
         unit_b: &Unit,
         b: &StructType,
     ) -> Result<()> {
-        state.list(label, w, unit_a, &a.members, unit_b, &b.members)
+        state.list(label, unit_a, &a.members, unit_b, &b.members)
     }
 
     fn filter(&self, options: &Options) -> bool {
@@ -781,22 +768,21 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(w, |w, _state| self.print_ref(w))?;
+    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.line(|w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, |w, _state| self.print_source(w, unit))?;
+                state.line_option(|w, _state| self.print_source(w, unit))?;
             }
-            state.line_option(w, |w, state| self.print_declaration(w, state))?;
-            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            self.print_members("members", w, state, unit)
+            state.line_option(|w, state| self.print_declaration(w, state))?;
+            state.line_option(|w, state| self.print_byte_size(w, state))?;
+            self.print_members("members", state, unit)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         a: &UnionType,
@@ -804,18 +790,18 @@ impl<'input> UnionType<'input> {
         b: &UnionType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
-        state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
+        state.line(a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(w, a, b, |w, state, x| x.print_declaration(w, state))?;
-            state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
-            Self::diff_members("members", w, state, unit_a, a, unit_b, b)
+            state.line_option(a, b, |w, state, x| x.print_declaration(w, state))?;
+            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
+            Self::diff_members("members", state, unit_a, a, unit_b, b)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
@@ -843,19 +829,12 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_members(
-        &self,
-        label: &str,
-        w: &mut Write,
-        state: &mut PrintState,
-        unit: &Unit,
-    ) -> Result<()> {
-        state.list(label, w, unit, &self.members)
+    fn print_members(&self, label: &str, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.list(label, unit, &self.members)
     }
 
     fn diff_members(
         label: &str,
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         a: &UnionType,
@@ -863,7 +842,7 @@ impl<'input> UnionType<'input> {
         b: &UnionType,
     ) -> Result<()> {
         // TODO: handle reordering better
-        state.list(label, w, unit_a, &a.members, unit_b, &b.members)
+        state.list(label, unit_a, &a.members, unit_b, &b.members)
     }
 
     fn filter(&self, options: &Options) -> bool {
@@ -933,12 +912,7 @@ impl<'input> Member<'input> {
         None
     }
 
-    fn print_name(
-        &self,
-        w: &mut Write,
-        hash: &FileHash,
-        bit_size: Option<u64>,
-    ) -> Result<()> {
+    fn print_name(&self, w: &mut Write, hash: &FileHash, bit_size: Option<u64>) -> Result<()> {
         write!(w, "{}", format_bit(self.bit_offset))?;
         match bit_size {
             Some(bit_size) => {
@@ -959,12 +933,7 @@ impl<'input> Member<'input> {
         Ok(())
     }
 
-    fn print_padding(
-        &self,
-        w: &mut Write,
-        hash: &FileHash,
-        bit_size: Option<u64>,
-    ) -> Result<()> {
+    fn print_padding(&self, w: &mut Write, hash: &FileHash, bit_size: Option<u64>) -> Result<()> {
         if let Some(padding) = self.padding(bit_size) {
             padding.print(w, hash)?;
         }
@@ -975,27 +944,20 @@ impl<'input> Member<'input> {
 impl<'input> Print for Member<'input> {
     type Arg = Unit<'input>;
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let hash = state.hash();
         let bit_size = self.bit_size(hash);
-        state.line(w, |w, state| self.print_name(w, state, bit_size))?;
+        state.line(|w, state| self.print_name(w, state, bit_size))?;
         if self.is_inline(hash) {
-            Type::print_members("", w, state, unit, self.ty(hash))?;
+            Type::print_members("", state, unit, self.ty(hash))?;
         }
-        state.line_option(w, |w, state| self.print_padding(w, state, bit_size))
+        state.line_option(|w, state| self.print_padding(w, state, bit_size))
     }
 
-    fn diff(
-        w: &mut Write,
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &Self,
-        unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
+    fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
         let bit_size_a = a.bit_size(state.hash_a());
         let bit_size_b = b.bit_size(state.hash_b());
-        state.line(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+        state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_name(w, state, bit_size)
         })?;
 
@@ -1009,9 +971,9 @@ impl<'input> Print for Member<'input> {
         } else {
             None
         };
-        Type::diff_members("", w, state, unit_a, ty_a, unit_b, ty_b)?;
+        Type::diff_members("", state, unit_a, ty_a, unit_b, ty_b)?;
 
-        state.line_option(w, (a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+        state.line_option((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_padding(w, state, bit_size)
         })
     }
@@ -1095,22 +1057,21 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(w, |w, _state| self.print_ref(w))?;
+    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.line(|w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, |w, _state| self.print_source(w, unit))?;
+                state.line_option(|w, _state| self.print_source(w, unit))?;
             }
-            state.line_option(w, |w, _state| self.print_declaration(w))?;
-            state.line_option(w, |w, state| self.print_byte_size(w, state))?;
-            state.list("enumerators", w, unit, &self.enumerators)
+            state.line_option(|w, _state| self.print_declaration(w))?;
+            state.line_option(|w, state| self.print_byte_size(w, state))?;
+            state.list("enumerators", unit, &self.enumerators)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         unit_a: &Unit,
         a: &EnumerationType,
@@ -1118,19 +1079,19 @@ impl<'input> EnumerationType<'input> {
         b: &EnumerationType,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
-        state.line(w, a, b, |w, _state, x| x.print_ref(w))?;
+        state.line(a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(w, (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(w, a, b, |w, _state, x| x.print_declaration(w))?;
-            state.line_option(w, a, b, |w, state, x| x.print_byte_size(w, state))?;
+            state.line_option(a, b, |w, _state, x| x.print_declaration(w))?;
+            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
             // TODO: handle reordering better
-            state.list("enumerators", w, unit_a, &a.enumerators, unit_b, &b.enumerators)
+            state.list("enumerators", unit_a, &a.enumerators, unit_b, &b.enumerators)
         })?;
-        writeln!(w, "")?;
+        writeln!(state.w(), "")?;
         Ok(())
     }
 
@@ -1197,19 +1158,18 @@ impl<'input> Enumerator<'input> {
 impl<'input> Print for Enumerator<'input> {
     type Arg = Unit<'input>;
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, _unit: &Unit) -> Result<()> {
-        state.line(w, |w, _state| self.print_name_value(w))
+    fn print(&self, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+        state.line(|w, _state| self.print_name_value(w))
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         _unit_a: &Unit,
         a: &Self,
         _unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        state.line(w, a, b, |w, _state, x| x.print_name_value(w))
+        state.line(a, b, |w, _state, x| x.print_name_value(w))
     }
 }
 

@@ -110,10 +110,10 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    pub fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    pub fn print(&self, state: &mut PrintState) -> Result<()> {
         let options = state.options();
         if options.category_unit {
-            state.line(w, |w, _state| {
+            state.line(|w, _state| {
                 write!(w, "unit ")?;
                 self.print_ref(w)
             })?;
@@ -123,51 +123,51 @@ impl<'input> Unit<'input> {
                 if options.print_unit_address {
                     let ranges = self.ranges(state.hash());
                     if ranges.list().len() > 1 {
-                        state.list("addresses", w, &(), ranges.list())?;
+                        state.list("addresses", &(), ranges.list())?;
                     } else {
                         let range = ranges.list().first().cloned();
-                        state.line_option(w, |w, _state| self.print_address(w, range))?;
+                        state.line_option(|w, _state| self.print_address(w, range))?;
                     }
 
-                    state.list("unknown addresses", w, &(), unknown_ranges.list())?;
+                    state.list("unknown addresses", &(), unknown_ranges.list())?;
                 }
 
                 let fn_size = self.function_size();
                 if fn_size != 0 {
-                    state.line_u64(w, "fn size", fn_size)?;
+                    state.line_u64("fn size", fn_size)?;
                 }
 
                 let var_size = self.variable_size(state.hash());
                 if var_size != 0 {
-                    state.line_u64(w, "var size", var_size)?;
+                    state.line_u64("var size", var_size)?;
                 }
 
                 let unknown_size = unknown_ranges.size();
                 if unknown_size != 0 {
-                    state.line_u64(w, "unknown size", unknown_size)?;
+                    state.line_u64("unknown size", unknown_size)?;
                 }
                 Ok(())
             })?;
-            writeln!(w, "")?;
+            writeln!(state.w(), "")?;
         }
 
         if options.category_type {
             let mut types = self.filter_types(state.hash(), options, false);
-            state.sort_list(w, self, &mut *types)?;
+            state.sort_list(self, &mut *types)?;
         }
         if options.category_function {
-            state.sort_list(w, self, &mut *self.filter_functions(options))?;
+            state.sort_list(self, &mut *self.filter_functions(options))?;
         }
         if options.category_variable {
-            state.sort_list(w, self, &mut *self.filter_variables(options))?;
+            state.sort_list(self, &mut *self.filter_variables(options))?;
         }
         Ok(())
     }
 
-    pub fn diff(w: &mut Write, state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
+    pub fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
         let options = state.options();
         if options.category_unit {
-            state.line(w, unit_a, unit_b, |w, _state, unit| {
+            state.line(unit_a, unit_b, |w, _state, unit| {
                 write!(w, "unit ")?;
                 unit.print_ref(w)
             })?;
@@ -179,12 +179,11 @@ impl<'input> Unit<'input> {
                     let ranges_a = unit_a.ranges(state.hash_a());
                     let ranges_b = unit_b.ranges(state.hash_b());
                     if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
-                        state.ord_list("addresses", w, &(), ranges_a.list(), &(), ranges_b.list())?;
+                        state.ord_list("addresses", &(), ranges_a.list(), &(), ranges_b.list())?;
                     } else {
                         let range_a = ranges_a.list().first().cloned();
                         let range_b = ranges_b.list().first().cloned();
                         state.line_option(
-                            w,
                             (unit_a, range_a),
                             (unit_b, range_b),
                             |w, _state, (unit, range)| unit.print_address(w, range),
@@ -193,7 +192,6 @@ impl<'input> Unit<'input> {
 
                     state.ord_list(
                         "unknown addresses",
-                        w,
                         &(),
                         unknown_ranges_a.list(),
                         &(),
@@ -204,33 +202,32 @@ impl<'input> Unit<'input> {
                 let fn_size_a = unit_a.function_size();
                 let fn_size_b = unit_b.function_size();
                 if fn_size_a != 0 || fn_size_b != 0 {
-                    state.line_u64(w, "fn size", fn_size_a, fn_size_b)?;
+                    state.line_u64("fn size", fn_size_a, fn_size_b)?;
                 }
 
                 let var_size_a = unit_a.variable_size(state.hash_a());
                 let var_size_b = unit_b.variable_size(state.hash_b());
                 if var_size_a != 0 || var_size_b != 0 {
-                    state.line_u64(w, "var size", var_size_a, var_size_b)?;
+                    state.line_u64("var size", var_size_a, var_size_b)?;
                 }
 
                 let unknown_size_a = unknown_ranges_a.size();
                 let unknown_size_b = unknown_ranges_b.size();
                 if unknown_size_a != 0 || unknown_size_b != 0 {
-                    state.line_u64(w, "unknown size", unknown_size_a, unknown_size_b)?;
+                    state.line_u64("unknown size", unknown_size_a, unknown_size_b)?;
                 }
                 Ok(())
             })?;
-            writeln!(w, "")?;
+            writeln!(state.w(), "")?;
         }
 
         if options.category_type {
             let mut types_a = unit_a.filter_types(state.hash_a(), options, true);
             let mut types_b = unit_b.filter_types(state.hash_b(), options, true);
-            state.sort_list(w, unit_a, &mut *types_a, unit_b, &mut *types_b)?;
+            state.sort_list(unit_a, &mut *types_a, unit_b, &mut *types_b)?;
         }
         if options.category_function {
             state.sort_list(
-                w,
                 unit_a,
                 &mut *unit_a.filter_functions(options),
                 unit_b,
@@ -239,7 +236,6 @@ impl<'input> Unit<'input> {
         }
         if options.category_variable {
             state.sort_list(
-                w,
                 unit_a,
                 &mut *unit_a.filter_variables(options),
                 unit_b,
@@ -324,19 +320,12 @@ impl<'input> Unit<'input> {
 impl<'input> Print for Unit<'input> {
     type Arg = ();
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
-        self.print(w, state)
+    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
+        self.print(state)
     }
 
-    fn diff(
-        w: &mut Write,
-        state: &mut DiffState,
-        _arg_a: &(),
-        a: &Self,
-        _arg_b: &(),
-        b: &Self,
-    ) -> Result<()> {
-        Self::diff(w, state, a, b)
+    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
+        Self::diff(state, a, b)
     }
 }
 

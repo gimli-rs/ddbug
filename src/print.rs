@@ -14,19 +14,29 @@ enum DiffPrefix {
     Greater,
 }
 
-pub(crate) struct Printer {
-    //w: &mut Write,
+pub(crate) struct Printer<'w> {
+    w: &'w mut Write,
     indent: usize,
     prefix: DiffPrefix,
     inline_depth: usize,
 }
 
-impl Printer {
-    pub fn new(options: &Options) -> Self {
+impl<'w> Printer<'w> {
+    pub fn new(w: &'w mut Write, options: &Options) -> Self {
         Printer {
+            w,
             indent: 0,
             prefix: DiffPrefix::None,
             inline_depth: options.inline_depth,
+        }
+    }
+
+    pub fn temp<'a>(&self, w: &'a mut Write) -> Printer<'a> {
+        Printer {
+            w,
+            indent: self.indent,
+            prefix: self.prefix,
+            inline_depth: self.inline_depth,
         }
     }
 }
@@ -35,7 +45,8 @@ pub(crate) struct PrintState<'a, 'input>
 where
     'input: 'a,
 {
-    printer: &'a mut Printer,
+    // TODO: 'input here doesn't seem right
+    printer: &'a mut Printer<'input>,
 
     // The remaining fields contain information that is commonly needed in print methods.
     hash: &'a FileHash<'a, 'input>,
@@ -47,6 +58,11 @@ where
     'input: 'a,
 {
     #[inline]
+    pub fn w(&mut self) -> &mut Write {
+        self.printer.w
+    }
+
+    #[inline]
     pub fn hash(&self) -> &'a FileHash<'a, 'input> {
         self.hash
     }
@@ -56,7 +72,11 @@ where
         self.options
     }
 
-    pub fn new(printer: &'a mut Printer, hash: &'a FileHash<'a, 'input>, options: &'a Options<'a>) -> Self {
+    pub fn new(
+        printer: &'a mut Printer<'input>,
+        hash: &'a FileHash<'a, 'input>,
+        options: &'a Options<'a>,
+    ) -> Self {
         PrintState {
             printer,
             hash: hash,
@@ -95,60 +115,54 @@ where
         f(self)
     }
 
-    pub fn line<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
+    pub fn line<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
         match self.printer.prefix {
             DiffPrefix::None => {}
-            DiffPrefix::Equal => write!(w, "  ")?,
+            DiffPrefix::Equal => write!(self.w(), "  ")?,
             DiffPrefix::Less => {
-                write!(w, "- ")?;
+                write!(self.w(), "- ")?;
             }
             DiffPrefix::Greater => {
-                write!(w, "+ ")?;
+                write!(self.w(), "+ ")?;
             }
         }
         for _ in 0..self.printer.indent {
-            write!(w, "\t")?;
+            write!(self.w(), "\t")?;
         }
-        f(w, self.hash())?;
-        write!(w, "\n")?;
+        f(self.printer.w, self.hash)?;
+        write!(self.w(), "\n")?;
         Ok(())
     }
 
-    pub fn line_option<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
+    pub fn line_option<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
         let mut buf = Vec::new();
         f(&mut buf, self.hash)?;
         if !buf.is_empty() {
-            self.line(w, |w, _state| w.write_all(&*buf).map_err(From::from))?;
+            self.line(|w, _hash| w.write_all(&*buf).map_err(From::from))?;
         }
         Ok(())
     }
 
-    pub fn line_u64(&mut self, w: &mut Write, label: &str, arg: u64) -> Result<()> {
-        self.line(w, |w, _state| {
+    pub fn line_u64(&mut self, label: &str, arg: u64) -> Result<()> {
+        self.line(|w, _hash| {
             write!(w, "{}: {}", label, arg)?;
             Ok(())
         })
     }
 
-    pub fn list<T: Print>(
-        &mut self,
-        label: &str,
-        w: &mut Write,
-        arg: &T::Arg,
-        list: &[T],
-    ) -> Result<()> {
+    pub fn list<T: Print>(&mut self, label: &str, arg: &T::Arg, list: &[T]) -> Result<()> {
         if list.is_empty() {
             return Ok(());
         }
 
         if !label.is_empty() {
-            self.line(w, |w, _state| {
+            self.line(|w, _hash| {
                 write!(w, "{}:", label)?;
                 Ok(())
             })?;
@@ -156,21 +170,16 @@ where
 
         self.indent(|state| {
             for item in list {
-                item.print(w, state, arg)?;
+                item.print(state, arg)?;
             }
             Ok(())
         })
     }
 
-    pub fn sort_list<T: SortList>(
-        &mut self,
-        w: &mut Write,
-        arg: &T::Arg,
-        list: &mut [&T],
-    ) -> Result<()> {
+    pub fn sort_list<T: SortList>(&mut self, arg: &T::Arg, list: &mut [&T]) -> Result<()> {
         list.sort_by(|a, b| T::cmp_by(self.hash, a, self.hash, b, self.options));
         for item in list {
-            item.print(w, self, arg)?;
+            item.print(self, arg)?;
         }
         Ok(())
     }
@@ -180,7 +189,7 @@ pub(crate) struct DiffState<'a, 'input>
 where
     'input: 'a,
 {
-    printer: &'a mut Printer,
+    printer: &'a mut Printer<'input>,
 
     // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
     diff: bool,
@@ -195,6 +204,11 @@ impl<'a, 'input> DiffState<'a, 'input>
 where
     'input: 'a,
 {
+    #[inline]
+    pub fn w(&mut self) -> &mut Write {
+        self.printer.w
+    }
+
     #[inline]
     fn a<'me>(&'me mut self) -> PrintState<'me, 'input> {
         PrintState::new(self.printer, self.hash_a, self.options)
@@ -221,7 +235,7 @@ where
     }
 
     pub fn new(
-        printer: &'a mut Printer,
+        printer: &'a mut Printer<'input>,
         hash_a: &'a FileHash<'a, 'input>,
         hash_b: &'a FileHash<'a, 'input>,
         options: &'a Options<'a>,
@@ -237,25 +251,28 @@ where
 
     // Write output of `f` to a temporary buffer, then only
     // output that buffer if there were any differences.
-    pub fn diff<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
+    pub fn diff<F>(&mut self, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut DiffState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut DiffState) -> Result<()>,
     {
         let mut buf = Vec::new();
-        let prev_diff = self.diff;
-        self.diff = false;
-        f(&mut buf, self)?;
-        if self.diff {
-            w.write_all(&*buf)?;
+        let diff = {
+            let mut printer = self.printer.temp(&mut buf);
+            let mut state = DiffState::new(&mut printer, self.hash_a, self.hash_b, self.options);
+            f(&mut state)?;
+            state.diff
+        };
+        if diff {
+            self.w().write_all(&*buf)?;
+            self.diff = true;
         }
-        self.diff |= prev_diff;
         Ok(())
     }
 
     // Don't allow `f` to update self.diff if flag is true.
     pub fn ignore_diff<F>(&mut self, flag: bool, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut DiffState) -> Result<()>,
     {
         let diff = self.diff;
         f(self)?;
@@ -316,22 +333,25 @@ where
     }
 
     // Multiline blocks that are always different.
-    pub fn block<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
+    pub fn block<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut PrintState, T) -> Result<()>,
+        F: FnMut(&mut PrintState, T) -> Result<()>,
     {
-        // TODO: writing to a Vec here can't work
         let mut buf = Vec::new();
-        self.a().prefix(DiffPrefix::Less, |state| f(&mut buf, state, arg_a))?;
-        self.b().prefix(DiffPrefix::Greater, |state| f(&mut buf, state, arg_b))?;
+        {
+            let mut printer = self.printer.temp(&mut buf);
+            let mut state = DiffState::new(&mut printer, self.hash_a, self.hash_b, self.options);
+            state.a().prefix(DiffPrefix::Less, |state| f(state, arg_a))?;
+            state.b().prefix(DiffPrefix::Greater, |state| f(state, arg_b))?;
+        }
         if !buf.is_empty() {
-            w.write_all(&*buf)?;
+            self.w().write_all(&*buf)?;
             self.diff = true;
         }
         Ok(())
     }
 
-    pub fn line<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
+    pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
     {
@@ -344,18 +364,18 @@ where
         if a == b {
             if !a.is_empty() {
                 self.prefix_equal(|state| {
-                    state.line(w, |w, _state| w.write_all(&*a).map_err(From::from))
+                    state.line(|w, _state| w.write_all(&*a).map_err(From::from))
                 })?;
             }
         } else {
             if !a.is_empty() {
                 self.prefix_less(|state| {
-                    state.line(w, |w, _state| w.write_all(&*a).map_err(From::from))
+                    state.line(|w, _state| w.write_all(&*a).map_err(From::from))
                 })?;
             }
             if !b.is_empty() {
                 self.prefix_greater(|state| {
-                    state.line(w, |w, _state| w.write_all(&*b).map_err(From::from))
+                    state.line(|w, _state| w.write_all(&*b).map_err(From::from))
                 })?;
             }
         }
@@ -363,16 +383,16 @@ where
     }
 
     /// This is the same as `Self::line`. It exists for symmetry with `PrintState::line_option`.
-    pub fn line_option<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, f: F) -> Result<()>
+    pub fn line_option<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
     {
-        self.line(w, arg_a, arg_b, f)
+        self.line(arg_a, arg_b, f)
     }
 
-    pub fn line_u64(&mut self, w: &mut Write, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
+    pub fn line_u64(&mut self, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
         let base = arg_a;
-        self.line_option(w, arg_a, arg_b, |w, _hash, arg| {
+        self.line_option(arg_a, arg_b, |w, _hash, arg| {
             write!(w, "{}: {}", label, arg)?;
             if arg != base {
                 write!(w, " ({:+})", arg as i64 - base as i64)?;
@@ -384,7 +404,6 @@ where
     pub fn list<T: DiffList>(
         &mut self,
         label: &str,
-        w: &mut Write,
         arg_a: &T::Arg,
         list_a: &[T],
         arg_b: &T::Arg,
@@ -395,7 +414,7 @@ where
         }
 
         if !label.is_empty() {
-            self.line(w, list_a, list_b, |w, _state, list| {
+            self.line(list_a, list_b, |w, _state, list| {
                 if !list.is_empty() {
                     write!(w, "{}:", label)?;
                 }
@@ -418,14 +437,14 @@ where
                     Direction::None => break,
                     Direction::Diagonal => {
                         if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                            T::diff(w, state, arg_a, a, arg_b, b)?;
+                            T::diff(state, arg_a, a, arg_b, b)?;
                         }
                     }
                     Direction::Horizontal => if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| a.print(w, state, arg_a))?;
+                        state.prefix_less(|state| a.print(state, arg_a))?;
                     },
                     Direction::Vertical => if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| b.print(w, state, arg_b))?;
+                        state.prefix_greater(|state| b.print(state, arg_b))?;
                     },
                 }
             }
@@ -440,7 +459,6 @@ where
     pub fn ord_list<T: Ord + Print>(
         &mut self,
         label: &str,
-        w: &mut Write,
         arg_a: &T::Arg,
         list_a: &[T],
         arg_b: &T::Arg,
@@ -451,7 +469,7 @@ where
         }
 
         if !label.is_empty() {
-            self.line(w, list_a, list_b, |w, _state, list| {
+            self.line(list_a, list_b, |w, _state, list| {
                 if !list.is_empty() {
                     write!(w, "{}:", label)?;
                 }
@@ -463,13 +481,13 @@ where
             for item in MergeIterator::new(list_a.iter(), list_b.iter(), T::cmp) {
                 match item {
                     MergeResult::Both(a, b) => {
-                        T::diff(w, state, arg_a, a, arg_b, b)?;
+                        T::diff(state, arg_a, a, arg_b, b)?;
                     }
                     MergeResult::Left(a) => {
-                        state.prefix_less(|state| a.print(w, state, arg_a))?;
+                        state.prefix_less(|state| a.print(state, arg_a))?;
                     }
                     MergeResult::Right(b) => {
-                        state.prefix_greater(|state| b.print(w, state, arg_b))?;
+                        state.prefix_greater(|state| b.print(state, arg_b))?;
                     }
                 }
             }
@@ -487,7 +505,6 @@ where
     // - display of added/deleted options
     pub fn sort_list<T: SortList>(
         &mut self,
-        w: &mut Write,
         arg_a: &T::Arg,
         list_a: &mut [&T],
         arg_b: &T::Arg,
@@ -508,13 +525,13 @@ where
         for item in list {
             match item {
                 MergeResult::Both(a, b) => {
-                    self.diff(w, |w, state| T::diff(w, state, arg_a, a, arg_b, b))?;
+                    self.diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
                 }
                 MergeResult::Left(a) => if !self.options.ignore_deleted {
-                    self.prefix_less(|state| a.print(w, state, arg_a))?;
+                    self.prefix_less(|state| a.print(state, arg_a))?;
                 },
                 MergeResult::Right(b) => if !self.options.ignore_added {
-                    self.prefix_greater(|state| b.print(w, state, arg_b))?;
+                    self.prefix_greater(|state| b.print(state, arg_b))?;
                 },
             }
         }
@@ -526,10 +543,9 @@ pub(crate) trait Print {
     type Arg;
 
     // TODO: need associated type constructor to avoid requiring arg to be a reference?
-    fn print(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()>;
+    fn print(&self, state: &mut PrintState, arg: &Self::Arg) -> Result<()>;
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         arg_a: &Self::Arg,
         a: &Self,
@@ -544,19 +560,18 @@ where
 {
     type Arg = T::Arg;
 
-    fn print(&self, w: &mut Write, state: &mut PrintState, arg: &Self::Arg) -> Result<()> {
-        T::print(*self, w, state, arg)
+    fn print(&self, state: &mut PrintState, arg: &Self::Arg) -> Result<()> {
+        T::print(*self, state, arg)
     }
 
     fn diff(
-        w: &mut Write,
         state: &mut DiffState,
         arg_a: &Self::Arg,
         a: &Self,
         arg_b: &Self::Arg,
         b: &Self,
     ) -> Result<()> {
-        T::diff(w, state, arg_a, *a, arg_b, *b)
+        T::diff(state, arg_a, *a, arg_b, *b)
     }
 }
 
