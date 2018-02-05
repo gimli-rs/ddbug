@@ -14,13 +14,28 @@ enum DiffPrefix {
     Greater,
 }
 
+pub(crate) struct Printer {
+    //w: &mut Write,
+    indent: usize,
+    prefix: DiffPrefix,
+    inline_depth: usize,
+}
+
+impl Printer {
+    pub fn new(options: &Options) -> Self {
+        Printer {
+            indent: 0,
+            prefix: DiffPrefix::None,
+            inline_depth: options.inline_depth,
+        }
+    }
+}
+
 pub(crate) struct PrintState<'a, 'input>
 where
     'input: 'a,
 {
-    indent: usize,
-    prefix: DiffPrefix,
-    inline_depth: usize,
+    printer: &'a mut Printer,
 
     // The remaining fields contain information that is commonly needed in print methods.
     hash: &'a FileHash<'a, 'input>,
@@ -41,11 +56,9 @@ where
         self.options
     }
 
-    pub fn new(hash: &'a FileHash<'a, 'input>, options: &'a Options<'a>) -> Self {
+    pub fn new(printer: &'a mut Printer, hash: &'a FileHash<'a, 'input>, options: &'a Options<'a>) -> Self {
         PrintState {
-            indent: 0,
-            prefix: DiffPrefix::None,
-            inline_depth: options.inline_depth,
+            printer,
             hash: hash,
             options: options,
         }
@@ -55,9 +68,9 @@ where
     where
         F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        self.indent += 1;
+        self.printer.indent += 1;
         let ret = f(self);
-        self.indent -= 1;
+        self.printer.indent -= 1;
         ret
     }
 
@@ -65,12 +78,12 @@ where
     where
         F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        if self.inline_depth == 0 {
+        if self.printer.inline_depth == 0 {
             return Ok(());
         }
-        self.inline_depth -= 1;
+        self.printer.inline_depth -= 1;
         let ret = f(self);
-        self.inline_depth += 1;
+        self.printer.inline_depth += 1;
         ret
     }
 
@@ -78,7 +91,7 @@ where
     where
         F: FnOnce(&mut PrintState<'a, 'input>) -> Result<()>,
     {
-        self.prefix = prefix;
+        self.printer.prefix = prefix;
         f(self)
     }
 
@@ -86,7 +99,7 @@ where
     where
         F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
-        match self.prefix {
+        match self.printer.prefix {
             DiffPrefix::None => {}
             DiffPrefix::Equal => write!(w, "  ")?,
             DiffPrefix::Less => {
@@ -96,7 +109,7 @@ where
                 write!(w, "+ ")?;
             }
         }
-        for _ in 0..self.indent {
+        for _ in 0..self.printer.indent {
             write!(w, "\t")?;
         }
         f(w, self.hash())?;
@@ -167,11 +180,15 @@ pub(crate) struct DiffState<'a, 'input>
 where
     'input: 'a,
 {
-    a: PrintState<'a, 'input>,
-    b: PrintState<'a, 'input>,
-    options: &'a Options<'a>,
+    printer: &'a mut Printer,
+
     // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
     diff: bool,
+
+    // The remaining fields contain information that is commonly needed in print methods.
+    hash_a: &'a FileHash<'a, 'input>,
+    hash_b: &'a FileHash<'a, 'input>,
+    options: &'a Options<'a>,
 }
 
 impl<'a, 'input> DiffState<'a, 'input>
@@ -179,13 +196,23 @@ where
     'input: 'a,
 {
     #[inline]
+    fn a<'me>(&'me mut self) -> PrintState<'me, 'input> {
+        PrintState::new(self.printer, self.hash_a, self.options)
+    }
+
+    #[inline]
+    fn b<'me>(&'me mut self) -> PrintState<'me, 'input> {
+        PrintState::new(self.printer, self.hash_b, self.options)
+    }
+
+    #[inline]
     pub fn hash_a(&self) -> &'a FileHash<'a, 'input> {
-        self.a.hash
+        self.hash_a
     }
 
     #[inline]
     pub fn hash_b(&self) -> &'a FileHash<'a, 'input> {
-        self.b.hash
+        self.hash_b
     }
 
     #[inline]
@@ -194,15 +221,17 @@ where
     }
 
     pub fn new(
-        file_a: &'a FileHash<'a, 'input>,
-        file_b: &'a FileHash<'a, 'input>,
+        printer: &'a mut Printer,
+        hash_a: &'a FileHash<'a, 'input>,
+        hash_b: &'a FileHash<'a, 'input>,
         options: &'a Options<'a>,
     ) -> Self {
         DiffState {
-            a: PrintState::new(file_a, options),
-            b: PrintState::new(file_b, options),
-            options: options,
+            printer,
             diff: false,
+            hash_a,
+            hash_b,
+            options: options,
         }
     }
 
@@ -240,11 +269,9 @@ where
     where
         F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
-        self.a.indent += 1;
-        self.b.indent += 1;
+        self.printer.indent += 1;
         let ret = f(self);
-        self.a.indent -= 1;
-        self.b.indent -= 1;
+        self.printer.indent -= 1;
         ret
     }
 
@@ -252,29 +279,27 @@ where
     where
         F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
     {
-        if self.a.inline_depth == 0 {
+        if self.printer.inline_depth == 0 {
             return Ok(());
         }
-        self.a.inline_depth -= 1;
-        self.b.inline_depth -= 1;
+        self.printer.inline_depth -= 1;
         let ret = f(self);
-        self.a.inline_depth += 1;
-        self.b.inline_depth += 1;
+        self.printer.inline_depth += 1;
         ret
     }
 
     fn prefix_equal<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.a.prefix(DiffPrefix::Equal, f)
+        self.a().prefix(DiffPrefix::Equal, f)
     }
 
     fn prefix_less<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.a.prefix(DiffPrefix::Less, f)?;
+        self.a().prefix(DiffPrefix::Less, f)?;
         // Assume something is always written.
         self.diff = true;
         Ok(())
@@ -282,9 +307,9 @@ where
 
     fn prefix_greater<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.b.prefix(DiffPrefix::Greater, f)?;
+        self.b().prefix(DiffPrefix::Greater, f)?;
         // Assume something is always written.
         self.diff = true;
         Ok(())
@@ -293,12 +318,12 @@ where
     // Multiline blocks that are always different.
     pub fn block<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
+        F: FnMut(&mut Write, &mut PrintState, T) -> Result<()>,
     {
         // TODO: writing to a Vec here can't work
         let mut buf = Vec::new();
-        self.a.prefix(DiffPrefix::Less, |state| f(&mut buf, state, arg_a))?;
-        self.b.prefix(DiffPrefix::Greater, |state| f(&mut buf, state, arg_b))?;
+        self.a().prefix(DiffPrefix::Less, |state| f(&mut buf, state, arg_a))?;
+        self.b().prefix(DiffPrefix::Greater, |state| f(&mut buf, state, arg_b))?;
         if !buf.is_empty() {
             w.write_all(&*buf)?;
             self.diff = true;
@@ -468,14 +493,14 @@ where
         arg_b: &T::Arg,
         list_b: &mut [&T],
     ) -> Result<()> {
-        list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.a.hash, x, &self.a.hash, y, self.options));
-        list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.b.hash, x, &self.b.hash, y, self.options));
+        list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.hash_a, x, &self.hash_a, y, self.options));
+        list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.hash_b, x, &self.hash_b, y, self.options));
 
         let mut list: Vec<_> = MergeIterator::new(list_a.iter(), list_b.iter(), |a, b| {
-            T::cmp_id(&self.a.hash, a, &self.b.hash, b, self.options)
+            T::cmp_id(&self.hash_a, a, &self.hash_b, b, self.options)
         }).collect();
         list.sort_by(|x, y| {
-            MergeResult::cmp(x, y, &self.a.hash, &self.b.hash, |x, hash_x, y, hash_y| {
+            MergeResult::cmp(x, y, &self.hash_a, &self.hash_b, |x, hash_x, y, hash_y| {
                 T::cmp_by(hash_x, x, hash_y, y, self.options)
             })
         });
