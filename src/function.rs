@@ -256,14 +256,14 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn print_return_type(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_return_type(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         if self.return_type.is_some() {
-            match self.return_type(state.hash()).and_then(|t| t.byte_size(state.hash())) {
+            match self.return_type(hash).and_then(|t| t.byte_size(hash)) {
                 Some(byte_size) => write!(w, "[{}]", byte_size)?,
                 None => write!(w, "[??]")?,
             }
             write!(w, "\t")?;
-            Type::print_ref_from_offset(w, state, self.return_type)?;
+            Type::print_ref_from_offset(w, hash, self.return_type)?;
         }
         Ok(())
     }
@@ -374,24 +374,24 @@ impl<'input> Parameter<'input> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
-    pub fn print_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    pub fn print_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}: ", String::from_utf8_lossy(name))?;
         }
-        match self.ty(state.hash()) {
-            Some(ty) => ty.print_ref(w, state)?,
+        match self.ty(hash) {
+            Some(ty) => ty.print_ref(w, hash)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())
     }
 
-    fn print_size_and_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        match self.byte_size(state.hash()) {
+    fn print_size_and_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        match self.byte_size(hash) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        self.print_decl(w, state)
+        self.print_decl(w, hash)
     }
 
     /// Compare the identifying information of two types.
@@ -477,7 +477,7 @@ pub(crate) struct InlinedFunction<'input> {
 }
 
 impl<'input> InlinedFunction<'input> {
-    fn print_size_and_decl(&self, w: &mut Write, _state: &PrintState, unit: &Unit) -> Result<()> {
+    fn print_size_and_decl(&self, w: &mut Write, _hash: &FileHash, unit: &Unit) -> Result<()> {
         match self.size {
             Some(size) => write!(w, "[{}]", size)?,
             None => write!(w, "[??]")?,
@@ -700,15 +700,15 @@ struct Call {
 }
 
 impl Call {
-    fn print(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if !state.options().ignore_function_address {
+    fn print(&self, w: &mut Write, hash: &FileHash, options: &Options) -> Result<()> {
+        if !options.ignore_function_address {
             // FIXME: it would be nice to display this in a way that doesn't clutter the output
             // when diffing
             write!(w, "0x{:x} -> 0x{:x} ", self.from, self.to)?;
         }
-        if let Some(function) = state.hash().functions.get(&self.to) {
+        if let Some(function) = hash.functions.get(&self.to) {
             function.print_ref(w)?;
-        } else if state.options().ignore_function_address {
+        } else if options.ignore_function_address {
             // We haven't displayed an address yet, so we need to display something.
             write!(w, "0x{:x}", self.to)?;
         }
@@ -720,7 +720,8 @@ impl Print for Call {
     type Arg = ();
 
     fn print(&self, w: &mut Write, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(w, |w, state| self.print(w, state))
+        let options = state.options();
+        state.line(w, |w, hash| self.print(w, hash, options))
     }
 
     fn diff(
@@ -731,7 +732,8 @@ impl Print for Call {
         _arg_b: &(),
         b: &Self,
     ) -> Result<()> {
-        state.line(w, a, b, |w, state, x| x.print(w, state))
+        let options = state.options();
+        state.line(w, a, b, |w, hash, x| x.print(w, hash, options))
     }
 }
 

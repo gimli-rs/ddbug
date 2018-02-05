@@ -152,29 +152,29 @@ impl<'input> Type<'input> {
         }
     }
 
-    pub fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    pub fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         match self.kind {
             TypeKind::Base(ref val) => val.print_ref(w),
             TypeKind::Def(ref val) => val.print_ref(w),
             TypeKind::Struct(ref val) => val.print_ref(w),
             TypeKind::Union(ref val) => val.print_ref(w),
             TypeKind::Enumeration(ref val) => val.print_ref(w),
-            TypeKind::Array(ref val) => val.print_ref(w, state),
-            TypeKind::Function(ref val) => val.print_ref(w, state),
+            TypeKind::Array(ref val) => val.print_ref(w, hash),
+            TypeKind::Function(ref val) => val.print_ref(w, hash),
             TypeKind::Unspecified(ref val) => val.print_ref(w),
-            TypeKind::PointerToMember(ref val) => val.print_ref(w, state),
-            TypeKind::Modifier(ref val) => val.print_ref(w, state),
+            TypeKind::PointerToMember(ref val) => val.print_ref(w, hash),
+            TypeKind::Modifier(ref val) => val.print_ref(w, hash),
         }
     }
 
     pub fn print_ref_from_offset(
         w: &mut Write,
-        state: &PrintState,
+        hash: &FileHash,
         offset: Option<TypeOffset>,
     ) -> Result<()> {
         match offset {
-            Some(offset) => match Type::from_offset(state.hash(), offset) {
-                Some(ty) => ty.print_ref(w, state)?,
+            Some(offset) => match Type::from_offset(hash, offset) {
+                Some(ty) => ty.print_ref(w, hash)?,
                 None => write!(w, "<invalid-type {}>", offset.0)?,
             },
             None => write!(w, "void")?,
@@ -411,7 +411,7 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}", String::from_utf8_lossy(name))?;
         } else {
@@ -426,7 +426,7 @@ impl<'input> TypeModifier<'input> {
                 | TypeModifierKind::Atomic
                 | TypeModifierKind::Other => {}
             }
-            Type::print_ref_from_offset(w, state, self.ty)?;
+            Type::print_ref_from_offset(w, hash, self.ty)?;
         }
         Ok(())
     }
@@ -519,11 +519,11 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
+    fn print_name(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         write!(w, "type ")?;
         self.print_ref(w)?;
         write!(w, " = ")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
+        Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
@@ -535,8 +535,8 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(state.hash()) {
+    fn print_byte_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        if let Some(byte_size) = self.byte_size(hash) {
             write!(w, "size: {}", byte_size)?;
         }
         Ok(())
@@ -694,7 +694,7 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+    fn print_byte_size(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size {
             write!(w, "size: {}", size)?;
         } else if !self.declaration {
@@ -703,7 +703,7 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+    fn print_declaration(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if self.declaration {
             write!(w, "declaration: yes")?;
         }
@@ -827,7 +827,7 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+    fn print_byte_size(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size {
             write!(w, "size: {}", size)?;
         } else if !self.declaration {
@@ -836,7 +836,7 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+    fn print_declaration(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if self.declaration {
             write!(w, "declaration: yes")?;
         }
@@ -936,7 +936,7 @@ impl<'input> Member<'input> {
     fn print_name(
         &self,
         w: &mut Write,
-        state: &mut PrintState,
+        hash: &FileHash,
         bit_size: Option<u64>,
     ) -> Result<()> {
         write!(w, "{}", format_bit(self.bit_offset))?;
@@ -955,18 +955,18 @@ impl<'input> Member<'input> {
             None => write!(w, "\t<anon>")?,
         }
         write!(w, ": ")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
+        Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
     fn print_padding(
         &self,
         w: &mut Write,
-        state: &mut PrintState,
+        hash: &FileHash,
         bit_size: Option<u64>,
     ) -> Result<()> {
         if let Some(padding) = self.padding(bit_size) {
-            padding.print(w, state)?;
+            padding.print(w, hash)?;
         }
         Ok(())
     }
@@ -1050,7 +1050,7 @@ struct Padding {
 }
 
 impl Padding {
-    fn print(&self, w: &mut Write, _state: &mut PrintState) -> Result<()> {
+    fn print(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         write!(w, "{}[{}]\t<padding>", format_bit(self.bit_offset), format_bit(self.bit_size))?;
         Ok(())
     }
@@ -1149,8 +1149,8 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, state: &mut PrintState) -> Result<()> {
-        if let Some(size) = self.byte_size(state.hash()) {
+    fn print_byte_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        if let Some(size) = self.byte_size(hash) {
             write!(w, "size: {}", size)?;
         } else {
             debug!("enum with no size");
@@ -1268,10 +1268,10 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         write!(w, "[")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
-        if let Some(count) = self.count(state.hash()) {
+        Type::print_ref_from_offset(w, hash, self.ty)?;
+        if let Some(count) = self.count(hash) {
             write!(w, "; {}", count)?;
         }
         write!(w, "]")?;
@@ -1320,7 +1320,7 @@ impl<'input> FunctionType<'input> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         let mut first = true;
         write!(w, "(")?;
         for parameter in &self.parameters {
@@ -1329,13 +1329,13 @@ impl<'input> FunctionType<'input> {
             } else {
                 write!(w, ", ")?;
             }
-            parameter.print_decl(w, state)?;
+            parameter.print_decl(w, hash)?;
         }
         write!(w, ")")?;
 
-        if let Some(return_type) = self.return_type(state.hash()) {
+        if let Some(return_type) = self.return_type(hash) {
             write!(w, " -> ")?;
-            return_type.print_ref(w, state)?;
+            return_type.print_ref(w, hash)?;
         }
         Ok(())
     }
@@ -1449,10 +1449,10 @@ impl PointerToMemberType {
         })
     }
 
-    fn print_ref(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        Type::print_ref_from_offset(w, state, self.containing_ty)?;
+    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        Type::print_ref_from_offset(w, hash, self.containing_ty)?;
         write!(w, "::* ")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
+        Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 

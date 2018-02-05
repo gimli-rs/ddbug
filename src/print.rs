@@ -84,7 +84,7 @@ where
 
     pub fn line<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
         match self.prefix {
             DiffPrefix::None => {}
@@ -99,18 +99,17 @@ where
         for _ in 0..self.indent {
             write!(w, "\t")?;
         }
-        f(w, self)?;
+        f(w, self.hash())?;
         write!(w, "\n")?;
         Ok(())
     }
 
     pub fn line_option<F>(&mut self, w: &mut Write, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
         let mut buf = Vec::new();
-        let mut state = PrintState::new(self.hash, self.options);
-        f(&mut buf, &mut state)?;
+        f(&mut buf, self.hash)?;
         if !buf.is_empty() {
             self.line(w, |w, _state| w.write_all(&*buf).map_err(From::from))?;
         }
@@ -296,6 +295,7 @@ where
     where
         F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
     {
+        // TODO: writing to a Vec here can't work
         let mut buf = Vec::new();
         self.a.prefix(DiffPrefix::Less, |state| f(&mut buf, state, arg_a))?;
         self.b.prefix(DiffPrefix::Greater, |state| f(&mut buf, state, arg_b))?;
@@ -308,15 +308,13 @@ where
 
     pub fn line<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
+        F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
     {
         let mut a = Vec::new();
-        let mut state = PrintState::new(self.a.hash, self.a.options);
-        f(&mut a, &mut state, arg_a)?;
+        f(&mut a, self.hash_a(), arg_a)?;
 
         let mut b = Vec::new();
-        let mut state = PrintState::new(self.b.hash, self.b.options);
-        f(&mut b, &mut state, arg_b)?;
+        f(&mut b, self.hash_b(), arg_b)?;
 
         if a == b {
             if !a.is_empty() {
@@ -342,14 +340,14 @@ where
     /// This is the same as `Self::line`. It exists for symmetry with `PrintState::line_option`.
     pub fn line_option<F, T>(&mut self, w: &mut Write, arg_a: T, arg_b: T, f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &mut PrintState<'a, 'input>, T) -> Result<()>,
+        F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
     {
         self.line(w, arg_a, arg_b, f)
     }
 
     pub fn line_u64(&mut self, w: &mut Write, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
         let base = arg_a;
-        self.line_option(w, arg_a, arg_b, |w, _state, arg| {
+        self.line_option(w, arg_a, arg_b, |w, _hash, arg| {
             write!(w, "{}: {}", label, arg)?;
             if arg != base {
                 write!(w, " ({:+})", arg as i64 - base as i64)?;

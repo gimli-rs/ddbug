@@ -112,11 +112,11 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_name(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         write!(w, "var ")?;
         self.print_ref(w)?;
         write!(w, ": ")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
+        Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
@@ -149,8 +149,8 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_size(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(state.hash()) {
+    fn print_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        if let Some(byte_size) = self.byte_size(hash) {
             write!(w, "size: {}", byte_size)?;
         } else if !self.declaration {
             debug!("variable with no size");
@@ -254,20 +254,20 @@ impl<'input> LocalVariable<'input> {
         Ok(())
     }
 
-    fn print_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
+    fn print_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         self.print_ref(w)?;
         write!(w, ": ")?;
-        Type::print_ref_from_offset(w, state, self.ty)?;
+        Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
-    fn print_size_and_decl(&self, w: &mut Write, state: &PrintState) -> Result<()> {
-        match self.byte_size(state.hash()) {
+    fn print_size_and_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+        match self.byte_size(hash) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        self.print_decl(w, state)
+        self.print_decl(w, hash)
     }
 
     pub fn cmp_id(
