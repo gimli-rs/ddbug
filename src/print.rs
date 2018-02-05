@@ -84,9 +84,9 @@ where
         }
     }
 
-    pub fn indent<F>(&mut self, mut f: F) -> Result<()>
+    pub fn indent<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnOnce(&mut PrintState) -> Result<()>,
     {
         self.printer.indent += 1;
         let ret = f(self);
@@ -94,9 +94,9 @@ where
         ret
     }
 
-    pub fn inline<F>(&mut self, mut f: F) -> Result<()>
+    pub fn inline<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnOnce(&mut PrintState) -> Result<()>,
     {
         if self.printer.inline_depth == 0 {
             return Ok(());
@@ -109,15 +109,15 @@ where
 
     fn prefix<F>(&mut self, prefix: DiffPrefix, f: F) -> Result<()>
     where
-        F: FnOnce(&mut PrintState<'a, 'input>) -> Result<()>,
+        F: FnOnce(&mut PrintState) -> Result<()>,
     {
         self.printer.prefix = prefix;
         f(self)
     }
 
-    pub fn line<F>(&mut self, mut f: F) -> Result<()>
+    pub fn line<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &FileHash) -> Result<()>,
+        F: FnOnce(&mut Write, &FileHash) -> Result<()>,
     {
         match self.printer.prefix {
             DiffPrefix::None => {}
@@ -137,9 +137,9 @@ where
         Ok(())
     }
 
-    pub fn line_option<F>(&mut self, mut f: F) -> Result<()>
+    pub fn line_option<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &FileHash) -> Result<()>,
+        F: FnOnce(&mut Write, &FileHash) -> Result<()>,
     {
         let mut buf = Vec::new();
         f(&mut buf, self.hash)?;
@@ -251,9 +251,9 @@ where
 
     // Write output of `f` to a temporary buffer, then only
     // output that buffer if there were any differences.
-    pub fn diff<F>(&mut self, mut f: F) -> Result<()>
+    pub fn diff<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState) -> Result<()>,
+        F: FnOnce(&mut DiffState) -> Result<()>,
     {
         let mut buf = Vec::new();
         let diff = {
@@ -270,9 +270,9 @@ where
     }
 
     // Don't allow `f` to update self.diff if flag is true.
-    pub fn ignore_diff<F>(&mut self, flag: bool, mut f: F) -> Result<()>
+    pub fn ignore_diff<F>(&mut self, flag: bool, f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState) -> Result<()>,
+        F: FnOnce(&mut DiffState) -> Result<()>,
     {
         let diff = self.diff;
         f(self)?;
@@ -282,9 +282,9 @@ where
         Ok(())
     }
 
-    pub fn indent<F>(&mut self, mut f: F) -> Result<()>
+    pub fn indent<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
+        F: FnOnce(&mut DiffState) -> Result<()>,
     {
         self.printer.indent += 1;
         let ret = f(self);
@@ -292,9 +292,9 @@ where
         ret
     }
 
-    pub fn inline<F>(&mut self, mut f: F) -> Result<()>
+    pub fn inline<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut DiffState<'a, 'input>) -> Result<()>,
+        F: FnOnce(&mut DiffState) -> Result<()>,
     {
         if self.printer.inline_depth == 0 {
             return Ok(());
@@ -307,14 +307,14 @@ where
 
     fn prefix_equal<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState) -> Result<()>,
+        F: FnOnce(&mut PrintState) -> Result<()>,
     {
         self.a().prefix(DiffPrefix::Equal, f)
     }
 
     fn prefix_less<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState) -> Result<()>,
+        F: FnOnce(&mut PrintState) -> Result<()>,
     {
         self.a().prefix(DiffPrefix::Less, f)?;
         // Assume something is always written.
@@ -324,7 +324,7 @@ where
 
     fn prefix_greater<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut PrintState) -> Result<()>,
+        F: FnOnce(&mut PrintState) -> Result<()>,
     {
         self.b().prefix(DiffPrefix::Greater, f)?;
         // Assume something is always written.
@@ -332,7 +332,7 @@ where
         Ok(())
     }
 
-    // Multiline blocks that are always different.
+    // Multiline blocks that are always different, but may be empty.
     pub fn block<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState, T) -> Result<()>,
