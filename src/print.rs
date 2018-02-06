@@ -31,9 +31,9 @@ impl<'w> Printer<'w> {
         }
     }
 
-    pub fn temp<'a>(&self, w: &'a mut Write) -> Printer<'a> {
+    pub fn temp<'temp>(&self, temp: &'temp mut Write) -> Printer<'temp> {
         Printer {
-            w,
+            w: temp,
             indent: self.indent,
             prefix: self.prefix,
             inline_depth: self.inline_depth,
@@ -41,21 +41,21 @@ impl<'w> Printer<'w> {
     }
 }
 
-pub(crate) struct PrintState<'a, 'input>
+pub(crate) struct PrintState<'a, 'w>
 where
-    'input: 'a,
+    'w: 'a,
 {
-    // TODO: 'input here doesn't seem right
-    printer: &'a mut Printer<'input>,
+    // 'w lifetime needed due to invariance
+    printer: &'a mut Printer<'w>,
 
     // The remaining fields contain information that is commonly needed in print methods.
-    hash: &'a FileHash<'a, 'input>,
+    hash: &'a FileHash<'a>,
     options: &'a Options<'a>,
 }
 
-impl<'a, 'input> PrintState<'a, 'input>
+impl<'a, 'w> PrintState<'a, 'w>
 where
-    'input: 'a,
+    'w: 'a,
 {
     #[inline]
     pub fn w(&mut self) -> &mut Write {
@@ -63,7 +63,7 @@ where
     }
 
     #[inline]
-    pub fn hash(&self) -> &'a FileHash<'a, 'input> {
+    pub fn hash(&self) -> &'a FileHash<'a> {
         self.hash
     }
 
@@ -73,8 +73,8 @@ where
     }
 
     pub fn new(
-        printer: &'a mut Printer<'input>,
-        hash: &'a FileHash<'a, 'input>,
+        printer: &'a mut Printer<'w>,
+        hash: &'a FileHash<'a>,
         options: &'a Options<'a>,
     ) -> Self {
         PrintState {
@@ -185,47 +185,41 @@ where
     }
 }
 
-pub(crate) struct DiffState<'a, 'input>
-where
-    'input: 'a,
-{
-    printer: &'a mut Printer<'input>,
+pub(crate) struct DiffState<'a> {
+    printer: &'a mut Printer<'a>,
 
     // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
     diff: bool,
 
     // The remaining fields contain information that is commonly needed in print methods.
-    hash_a: &'a FileHash<'a, 'input>,
-    hash_b: &'a FileHash<'a, 'input>,
+    hash_a: &'a FileHash<'a>,
+    hash_b: &'a FileHash<'a>,
     options: &'a Options<'a>,
 }
 
-impl<'a, 'input> DiffState<'a, 'input>
-where
-    'input: 'a,
-{
+impl<'a> DiffState<'a> {
     #[inline]
     pub fn w(&mut self) -> &mut Write {
         self.printer.w
     }
 
     #[inline]
-    fn a<'me>(&'me mut self) -> PrintState<'me, 'input> {
+    fn a<'me>(&'me mut self) -> PrintState<'me, 'a> {
         PrintState::new(self.printer, self.hash_a, self.options)
     }
 
     #[inline]
-    fn b<'me>(&'me mut self) -> PrintState<'me, 'input> {
+    fn b<'me>(&'me mut self) -> PrintState<'me, 'a> {
         PrintState::new(self.printer, self.hash_b, self.options)
     }
 
     #[inline]
-    pub fn hash_a(&self) -> &'a FileHash<'a, 'input> {
+    pub fn hash_a(&self) -> &'a FileHash<'a> {
         self.hash_a
     }
 
     #[inline]
-    pub fn hash_b(&self) -> &'a FileHash<'a, 'input> {
+    pub fn hash_b(&self) -> &'a FileHash<'a> {
         self.hash_b
     }
 
@@ -235,9 +229,9 @@ where
     }
 
     pub fn new(
-        printer: &'a mut Printer<'input>,
-        hash_a: &'a FileHash<'a, 'input>,
-        hash_b: &'a FileHash<'a, 'input>,
+        printer: &'a mut Printer<'a>,
+        hash_a: &'a FileHash<'a>,
+        hash_b: &'a FileHash<'a>,
         options: &'a Options<'a>,
     ) -> Self {
         DiffState {

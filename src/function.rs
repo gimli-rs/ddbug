@@ -64,10 +64,7 @@ impl<'input> Function<'input> {
         }
     }
 
-    fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -358,10 +355,7 @@ pub(crate) struct Parameter<'input> {
 }
 
 impl<'input> Parameter<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 

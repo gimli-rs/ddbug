@@ -28,16 +28,16 @@ pub(crate) struct CodeRegion {
 }
 
 #[derive(Debug, Default)]
-pub struct File<'a, 'input> {
-    path: &'a str,
+pub struct File<'input> {
+    path: &'input str,
     code: Option<CodeRegion>,
     sections: Vec<Section<'input>>,
     symbols: Vec<Symbol<'input>>,
     units: Vec<Unit<'input>>,
 }
 
-impl<'a, 'input> File<'a, 'input> {
-    pub fn parse(path: &'a str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+impl<'input> File<'input> {
+    pub fn parse(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
         let handle = match fs::File::open(path) {
             Ok(handle) => handle,
             Err(e) => {
@@ -247,7 +247,7 @@ impl<'a, 'input> File<'a, 'input> {
         symbols: &'sym [Symbol<'input>],
         used_symbols: &mut [bool],
         address: u64,
-        name: Option<&'input [u8]>,
+        name: Option<&[u8]>,
     ) -> Option<&'sym Symbol<'input>> {
         if let Ok(mut index) = symbols.binary_search_by(|x| x.address.cmp(&address)) {
             while index > 0 && symbols[index - 1].address == address {
@@ -407,19 +407,16 @@ impl<'a, 'input> File<'a, 'input> {
 }
 
 #[derive(Debug)]
-pub(crate) struct FileHash<'a, 'input>
-where
-    'input: 'a,
-{
-    pub file: &'a File<'a, 'input>,
+pub(crate) struct FileHash<'input> {
+    pub file: &'input File<'input>,
     // All functions by address.
-    pub functions: HashMap<u64, &'a Function<'input>>,
+    pub functions: HashMap<u64, &'input Function<'input>>,
     // All types by offset.
-    pub types: HashMap<TypeOffset, &'a Type<'input>>,
+    pub types: HashMap<TypeOffset, &'input Type<'input>>,
 }
 
-impl<'a, 'input> FileHash<'a, 'input> {
-    fn new(file: &'a File<'a, 'input>) -> Self {
+impl<'input> FileHash<'input> {
+    fn new(file: &'input File<'input>) -> Self {
         FileHash {
             file,
             functions: Self::functions(file),
@@ -428,7 +425,7 @@ impl<'a, 'input> FileHash<'a, 'input> {
     }
 
     /// Returns a map from address to function for all functions in the file.
-    fn functions(file: &'a File<'a, 'input>) -> HashMap<u64, &'a Function<'input>> {
+    fn functions<'a>(file: &'a File<'input>) -> HashMap<u64, &'a Function<'input>> {
         let mut functions = HashMap::new();
         for unit in &file.units {
             for function in unit.functions.values() {
@@ -442,7 +439,7 @@ impl<'a, 'input> FileHash<'a, 'input> {
     }
 
     /// Returns a map from offset to type for all types in the file.
-    fn types(file: &'a File<'a, 'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
+    fn types<'a>(file: &'a File<'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
         let mut types = HashMap::new();
         for unit in &file.units {
             for (offset, ty) in unit.types.iter() {

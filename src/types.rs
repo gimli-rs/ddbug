@@ -62,12 +62,9 @@ impl<'input> Default for Type<'input> {
 
 impl<'input> Type<'input> {
     pub fn from_offset<'a>(
-        hash: &'a FileHash<'a, 'input>,
+        hash: &'a FileHash<'input>,
         offset: TypeOffset,
-    ) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    ) -> Option<&'a Type<'input>> {
         hash.types.get(&offset).map(|ty| *ty)
     }
 
@@ -382,10 +379,7 @@ impl TypeModifierKind {
 }
 
 impl<'input> TypeModifier<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -493,10 +487,7 @@ pub(crate) struct TypeDef<'input> {
 }
 
 impl<'input> TypeDef<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
@@ -869,10 +860,7 @@ pub(crate) struct Member<'input> {
 }
 
 impl<'input> Member<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
@@ -1030,10 +1018,7 @@ pub(crate) struct EnumerationType<'input> {
 }
 
 impl<'input> EnumerationType<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
@@ -1201,10 +1186,7 @@ pub(crate) struct ArrayType<'input> {
 }
 
 impl<'input> ArrayType<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -1273,10 +1255,7 @@ impl<'input> FunctionType<'input> {
         self.byte_size
     }
 
-    fn return_type<'a>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -1381,17 +1360,11 @@ pub(crate) struct PointerToMemberType {
 }
 
 impl PointerToMemberType {
-    fn ty<'a, 'input>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn containing_ty<'a, 'input>(&self, hash: &'a FileHash<'a, 'input>) -> Option<&'a Type<'input>>
-    where
-        'input: 'a,
-    {
+    fn containing_ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.containing_ty.and_then(|v| Type::from_offset(hash, v))
     }
 
