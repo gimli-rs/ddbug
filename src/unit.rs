@@ -148,7 +148,7 @@ impl<'input> Unit<'input> {
                 }
                 Ok(())
             })?;
-            writeln!(state.w(), "")?;
+            state.line_break()?;
         }
 
         if options.category_type {
@@ -218,7 +218,7 @@ impl<'input> Unit<'input> {
                 }
                 Ok(())
             })?;
-            writeln!(state.w(), "")?;
+            state.line_break()?;
         }
 
         if options.category_type {

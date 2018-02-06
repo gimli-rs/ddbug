@@ -58,7 +58,7 @@ where
     'w: 'a,
 {
     #[inline]
-    pub fn w(&mut self) -> &mut Write {
+    fn w(&mut self) -> &mut Write {
         self.printer.w
     }
 
@@ -115,6 +115,10 @@ where
         f(self)
     }
 
+    pub fn line_break(&mut self) -> Result<()> {
+        writeln!(self.w()).map_err(From::from)
+    }
+
     pub fn line<F>(&mut self, f: F) -> Result<()>
     where
         F: FnOnce(&mut Write, &FileHash) -> Result<()>,
@@ -132,7 +136,7 @@ where
         for _ in 0..self.printer.indent {
             write!(self.w(), "\t")?;
         }
-        f(self.printer.w, self.hash)?;
+        f(self.w(), self.hash)?;
         write!(self.w(), "\n")?;
         Ok(())
     }
@@ -199,7 +203,7 @@ pub(crate) struct DiffState<'a> {
 
 impl<'a> DiffState<'a> {
     #[inline]
-    pub fn w(&mut self) -> &mut Write {
+    fn w(&mut self) -> &mut Write {
         self.printer.w
     }
 
@@ -343,6 +347,10 @@ impl<'a> DiffState<'a> {
             self.diff = true;
         }
         Ok(())
+    }
+
+    pub fn line_break(&mut self) -> Result<()> {
+        writeln!(self.w()).map_err(From::from)
     }
 
     pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>

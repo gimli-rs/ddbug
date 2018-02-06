@@ -544,7 +544,7 @@ impl<'input> TypeDef<'input> {
             }
             Ok(())
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -567,7 +567,7 @@ impl<'input> TypeDef<'input> {
             let ty_b = filter_option(b.ty(state.hash_b()), Type::is_anon);
             Type::diff_members("members", state, unit_a, ty_a, unit_b, ty_b)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -644,7 +644,7 @@ impl<'input> StructType<'input> {
             state.line_option(|w, state| self.print_byte_size(w, state))?;
             self.print_members("members", state, unit)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -667,7 +667,7 @@ impl<'input> StructType<'input> {
             state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", state, unit_a, a, unit_b, b)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -769,7 +769,7 @@ impl<'input> UnionType<'input> {
             state.line_option(|w, state| self.print_byte_size(w, state))?;
             self.print_members("members", state, unit)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -792,7 +792,7 @@ impl<'input> UnionType<'input> {
             state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", state, unit_a, a, unit_b, b)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -1052,7 +1052,7 @@ impl<'input> EnumerationType<'input> {
             state.line_option(|w, state| self.print_byte_size(w, state))?;
             state.list("enumerators", unit, &self.enumerators)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -1076,7 +1076,7 @@ impl<'input> EnumerationType<'input> {
             // TODO: handle reordering better
             state.list("enumerators", unit_a, &a.enumerators, unit_b, &b.enumerators)
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 

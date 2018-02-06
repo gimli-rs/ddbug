@@ -351,7 +351,7 @@ impl<'input> File<'input> {
                 state.list("sections", &(), &*self.sections)?;
                 Ok(())
             })?;
-            writeln!(state.w(), "")?;
+            state.line_break()?;
         }
 
         state.sort_list(&(), &mut *self.filter_units(options))
@@ -390,7 +390,7 @@ impl<'input> File<'input> {
                 state.list("sections", &(), &*file_a.sections, &(), &*file_b.sections)?;
                 Ok(())
             })?;
-            writeln!(state.w(), "")?;
+            state.line_break()?;
         }
 
         state.sort_list(

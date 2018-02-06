@@ -74,7 +74,7 @@ impl<'input> Variable<'input> {
             state.line_option(|w, _state| self.print_declaration(w))
             // TODO: print anon type inline
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -104,7 +104,7 @@ impl<'input> Variable<'input> {
             state.line_option(a, b, |w, state, x| x.print_size(w, state))?;
             state.line_option(a, b, |w, _state, x| x.print_declaration(w))
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 

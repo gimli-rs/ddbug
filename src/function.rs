@@ -110,7 +110,7 @@ impl<'input> Function<'input> {
             }
             Ok(())
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
@@ -178,7 +178,7 @@ impl<'input> Function<'input> {
             }
             Ok(())
         })?;
-        writeln!(state.w(), "")?;
+        state.line_break()?;
         Ok(())
     }
 
