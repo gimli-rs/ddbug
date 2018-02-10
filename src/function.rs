@@ -1,6 +1,5 @@
 use std::borrow;
 use std::cmp;
-use std::collections::BTreeSet;
 use std::fmt::Debug;
 use std::io::Write;
 use std::rc::Rc;
@@ -593,13 +592,8 @@ where
     A::Configuration: Debug,
 {
     let mut calls = Vec::new();
-    let mut done = BTreeSet::new();
-    let mut todo = vec![range.begin];
-    while let Some(addr) = todo.pop() {
-        if done.contains(&addr) {
-            continue;
-        }
-
+    let mut addr = range.begin;
+    while addr < range.end {
         let m = match A::decode(region, addr, &cfg) {
             Ok(m) => m,
             Err(e) => {
@@ -609,26 +603,6 @@ where
         };
 
         for mnemonic in m.mnemonics {
-            /*
-            //writeln!(w, "\t{:?}", mnemonic);
-            write!(w, "\t{}", mnemonic.opcode);
-            let mut first = true;
-            for operand in &mnemonic.operands {
-                if first {
-                    write!(w, "\t");
-                    first = false;
-                } else {
-                    write!(w, ", ");
-                }
-                match *operand {
-                    panopticon::Rvalue::Variable { ref name, .. } => write!(w, "{}", name),
-                    panopticon::Rvalue::Constant { ref value, .. } => write!(w, "0x{:x}", value),
-                    _ => write!(w, "?"),
-                }
-            }
-            writeln!(w, "");
-            */
-
             for instruction in &mnemonic.instructions {
                 match *instruction {
                     panopticon::Statement {
@@ -649,29 +623,9 @@ where
                     _ => {}
                 }
             }
-
-            done.insert(mnemonic.area.start);
-            if mnemonic.area.end < range.end {
-                // Always decode the following instruction, even if
-                // there's no control flow there.
-                // TODO: delay processing these until after jumps.
-                todo.push(mnemonic.area.end);
-            }
-        }
-
-        for (_origin, target, _guard) in m.jumps {
-            if let panopticon::Rvalue::Constant {
-                value,
-                ..
-            } = target
-            {
-                if value > range.begin && value < range.end {
-                    todo.push(value);
-                }
-            }
+            addr = mnemonic.area.end;
         }
     }
-    calls.sort_by_key(|x| x.from);
     calls
 }
 
