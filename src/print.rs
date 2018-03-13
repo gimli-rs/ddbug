@@ -31,13 +31,53 @@ impl<'w> Printer<'w> {
         }
     }
 
-    pub fn temp<'temp>(&self, temp: &'temp mut Write) -> Printer<'temp> {
-        Printer {
-            w: temp,
-            indent: self.indent,
-            prefix: self.prefix,
-            inline_depth: self.inline_depth,
+    /// Calls `f` to write to a temporary buffer, then only
+    /// outputs that buffer if `f` return true.
+    pub fn buffer<F>(&mut self, f: F) -> Result<bool>
+    where
+        F: FnOnce(&mut Printer) -> Result<bool>,
+    {
+        let mut buf = Vec::new();
+        let ret = {
+            let mut p = Printer {
+                w: &mut buf,
+                indent: self.indent,
+                prefix: self.prefix,
+                inline_depth: self.inline_depth,
+            };
+            f(&mut p)?
+        };
+        let ret = ret && !buf.is_empty();
+        if ret {
+            self.w.write_all(&*buf)?;
         }
+        Ok(ret)
+    }
+
+    pub fn line_break(&mut self) -> Result<()> {
+        writeln!(self.w).map_err(From::from)
+    }
+
+    pub fn line<F>(&mut self, f: F) -> Result<()>
+    where
+        F: FnOnce(&mut Write) -> Result<()>,
+    {
+        match self.prefix {
+            DiffPrefix::None => {}
+            DiffPrefix::Equal => write!(self.w, "  ")?,
+            DiffPrefix::Less => {
+                write!(self.w, "- ")?;
+            }
+            DiffPrefix::Greater => {
+                write!(self.w, "+ ")?;
+            }
+        }
+        for _ in 0..self.indent {
+            write!(self.w, "\t")?;
+        }
+        f(self.w)?;
+        writeln!(self.w)?;
+        Ok(())
     }
 }
 
@@ -57,11 +97,6 @@ impl<'a, 'w> PrintState<'a, 'w>
 where
     'w: 'a,
 {
-    #[inline]
-    fn w(&mut self) -> &mut Write {
-        self.printer.w
-    }
-
     #[inline]
     pub fn hash(&self) -> &'a FileHash<'a> {
         self.hash
@@ -116,29 +151,15 @@ where
     }
 
     pub fn line_break(&mut self) -> Result<()> {
-        writeln!(self.w()).map_err(From::from)
+        self.printer.line_break()
     }
 
     pub fn line<F>(&mut self, f: F) -> Result<()>
     where
         F: FnOnce(&mut Write, &FileHash) -> Result<()>,
     {
-        match self.printer.prefix {
-            DiffPrefix::None => {}
-            DiffPrefix::Equal => write!(self.w(), "  ")?,
-            DiffPrefix::Less => {
-                write!(self.w(), "- ")?;
-            }
-            DiffPrefix::Greater => {
-                write!(self.w(), "+ ")?;
-            }
-        }
-        for _ in 0..self.printer.indent {
-            write!(self.w(), "\t")?;
-        }
-        f(self.w(), self.hash)?;
-        write!(self.w(), "\n")?;
-        Ok(())
+        let hash = self.hash;
+        self.printer.line(|w| f(w, hash))
     }
 
     pub fn line_option<F>(&mut self, f: F) -> Result<()>
@@ -148,13 +169,13 @@ where
         let mut buf = Vec::new();
         f(&mut buf, self.hash)?;
         if !buf.is_empty() {
-            self.line(|w, _hash| w.write_all(&*buf).map_err(From::from))?;
+            self.printer.line(|w| w.write_all(&*buf).map_err(From::from))?;
         }
         Ok(())
     }
 
     pub fn line_u64(&mut self, label: &str, arg: u64) -> Result<()> {
-        self.line(|w, _hash| {
+        self.printer.line(|w| {
             write!(w, "{}: {}", label, arg)?;
             Ok(())
         })
@@ -166,7 +187,7 @@ where
         }
 
         if !label.is_empty() {
-            self.line(|w, _hash| {
+            self.printer.line(|w| {
                 write!(w, "{}:", label)?;
                 Ok(())
             })?;
@@ -189,8 +210,11 @@ where
     }
 }
 
-pub(crate) struct DiffState<'a> {
-    printer: &'a mut Printer<'a>,
+pub(crate) struct DiffState<'a, 'w>
+where
+    'w: 'a,
+{
+    printer: &'a mut Printer<'w>,
 
     // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
     diff: bool,
@@ -201,19 +225,17 @@ pub(crate) struct DiffState<'a> {
     options: &'a Options<'a>,
 }
 
-impl<'a> DiffState<'a> {
+impl<'a, 'w> DiffState<'a, 'w>
+where
+    'w: 'a,
+{
     #[inline]
-    fn w(&mut self) -> &mut Write {
-        self.printer.w
-    }
-
-    #[inline]
-    fn a<'me>(&'me mut self) -> PrintState<'me, 'a> {
+    fn a<'me>(&'me mut self) -> PrintState<'me, 'w> {
         PrintState::new(self.printer, self.hash_a, self.options)
     }
 
     #[inline]
-    fn b<'me>(&'me mut self) -> PrintState<'me, 'a> {
+    fn b<'me>(&'me mut self) -> PrintState<'me, 'w> {
         PrintState::new(self.printer, self.hash_b, self.options)
     }
 
@@ -233,7 +255,7 @@ impl<'a> DiffState<'a> {
     }
 
     pub fn new(
-        printer: &'a mut Printer<'a>,
+        printer: &'a mut Printer<'w>,
         hash_a: &'a FileHash<'a>,
         hash_b: &'a FileHash<'a>,
         options: &'a Options<'a>,
@@ -253,15 +275,15 @@ impl<'a> DiffState<'a> {
     where
         F: FnOnce(&mut DiffState) -> Result<()>,
     {
-        let mut buf = Vec::new();
-        let diff = {
-            let mut printer = self.printer.temp(&mut buf);
-            let mut state = DiffState::new(&mut printer, self.hash_a, self.hash_b, self.options);
+        let hash_a = self.hash_a;
+        let hash_b = self.hash_b;
+        let options = self.options;
+        let diff = self.printer.buffer(|printer| {
+            let mut state = DiffState::new(printer, hash_a, hash_b, options);
             f(&mut state)?;
-            state.diff
-        };
+            Ok(state.diff)
+        })?;
         if diff {
-            self.w().write_all(&*buf)?;
             self.diff = true;
         }
         Ok(())
@@ -335,22 +357,23 @@ impl<'a> DiffState<'a> {
     where
         F: FnMut(&mut PrintState, T) -> Result<()>,
     {
-        let mut buf = Vec::new();
-        {
-            let mut printer = self.printer.temp(&mut buf);
-            let mut state = DiffState::new(&mut printer, self.hash_a, self.hash_b, self.options);
+        let hash_a = self.hash_a;
+        let hash_b = self.hash_b;
+        let options = self.options;
+        let diff = self.printer.buffer(|printer| {
+            let mut state = DiffState::new(printer, hash_a, hash_b, options);
             state.a().prefix(DiffPrefix::Less, |state| f(state, arg_a))?;
             state.b().prefix(DiffPrefix::Greater, |state| f(state, arg_b))?;
-        }
-        if !buf.is_empty() {
-            self.w().write_all(&*buf)?;
+            Ok(true)
+        })?;
+        if diff {
             self.diff = true;
         }
         Ok(())
     }
 
     pub fn line_break(&mut self) -> Result<()> {
-        writeln!(self.w()).map_err(From::from)
+        self.printer.line_break()
     }
 
     pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>
