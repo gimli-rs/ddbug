@@ -126,7 +126,7 @@ impl<'input> Unit<'input> {
                         state.list("addresses", &(), ranges.list())?;
                     } else {
                         let range = ranges.list().first().cloned();
-                        state.line_option(|w, _state| self.print_address(w, range))?;
+                        state.line(|w, _state| self.print_address(w, range))?;
                     }
 
                     state.list("unknown addresses", &(), unknown_ranges.list())?;
@@ -183,7 +183,7 @@ impl<'input> Unit<'input> {
                     } else {
                         let range_a = ranges_a.list().first().cloned();
                         let range_b = ranges_b.list().first().cloned();
-                        state.line_option(
+                        state.line(
                             (unit_a, range_a),
                             (unit_b, range_b),
                             |w, _state, (unit, range)| unit.print_address(w, range),

@@ -492,7 +492,7 @@ impl<'input> Print for Section<'input> {
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
         state.line(|w, _state| self.print_name(w))?;
         state.indent(|state| {
-            state.line_option(|w, _state| self.print_address(w))?;
+            state.line(|w, _state| self.print_address(w))?;
             state.line_u64("size", self.size)
         })
     }
@@ -500,7 +500,7 @@ impl<'input> Print for Section<'input> {
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
         state.line(a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
-            state.line_option(a, b, |w, _state, x| x.print_address(w))?;
+            state.line(a, b, |w, _state, x| x.print_address(w))?;
             state.line_u64("size", a.size, b.size)
         })
     }
@@ -569,7 +569,7 @@ impl<'input> Print for Symbol<'input> {
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
         state.line(|w, _state| self.print_name(w))?;
         state.indent(|state| {
-            state.line_option(|w, _state| self.print_address(w))?;
+            state.line(|w, _state| self.print_address(w))?;
             state.line_u64("size", self.size)
         })
     }
@@ -577,7 +577,7 @@ impl<'input> Print for Symbol<'input> {
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
         state.line(a, b, |w, _state, x| x.print_name(w))?;
         state.indent(|state| {
-            state.line_option(a, b, |w, _state, x| x.print_address(w))?;
+            state.line(a, b, |w, _state, x| x.print_address(w))?;
             state.line_u64("size", a.size, b.size)
         })
     }

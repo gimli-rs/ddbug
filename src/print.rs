@@ -62,21 +62,25 @@ impl<'w> Printer<'w> {
     where
         F: FnOnce(&mut Write) -> Result<()>,
     {
-        match self.prefix {
-            DiffPrefix::None => {}
-            DiffPrefix::Equal => write!(self.w, "  ")?,
-            DiffPrefix::Less => {
-                write!(self.w, "- ")?;
+        let mut buf = Vec::new();
+        f(&mut buf)?;
+        if !buf.is_empty() {
+            match self.prefix {
+                DiffPrefix::None => {}
+                DiffPrefix::Equal => write!(self.w, "  ")?,
+                DiffPrefix::Less => {
+                    write!(self.w, "- ")?;
+                }
+                DiffPrefix::Greater => {
+                    write!(self.w, "+ ")?;
+                }
             }
-            DiffPrefix::Greater => {
-                write!(self.w, "+ ")?;
+            for _ in 0..self.indent {
+                write!(self.w, "\t")?;
             }
+            self.w.write_all(&*buf)?;
+            writeln!(self.w)?;
         }
-        for _ in 0..self.indent {
-            write!(self.w, "\t")?;
-        }
-        f(self.w)?;
-        writeln!(self.w)?;
         Ok(())
     }
 }
@@ -160,18 +164,6 @@ where
     {
         let hash = self.hash;
         self.printer.line(|w| f(w, hash))
-    }
-
-    pub fn line_option<F>(&mut self, f: F) -> Result<()>
-    where
-        F: FnOnce(&mut Write, &FileHash) -> Result<()>,
-    {
-        let mut buf = Vec::new();
-        f(&mut buf, self.hash)?;
-        if !buf.is_empty() {
-            self.printer.line(|w| w.write_all(&*buf).map_err(From::from))?;
-        }
-        Ok(())
     }
 
     pub fn line_u64(&mut self, label: &str, arg: u64) -> Result<()> {
@@ -407,17 +399,9 @@ where
         Ok(())
     }
 
-    /// This is the same as `Self::line`. It exists for symmetry with `PrintState::line_option`.
-    pub fn line_option<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
-    where
-        F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
-    {
-        self.line(arg_a, arg_b, f)
-    }
-
     pub fn line_u64(&mut self, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
         let base = arg_a;
-        self.line_option(arg_a, arg_b, |w, _hash, arg| {
+        self.line(arg_a, arg_b, |w, _hash, arg| {
             write!(w, "{}: {}", label, arg)?;
             if arg != base {
                 write!(w, " ({:+})", arg as i64 - base as i64)?;

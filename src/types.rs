@@ -534,7 +534,7 @@ impl<'input> TypeDef<'input> {
         state.line(|w, state| self.print_name(w, state))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(|w, _state| self.print_source(w, unit))?;
+                state.line(|w, _state| self.print_source(w, unit))?;
             }
             state.line(|w, state| self.print_byte_size(w, state))?;
             if let Some(ty) = ty {
@@ -558,11 +558,11 @@ impl<'input> TypeDef<'input> {
         state.line(a, b, |w, state, x| x.print_name(w, state))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
+            state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
             let ty_a = filter_option(a.ty(state.hash_a()), Type::is_anon);
             let ty_b = filter_option(b.ty(state.hash_b()), Type::is_anon);
             Type::diff_members("members", state, unit_a, ty_a, unit_b, ty_b)
@@ -638,10 +638,10 @@ impl<'input> StructType<'input> {
         state.line(|w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(|w, _state| self.print_source(w, unit))?;
+                state.line(|w, _state| self.print_source(w, unit))?;
             }
-            state.line_option(|w, state| self.print_declaration(w, state))?;
-            state.line_option(|w, state| self.print_byte_size(w, state))?;
+            state.line(|w, state| self.print_declaration(w, state))?;
+            state.line(|w, state| self.print_byte_size(w, state))?;
             self.print_members("members", state, unit)
         })?;
         state.line_break()?;
@@ -659,12 +659,12 @@ impl<'input> StructType<'input> {
         state.line(a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(a, b, |w, state, x| x.print_declaration(w, state))?;
-            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
+            state.line(a, b, |w, state, x| x.print_declaration(w, state))?;
+            state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", state, unit_a, a, unit_b, b)
         })?;
         state.line_break()?;
@@ -763,10 +763,10 @@ impl<'input> UnionType<'input> {
         state.line(|w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(|w, _state| self.print_source(w, unit))?;
+                state.line(|w, _state| self.print_source(w, unit))?;
             }
-            state.line_option(|w, state| self.print_declaration(w, state))?;
-            state.line_option(|w, state| self.print_byte_size(w, state))?;
+            state.line(|w, state| self.print_declaration(w, state))?;
+            state.line(|w, state| self.print_byte_size(w, state))?;
             self.print_members("members", state, unit)
         })?;
         state.line_break()?;
@@ -784,12 +784,12 @@ impl<'input> UnionType<'input> {
         state.line(a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(a, b, |w, state, x| x.print_declaration(w, state))?;
-            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
+            state.line(a, b, |w, state, x| x.print_declaration(w, state))?;
+            state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
             Self::diff_members("members", state, unit_a, a, unit_b, b)
         })?;
         state.line_break()?;
@@ -939,7 +939,7 @@ impl<'input> Print for Member<'input> {
         if self.is_inline(hash) {
             Type::print_members("", state, unit, self.ty(hash))?;
         }
-        state.line_option(|w, state| self.print_padding(w, state, bit_size))
+        state.line(|w, state| self.print_padding(w, state, bit_size))
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
@@ -961,7 +961,7 @@ impl<'input> Print for Member<'input> {
         };
         Type::diff_members("", state, unit_a, ty_a, unit_b, ty_b)?;
 
-        state.line_option((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+        state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_padding(w, state, bit_size)
         })
     }
@@ -1046,10 +1046,10 @@ impl<'input> EnumerationType<'input> {
         state.line(|w, _state| self.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option(|w, _state| self.print_source(w, unit))?;
+                state.line(|w, _state| self.print_source(w, unit))?;
             }
-            state.line_option(|w, _state| self.print_declaration(w))?;
-            state.line_option(|w, state| self.print_byte_size(w, state))?;
+            state.line(|w, _state| self.print_declaration(w))?;
+            state.line(|w, state| self.print_byte_size(w, state))?;
             state.list("enumerators", unit, &self.enumerators)
         })?;
         state.line_break()?;
@@ -1067,12 +1067,12 @@ impl<'input> EnumerationType<'input> {
         state.line(a, b, |w, _state, x| x.print_ref(w))?;
         state.indent(|state| {
             if state.options().print_source {
-                state.line_option((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                     x.print_source(w, unit)
                 })?;
             }
-            state.line_option(a, b, |w, _state, x| x.print_declaration(w))?;
-            state.line_option(a, b, |w, state, x| x.print_byte_size(w, state))?;
+            state.line(a, b, |w, _state, x| x.print_declaration(w))?;
+            state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
             // TODO: handle reordering better
             state.list("enumerators", unit_a, &a.enumerators, unit_b, &b.enumerators)
         })?;
