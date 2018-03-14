@@ -78,12 +78,12 @@ where
     let debug_ranges = gimli::DebugRanges::new(debug_ranges, endian);
 
     let dwarf = DwarfFileState {
-        endian: endian,
-        debug_abbrev: debug_abbrev,
-        debug_info: debug_info,
-        debug_line: debug_line,
-        debug_str: debug_str,
-        debug_ranges: debug_ranges,
+        endian,
+        debug_abbrev,
+        debug_info,
+        debug_line,
+        debug_str,
+        debug_ranges,
     };
 
     let mut units = Vec::new();
@@ -114,7 +114,7 @@ where
     let root = tree.root()?;
 
     let mut unit = Unit::default();
-    unit.address_size = Some(unit_header.address_size() as u64);
+    unit.address_size = Some(u64::from(unit_header.address_size()));
     {
         let entry = root.entry();
         if entry.tag() != gimli::DW_TAG_compile_unit {
@@ -534,11 +534,11 @@ where
     Endian: gimli::Endianity,
 {
     let mut modifier = TypeModifier {
-        kind: kind,
+        kind,
         ty: None,
         name: None,
         byte_size: None,
-        address_size: Some(dwarf_unit.header.address_size() as u64),
+        address_size: Some(u64::from(dwarf_unit.header.address_size())),
     };
 
     {
@@ -1090,7 +1090,7 @@ where
     let mut function = FunctionType {
         // Go treats subroutine types as pointers.
         // Not sure if this is valid for all languages.
-        byte_size: Some(dwarf_unit.header.address_size() as u64),
+        byte_size: Some(u64::from(dwarf_unit.header.address_size())),
         ..Default::default()
     };
 
@@ -1315,10 +1315,10 @@ where
     if let Some(specification) = specification {
         if !inherit_subprogram(unit, &mut function, specification, abstract_origin) {
             dwarf_unit.subprograms.push(DwarfSubprogram {
-                offset: offset,
-                specification: specification,
-                abstract_origin: abstract_origin,
-                function: function,
+                offset,
+                specification,
+                abstract_origin,
+                function,
             });
             return Ok(());
         }
@@ -1766,9 +1766,9 @@ where
     }
 
     Ok(DwarfVariable {
-        offset: offset,
-        specification: specification,
-        variable: variable,
+        offset,
+        specification,
+        variable,
     })
 }
 

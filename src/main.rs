@@ -7,55 +7,55 @@ extern crate log;
 extern crate ddbug;
 
 // Mode
-const OPT_FILE: &'static str = "file";
-const OPT_DIFF: &'static str = "diff";
+const OPT_FILE: &str = "file";
+const OPT_DIFF: &str = "diff";
 
 // Print categories
-const OPT_CATEGORY: &'static str = "category";
-const OPT_CATEGORY_FILE: &'static str = "file";
-const OPT_CATEGORY_UNIT: &'static str = "unit";
-const OPT_CATEGORY_TYPE: &'static str = "type";
-const OPT_CATEGORY_FUNCTION: &'static str = "function";
-const OPT_CATEGORY_VARIABLE: &'static str = "variable";
+const OPT_CATEGORY: &str = "category";
+const OPT_CATEGORY_FILE: &str = "file";
+const OPT_CATEGORY_UNIT: &str = "unit";
+const OPT_CATEGORY_TYPE: &str = "type";
+const OPT_CATEGORY_FUNCTION: &str = "function";
+const OPT_CATEGORY_VARIABLE: &str = "variable";
 
 // Print fields
-const OPT_PRINT: &'static str = "print";
-const OPT_PRINT_ADDRESS: &'static str = "address";
-const OPT_PRINT_SOURCE: &'static str = "source";
-const OPT_PRINT_FILE_ADDRESS: &'static str = "file-address";
-const OPT_PRINT_UNIT_ADDRESS: &'static str = "unit-address";
-const OPT_PRINT_FUNCTION_CALLS: &'static str = "function-calls";
-const OPT_PRINT_FUNCTION_VARIABLES: &'static str = "function-variables";
+const OPT_PRINT: &str = "print";
+const OPT_PRINT_ADDRESS: &str = "address";
+const OPT_PRINT_SOURCE: &str = "source";
+const OPT_PRINT_FILE_ADDRESS: &str = "file-address";
+const OPT_PRINT_UNIT_ADDRESS: &str = "unit-address";
+const OPT_PRINT_FUNCTION_CALLS: &str = "function-calls";
+const OPT_PRINT_FUNCTION_VARIABLES: &str = "function-variables";
 
 // Print parameters
-const OPT_INLINE_DEPTH: &'static str = "inline-depth";
+const OPT_INLINE_DEPTH: &str = "inline-depth";
 
 // Filters
-const OPT_FILTER: &'static str = "filter";
-const OPT_FILTER_INLINE: &'static str = "inline";
-const OPT_FILTER_FUNCTION_INLINE: &'static str = "function-inline";
-const OPT_FILTER_NAME: &'static str = "name";
-const OPT_FILTER_NAMESPACE: &'static str = "namespace";
-const OPT_FILTER_UNIT: &'static str = "unit";
+const OPT_FILTER: &str = "filter";
+const OPT_FILTER_INLINE: &str = "inline";
+const OPT_FILTER_FUNCTION_INLINE: &str = "function-inline";
+const OPT_FILTER_NAME: &str = "name";
+const OPT_FILTER_NAMESPACE: &str = "namespace";
+const OPT_FILTER_UNIT: &str = "unit";
 
 // Sorting
-const OPT_SORT: &'static str = "sort";
-const OPT_SORT_SIZE: &'static str = "size";
-const OPT_SORT_NAME: &'static str = "name";
+const OPT_SORT: &str = "sort";
+const OPT_SORT_SIZE: &str = "size";
+const OPT_SORT_NAME: &str = "name";
 
 // Diff options
-const OPT_IGNORE: &'static str = "ignore";
-const OPT_IGNORE_ADDED: &'static str = "added";
-const OPT_IGNORE_DELETED: &'static str = "deleted";
-const OPT_IGNORE_ADDRESS: &'static str = "address";
-const OPT_IGNORE_SYMBOL_NAME: &'static str = "symbol-name";
-const OPT_IGNORE_FUNCTION_ADDRESS: &'static str = "function-address";
-const OPT_IGNORE_FUNCTION_SIZE: &'static str = "function-size";
-const OPT_IGNORE_FUNCTION_INLINE: &'static str = "function-inline";
-const OPT_IGNORE_FUNCTION_SYMBOL_NAME: &'static str = "function-symbol-name";
-const OPT_IGNORE_VARIABLE_ADDRESS: &'static str = "variable-address";
-const OPT_IGNORE_VARIABLE_SYMBOL_NAME: &'static str = "variable-symbol-name";
-const OPT_PREFIX_MAP: &'static str = "prefix-map";
+const OPT_IGNORE: &str = "ignore";
+const OPT_IGNORE_ADDED: &str = "added";
+const OPT_IGNORE_DELETED: &str = "deleted";
+const OPT_IGNORE_ADDRESS: &str = "address";
+const OPT_IGNORE_SYMBOL_NAME: &str = "symbol-name";
+const OPT_IGNORE_FUNCTION_ADDRESS: &str = "function-address";
+const OPT_IGNORE_FUNCTION_SIZE: &str = "function-size";
+const OPT_IGNORE_FUNCTION_INLINE: &str = "function-inline";
+const OPT_IGNORE_FUNCTION_SYMBOL_NAME: &str = "function-symbol-name";
+const OPT_IGNORE_VARIABLE_ADDRESS: &str = "variable-address";
+const OPT_IGNORE_VARIABLE_SYMBOL_NAME: &str = "variable-symbol-name";
+const OPT_PREFIX_MAP: &str = "prefix-map";
 
 fn main() {
     env_logger::init().ok();

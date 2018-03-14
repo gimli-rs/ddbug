@@ -48,7 +48,7 @@ impl<'input> Function<'input> {
     fn name(&self) -> borrow::Cow<'input, str> {
         match self.name {
             Some(name) => String::from_utf8_lossy(name),
-            None => borrow::Cow::Borrowed(&"<anon>"),
+            None => borrow::Cow::Borrowed("<anon>"),
         }
     }
 

@@ -76,10 +76,11 @@ impl RangeList {
             // (This may be a wrong assumption, but does it matter and
             // how do we do better?)
             // TODO: make alignment configurable
-            let mut padding = 0;
-            if range.begin == range.begin & !15 {
-                padding = 15;
-            }
+            let mut padding = if range.begin == range.begin & !15 {
+                15
+            } else {
+                0
+            };
             // Merge ranges if new range begins in or after previous range.
             // We don't care about merging in opposite order (that'll happen
             // when sorting).

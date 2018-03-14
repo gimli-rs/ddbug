@@ -26,8 +26,8 @@ impl<'input> Namespace<'input> {
     ) -> Rc<Namespace<'input>> {
         Rc::new(Namespace {
             parent: parent.clone(),
-            name: name,
-            kind: kind,
+            name,
+            kind,
         })
     }
 

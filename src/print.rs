@@ -147,8 +147,8 @@ impl<'a> PrintState<'a> {
     pub fn new(printer: &'a mut Printer, hash: &'a FileHash<'a>, options: &'a Options<'a>) -> Self {
         PrintState {
             printer,
-            hash: hash,
-            options: options,
+            hash,
+            options,
         }
     }
 
@@ -246,12 +246,12 @@ pub(crate) struct DiffState<'a> {
 
 impl<'a> DiffState<'a> {
     #[inline]
-    fn a<'me>(&'me mut self) -> PrintState<'me> {
+    fn a(&mut self) -> PrintState {
         PrintState::new(self.printer, self.hash_a, self.options)
     }
 
     #[inline]
-    fn b<'me>(&'me mut self) -> PrintState<'me> {
+    fn b(&mut self) -> PrintState {
         PrintState::new(self.printer, self.hash_b, self.options)
     }
 
@@ -281,7 +281,7 @@ impl<'a> DiffState<'a> {
             diff: false,
             hash_a,
             hash_b,
-            options: options,
+            options,
         }
     }
 
@@ -544,11 +544,11 @@ impl<'a> DiffState<'a> {
         arg_b: &T::Arg,
         list_b: &mut [&T],
     ) -> Result<()> {
-        list_a.sort_by(|x, y| T::cmp_id_for_sort(&self.hash_a, x, &self.hash_a, y, self.options));
-        list_b.sort_by(|x, y| T::cmp_id_for_sort(&self.hash_b, x, &self.hash_b, y, self.options));
+        list_a.sort_by(|x, y| T::cmp_id_for_sort(self.hash_a, x, self.hash_a, y, self.options));
+        list_b.sort_by(|x, y| T::cmp_id_for_sort(self.hash_b, x, self.hash_b, y, self.options));
 
         let mut list: Vec<_> = MergeIterator::new(list_a.iter(), list_b.iter(), |a, b| {
-            T::cmp_id(&self.hash_a, a, &self.hash_b, b, self.options)
+            T::cmp_id(self.hash_a, a, self.hash_b, b, self.options)
         }).collect();
         list.sort_by(|x, y| {
             MergeResult::cmp(x, y, &self.hash_a, &self.hash_b, |x, hash_x, y, hash_y| {
@@ -661,21 +661,21 @@ impl<T> MergeResult<T> {
         Arg: Copy,
         F: Fn(&T, Arg, &T, Arg) -> cmp::Ordering,
     {
-        match x {
-            &MergeResult::Both(_, ref x_right) => match y {
-                &MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
-                &MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
-                &MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
+        match *x {
+            MergeResult::Both(_, ref x_right) => match *y {
+                MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
+                MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
+                MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
             },
-            &MergeResult::Left(ref x_left) => match y {
-                &MergeResult::Both(_, ref y_right) => f(x_left, arg_left, y_right, arg_right),
-                &MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
-                &MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
+            MergeResult::Left(ref x_left) => match *y {
+                MergeResult::Both(_, ref y_right) => f(x_left, arg_left, y_right, arg_right),
+                MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
+                MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
             },
-            &MergeResult::Right(ref x_right) => match y {
-                &MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
-                &MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
-                &MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
+            MergeResult::Right(ref x_right) => match *y {
+                MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
+                MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
+                MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
             },
         }
     }
@@ -700,15 +700,15 @@ where
     I: Iterator<Item = T>,
     C: Fn(T, T) -> cmp::Ordering,
 {
-    fn new(mut left: I, mut right: I, cmp: C) -> Self {
-        let item_left = left.next();
-        let item_right = right.next();
+    fn new(mut iter_left: I, mut iter_right: I, item_cmp: C) -> Self {
+        let item_left = iter_left.next();
+        let item_right = iter_right.next();
         MergeIterator {
-            iter_left: left,
-            iter_right: right,
-            item_left: item_left,
-            item_right: item_right,
-            item_cmp: cmp,
+            iter_left,
+            iter_right,
+            item_left,
+            item_right,
+            item_cmp,
         }
     }
 }
@@ -834,9 +834,9 @@ where
             node.cost = cost;
             node.from = from;
             heap.push(State {
-                cost: cost,
-                index1: index1,
-                index2: index2,
+                cost,
+                index1,
+                index2,
             });
         }
     }

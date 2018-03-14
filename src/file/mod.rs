@@ -153,7 +153,6 @@ impl<'input> File<'input> {
             sections,
             symbols,
             units,
-            ..Default::default()
         };
         file.normalize();
         cb(&mut file)
@@ -442,7 +441,7 @@ impl<'input> FileHash<'input> {
     fn types<'a>(file: &'a File<'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
         let mut types = HashMap::new();
         for unit in &file.units {
-            for (offset, ty) in unit.types.iter() {
+            for (offset, ty) in &unit.types {
                 types.insert(*offset, ty);
             }
         }

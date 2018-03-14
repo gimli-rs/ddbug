@@ -54,7 +54,7 @@ pub(crate) fn parse(
             }
             Ok(pdb::TypeData::Pointer(ref data)) => {
                 let underlying_type = parse_type_index(data.underlying_type);
-                let byte_size = data.attributes.size() as u64;
+                let byte_size = u64::from(data.attributes.size());
                 let byte_size = if byte_size == 0 {
                     None
                 } else {
@@ -68,7 +68,7 @@ pub(crate) fn parse(
                             kind: TypeModifierKind::Pointer,
                             ty: underlying_type,
                             name: None,
-                            byte_size: byte_size,
+                            byte_size,
                             address_size: None,
                         }),
                     },
@@ -87,7 +87,7 @@ pub(crate) fn parse(
                     Type {
                         offset: TypeOffset(index),
                         kind: TypeKind::Modifier(TypeModifier {
-                            kind: kind,
+                            kind,
                             ty: underlying_type,
                             name: None,
                             byte_size: None,
@@ -139,7 +139,7 @@ pub(crate) fn parse(
                         symbol_name: None,
                         linkage_name: None,
                         source: Default::default(),
-                        address: Some(data.offset as u64),
+                        address: Some(u64::from(data.offset)),
                         size: None,
                         inline: false,
                         declaration: false,
@@ -159,14 +159,14 @@ pub(crate) fn parse(
     units.push(unit);
 
     let mut file = File {
-        path: path,
+        path,
         // TODO
         code: None,
         // TODO
         sections: Vec::new(),
         // TODO
         symbols: Vec::new(),
-        units: units,
+        units,
     };
     file.normalize();
     cb(&mut file)
@@ -257,7 +257,7 @@ fn parse_class<'input>(
     let byte_size = if declaration {
         None
     } else {
-        Some(data.size as u64)
+        Some(u64::from(data.size))
     };
     let mut members = match fields {
         Some(ref fields) => match member_lists.get(&fields.0) {
@@ -279,9 +279,9 @@ fn parse_class<'input>(
                 namespace: namespace.clone(),
                 name: Some(data.name.as_bytes()),
                 source: Default::default(),
-                byte_size: byte_size,
-                declaration: declaration,
-                members: members,
+                byte_size,
+                declaration,
+                members,
             }),
         },
     );
@@ -300,7 +300,7 @@ fn parse_union<'input>(
     let byte_size = if declaration {
         None
     } else {
-        Some(data.size as u64)
+        Some(u64::from(data.size))
     };
     let mut members = match fields {
         Some(fields) => match member_lists.get(&fields.0) {
@@ -322,9 +322,9 @@ fn parse_union<'input>(
                 namespace: namespace.clone(),
                 name: Some(data.name.as_bytes()),
                 source: Default::default(),
-                byte_size: byte_size,
-                declaration: declaration,
-                members: members,
+                byte_size,
+                declaration,
+                members,
             }),
         },
     );
@@ -356,10 +356,10 @@ fn parse_enumeration<'input>(
                 namespace: namespace.clone(),
                 name: Some(data.name.as_bytes()),
                 source: Default::default(),
-                declaration: declaration,
+                declaration,
                 ty: underlying_type,
                 byte_size: None,
-                enumerators: enumerators,
+                enumerators,
             }),
         },
     );
@@ -401,8 +401,8 @@ fn parse_procedure<'input>(
         Type {
             offset: TypeOffset(index),
             kind: TypeKind::Function(FunctionType {
-                parameters: parameters,
-                return_type: return_type,
+                parameters,
+                return_type,
                 byte_size: None,
             }),
         },
@@ -428,7 +428,7 @@ fn parse_member_function<'input>(
             parameters.push(Parameter {
                 offset: None,
                 name: None,
-                ty: ty,
+                ty,
             });
         }
     }
@@ -456,8 +456,8 @@ fn parse_member_function<'input>(
         Type {
             offset: TypeOffset(index),
             kind: TypeKind::Function(FunctionType {
-                parameters: parameters,
-                return_type: return_type,
+                parameters,
+                return_type,
                 byte_size: None,
             }),
         },
@@ -471,7 +471,7 @@ fn parse_array<'input>(unit: &mut Unit<'input>, index: usize, data: &pdb::ArrayT
     }
     let element_type = parse_type_index(data.element_type);
     //let indexing_type = parse_type_index(indexing_type);
-    let byte_size = Some(data.dimensions[0] as u64);
+    let byte_size = Some(u64::from(data.dimensions[0]));
     unit.types.insert(
         TypeOffset(index),
         // TODO: indexing_type, stride
@@ -479,7 +479,7 @@ fn parse_array<'input>(unit: &mut Unit<'input>, index: usize, data: &pdb::ArrayT
             offset: TypeOffset(index),
             kind: TypeKind::Array(ArrayType {
                 ty: element_type,
-                byte_size: byte_size,
+                byte_size,
                 ..Default::default()
             }),
         },
@@ -501,37 +501,37 @@ fn parse_field_list<'input>(
     let mut members = Vec::new();
     let mut enumerators = Vec::new();
     for field in &data.fields {
-        match field {
-            &pdb::TypeData::Member(ref member) => {
+        match *field {
+            pdb::TypeData::Member(ref member) => {
                 let mut ty = parse_type_index(member.field_type);
-                let mut bit_offset = member.offset as u64 * 8;
+                let mut bit_offset = u64::from(member.offset) * 8;
                 let mut bit_size = None;
                 match bitfields.get(&(member.field_type as usize)) {
                     Some(bitfield) => {
                         ty = parse_type_index(bitfield.underlying_type);
-                        bit_offset += bitfield.position as u64;
-                        bit_size = Some(bitfield.length as u64);
+                        bit_offset += u64::from(bitfield.position);
+                        bit_size = Some(u64::from(bitfield.length));
                     }
                     None => {}
                 }
                 members.push(Member {
                     name: Some(member.name.as_bytes()),
-                    ty: ty,
-                    bit_offset: bit_offset,
-                    bit_size: bit_size,
+                    ty,
+                    bit_offset,
+                    bit_size,
                     next_bit_offset: None,
                 });
             }
-            &pdb::TypeData::Enumerate(ref enumerate) => {
+            pdb::TypeData::Enumerate(ref enumerate) => {
                 let value = match enumerate.value {
-                    pdb::Variant::U8(val) => val as i64,
-                    pdb::Variant::U16(val) => val as i64,
-                    pdb::Variant::U32(val) => val as i64,
+                    pdb::Variant::U8(val) => i64::from(val),
+                    pdb::Variant::U16(val) => i64::from(val),
+                    pdb::Variant::U32(val) => i64::from(val),
                     pdb::Variant::U64(val) => val as i64,
-                    pdb::Variant::I8(val) => val as i64,
-                    pdb::Variant::I16(val) => val as i64,
-                    pdb::Variant::I32(val) => val as i64,
-                    pdb::Variant::I64(val) => val as i64,
+                    pdb::Variant::I8(val) => i64::from(val),
+                    pdb::Variant::I16(val) => i64::from(val),
+                    pdb::Variant::I32(val) => i64::from(val),
+                    pdb::Variant::I64(val) => val,
                 };
                 enumerators.push(Enumerator {
                     name: Some(enumerate.name.as_bytes()),
