@@ -15,7 +15,7 @@ use panopticon;
 
 use {Options, Result};
 use function::{Function, FunctionOffset};
-use print::{DiffList, DiffState, Print, PrintState, Printer};
+use print::{DiffList, DiffState, Print, PrintState, TextPrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
@@ -327,7 +327,7 @@ impl<'input> File<'input> {
 
     pub fn print(&self, w: &mut Write, options: &Options) -> Result<()> {
         let hash = FileHash::new(self);
-        let mut printer = Printer::new(w, options);
+        let mut printer = TextPrinter::new(w, options);
         let mut state = PrintState::new(&mut printer, &hash, options);
 
         if options.category_file {
@@ -360,7 +360,7 @@ impl<'input> File<'input> {
     pub fn diff(w: &mut Write, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
         let hash_a = FileHash::new(file_a);
         let hash_b = FileHash::new(file_b);
-        let mut printer = Printer::new(w, options);
+        let mut printer = TextPrinter::new(w, options);
         let mut state = DiffState::new(&mut printer, &hash_a, &hash_b, options);
 
         if options.category_file {
