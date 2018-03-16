@@ -7,7 +7,10 @@ use {Options, Result};
 use file::FileHash;
 
 mod text;
-pub(crate) use self::text::TextPrinter;
+pub use self::text::TextPrinter;
+
+mod html;
+pub use self::html::HtmlPrinter;
 
 #[derive(Debug, Clone, Copy)]
 pub enum DiffPrefix {
@@ -26,8 +29,8 @@ pub trait Printer {
 
     fn line(&mut self, f: &mut FnMut(&mut Write) -> Result<()>) -> Result<()>;
 
-    fn indent_begin(&mut self);
-    fn indent_end(&mut self);
+    fn indent_begin(&mut self) -> Result<()>;
+    fn indent_end(&mut self) -> Result<()>;
 
     fn prefix(&mut self, prefix: DiffPrefix);
 
@@ -67,9 +70,9 @@ impl<'a> PrintState<'a> {
     where
         F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.printer.indent_begin();
+        self.printer.indent_begin()?;
         let ret = f(self);
-        self.printer.indent_end();
+        self.printer.indent_end()?;
         ret
     }
 
@@ -233,9 +236,9 @@ impl<'a> DiffState<'a> {
     where
         F: FnMut(&mut DiffState) -> Result<()>,
     {
-        self.printer.indent_begin();
+        self.printer.indent_begin()?;
         let ret = f(self);
-        self.printer.indent_end();
+        self.printer.indent_end()?;
         ret
     }
 

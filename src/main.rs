@@ -6,9 +6,16 @@ extern crate log;
 
 extern crate ddbug;
 
+use std::io::BufWriter;
+
 // Mode
 const OPT_FILE: &str = "file";
 const OPT_DIFF: &str = "diff";
+
+// Print format
+const OPT_OUTPUT: &str = "format";
+const OPT_OUTPUT_TEXT: &str = "text";
+const OPT_OUTPUT_HTML: &str = "html";
 
 // Print categories
 const OPT_CATEGORY: &str = "category";
@@ -77,6 +84,15 @@ fn main() {
                 .long(OPT_DIFF)
                 .help("Print difference between two files")
                 .value_names(&["FILE", "FILE"]),
+        )
+        .arg(
+            clap::Arg::with_name(OPT_OUTPUT)
+                .short("o")
+                .long(OPT_OUTPUT)
+                .help("Output format")
+                .takes_value(true)
+                .value_name("FORMAT")
+                .possible_values(&[OPT_OUTPUT_TEXT, OPT_OUTPUT_HTML]),
         )
         .arg(
             clap::Arg::with_name(OPT_CATEGORY)
@@ -195,6 +211,19 @@ fn main() {
     } else {
         1
     };
+
+    if let Some(value) = matches.value_of(OPT_OUTPUT) {
+        match value {
+            OPT_OUTPUT_TEXT => options.html = false,
+            OPT_OUTPUT_HTML => options.html = true,
+            _ => clap::Error::with_description(
+                &format!("invalid {} value: {}", OPT_OUTPUT, value),
+                clap::ErrorKind::InvalidValue,
+            ).exit(),
+        }
+    } else {
+        options.html = false;
+    }
 
     if let Some(values) = matches.values_of(OPT_CATEGORY) {
         for value in values {
@@ -352,16 +381,31 @@ fn diff_file(
     file_b: &mut ddbug::File,
     options: &ddbug::Options,
 ) -> ddbug::Result<()> {
-    let stdout = std::io::stdout();
-    let mut writer = stdout.lock();
-    if let Err(e) = ddbug::File::diff(&mut writer, file_a, file_b, options) {
-        error!("{}", e);
-    }
-    Ok(())
+    format(options, |printer| {
+        if let Err(e) = ddbug::File::diff(printer, file_a, file_b, options) {
+            error!("{}", e);
+        }
+        Ok(())
+    })
 }
 
 fn print_file(file: &mut ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
+    format(options, |printer| file.print(printer, options))
+}
+
+fn format<F>(options: &ddbug::Options, f: F) -> ddbug::Result<()>
+where
+    F: FnOnce(&mut ddbug::Printer) -> ddbug::Result<()>,
+{
     let stdout = std::io::stdout();
-    let mut writer = stdout.lock();
-    file.print(&mut writer, options)
+    let mut writer = BufWriter::new(stdout.lock());
+    if options.html {
+        let mut printer = ddbug::HtmlPrinter::new(&mut writer, options);
+        printer.begin()?;
+        f(&mut printer)?;
+        printer.end()
+    } else {
+        let mut printer = ddbug::TextPrinter::new(&mut writer, options);
+        f(&mut printer)
+    }
 }

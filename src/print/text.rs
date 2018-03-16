@@ -3,7 +3,7 @@ use std::io::Write;
 use {Options, Result};
 use super::{DiffPrefix, Printer};
 
-pub(crate) struct TextPrinter<'w> {
+pub struct TextPrinter<'w> {
     w: &'w mut Write,
     indent: usize,
     prefix: DiffPrefix,
@@ -69,12 +69,14 @@ impl<'w> Printer for TextPrinter<'w> {
         Ok(())
     }
 
-    fn indent_begin(&mut self) {
+    fn indent_begin(&mut self) -> Result<()> {
         self.indent += 1;
+        Ok(())
     }
 
-    fn indent_end(&mut self) {
+    fn indent_end(&mut self) -> Result<()> {
         self.indent -= 1;
+        Ok(())
     }
 
     fn prefix(&mut self, prefix: DiffPrefix) {

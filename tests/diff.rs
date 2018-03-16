@@ -6,7 +6,8 @@ fn diff(name: &str, expect: &str) {
     let mut diff = Vec::new();
     ddbug::File::parse("tests/bin/diff1", &mut |output_1| {
         ddbug::File::parse("tests/bin/diff2", &mut |output_2| {
-            ddbug::File::diff(&mut diff, output_1, output_2, &options)
+            let mut printer = ddbug::TextPrinter::new(&mut diff, &options);
+            ddbug::File::diff(&mut printer, output_1, output_2, &options)
         })
     }).unwrap();
     let diff = String::from_utf8(diff).unwrap();

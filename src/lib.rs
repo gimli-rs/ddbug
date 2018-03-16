@@ -1,6 +1,7 @@
 extern crate gimli;
 #[macro_use]
 extern crate log;
+extern crate marksman_escape;
 extern crate memmap;
 extern crate object;
 extern crate panopticon_amd64 as amd64;
@@ -28,6 +29,7 @@ use std::rc::Rc;
 use namespace::Namespace;
 
 pub use file::File;
+pub use print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
 
 #[derive(Debug)]
 pub struct Error(pub Cow<'static, str>);
@@ -97,6 +99,7 @@ pub struct Options<'a> {
     pub print_function_calls: bool,
     pub print_function_variables: bool,
     pub inline_depth: usize,
+    pub html: bool,
 
     pub category_file: bool,
     pub category_unit: bool,
