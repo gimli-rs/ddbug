@@ -10,19 +10,25 @@ const HEADER: &str = r#"<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <style>
-//li:hover { background: red }
-//ul:hover { background: blue }
+.collapsible li {
+    cursor: pointer;
+    list-style: none;
+    border: 1px solid black;
+}
+.collapsible li ul {
+    display: none;
+}
+.collapsible div.del {
+    background-color: #ffdce0;
+}
+.collapsible div.add {
+    background-color: #cdffd8;
+}
 </style>
 <script language="javascript">
 window.onload = function () {
-    var uls = document.querySelectorAll(".collapsible li ul");
-    [].forEach.call(uls, function(ul) {
-        ul.style.display = "none"
-    });
-
     var lis = document.querySelectorAll(".collapsible li");
     [].forEach.call(lis, function(li) {
-        li.style.cursor = "pointer";
         li.addEventListener("click", toggle);
     });
 
@@ -118,42 +124,60 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn line(&mut self, f: &mut FnMut(&mut Write) -> Result<()>) -> Result<()> {
-        let mut buf = Vec::new();
-        f(&mut buf)?;
-        if !buf.is_empty() {
-            if self.line_started {
-                writeln!(self.w, "</li>")?;
-            }
-            write!(self.w, "<li>")?;
-            self.line_started = true;
-            match self.prefix {
-                DiffPrefix::None => {}
-                DiffPrefix::Equal => write!(self.w, "  ")?,
-                DiffPrefix::Less => {
-                    write!(self.w, "- ")?;
-                }
-                DiffPrefix::Greater => {
-                    write!(self.w, "+ ")?;
-                }
-            }
-            for _ in 0..self.indent {
-                write!(self.w, "\t")?;
-            }
-            self.w.write_all(&*escaped(&*buf))?;
+    fn line(&mut self, buf: &[u8]) -> Result<()> {
+        if buf.is_empty() {
+            return Ok(());
         }
+        if self.line_started {
+            writeln!(self.w, "</li>")?;
+        }
+        write!(self.w, "<li>")?;
+        self.line_started = true;
+        match self.prefix {
+            DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<div>")?,
+            DiffPrefix::Less => {
+                write!(self.w, "<div class=\"del\">")?;
+            }
+            DiffPrefix::Greater => {
+                write!(self.w, "</div>\n<div class=\"add\">")?;
+            }
+        }
+        self.w.write_all(&*escaped(buf))?;
+        write!(self.w, "</div>")?;
+        Ok(())
+    }
+
+    fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()> {
+        if self.line_started {
+            writeln!(self.w, "</li>")?;
+        }
+        write!(self.w, "<li>")?;
+        self.line_started = true;
+        write!(self.w, "<div class=\"del\">")?;
+        self.w.write_all(&*escaped(a))?;
+        write!(self.w, "</div>\n<div class=\"add\">")?;
+        self.w.write_all(&*escaped(b))?;
+        write!(self.w, "</div>")?;
         Ok(())
     }
 
     fn indent_begin(&mut self) -> Result<()> {
+        if !self.line_started {
+            write!(self.w, "<li>")?;
+        }
+        self.line_started = false;
         self.indent += 1;
         writeln!(self.w, "<ul>")?;
         Ok(())
     }
 
     fn indent_end(&mut self) -> Result<()> {
+        if self.line_started {
+            writeln!(self.w, "</li>")?;
+        }
+        self.line_started = true;
         self.indent -= 1;
-        writeln!(self.w, "</ul>")?;
+        write!(self.w, "</ul>")?;
         Ok(())
     }
 

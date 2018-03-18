@@ -27,7 +27,8 @@ pub trait Printer {
 
     fn line_break(&mut self) -> Result<()>;
 
-    fn line(&mut self, f: &mut FnMut(&mut Write) -> Result<()>) -> Result<()>;
+    fn line(&mut self, buf: &[u8]) -> Result<()>;
+    fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()>;
 
     fn indent_begin(&mut self) -> Result<()>;
     fn indent_end(&mut self) -> Result<()>;
@@ -106,12 +107,13 @@ impl<'a> PrintState<'a> {
     where
         F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
-        let hash = self.hash;
-        self.printer.line(&mut |w| f(w, hash))
+        let mut buf = Vec::new();
+        f(&mut buf, self.hash)?;
+        self.printer.line(&*buf)
     }
 
     pub fn line_u64(&mut self, label: &str, arg: u64) -> Result<()> {
-        self.printer.line(&mut |w| {
+        self.line(|w, _| {
             write!(w, "{}: {}", label, arg)?;
             Ok(())
         })
@@ -123,7 +125,7 @@ impl<'a> PrintState<'a> {
         }
 
         if !label.is_empty() {
-            self.printer.line(&mut |w| {
+            self.line(|w, _| {
                 write!(w, "{}:", label)?;
                 Ok(())
             })?;
@@ -255,13 +257,6 @@ impl<'a> DiffState<'a> {
         }
     }
 
-    fn prefix_equal<F>(&mut self, mut f: F) -> Result<()>
-    where
-        F: FnMut(&mut PrintState) -> Result<()>,
-    {
-        self.a().prefix(DiffPrefix::Equal, &mut f)
-    }
-
     fn prefix_less<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState) -> Result<()>,
@@ -318,22 +313,19 @@ impl<'a> DiffState<'a> {
         f(&mut b, self.hash_b(), arg_b)?;
 
         if a == b {
-            if !a.is_empty() {
-                self.prefix_equal(|state| {
-                    state.line(|w, _state| w.write_all(&*a).map_err(From::from))
-                })?;
-            }
+            self.printer.prefix(DiffPrefix::Equal);
+            self.printer.line(&*a)?;
         } else {
-            if !a.is_empty() {
-                self.prefix_less(|state| {
-                    state.line(|w, _state| w.write_all(&*a).map_err(From::from))
-                })?;
+            if a.is_empty() {
+                self.printer.prefix(DiffPrefix::Greater);
+                self.printer.line(&*b)?;
+            } else if b.is_empty() {
+                self.printer.prefix(DiffPrefix::Less);
+                self.printer.line(&*a)?;
+            } else {
+                self.printer.line_diff(&*a, &*b)?;
             }
-            if !b.is_empty() {
-                self.prefix_greater(|state| {
-                    state.line(|w, _state| w.write_all(&*b).map_err(From::from))
-                })?;
-            }
+            self.diff = true;
         }
         Ok(())
     }

@@ -46,9 +46,7 @@ impl<'w> Printer for TextPrinter<'w> {
         writeln!(self.w).map_err(From::from)
     }
 
-    fn line(&mut self, f: &mut FnMut(&mut Write) -> Result<()>) -> Result<()> {
-        let mut buf = Vec::new();
-        f(&mut buf)?;
+    fn line(&mut self, buf: &[u8]) -> Result<()> {
         if !buf.is_empty() {
             match self.prefix {
                 DiffPrefix::None => {}
@@ -63,10 +61,17 @@ impl<'w> Printer for TextPrinter<'w> {
             for _ in 0..self.indent {
                 write!(self.w, "\t")?;
             }
-            self.w.write_all(&*buf)?;
+            self.w.write_all(buf)?;
             writeln!(self.w)?;
         }
         Ok(())
+    }
+
+    fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()> {
+        self.prefix = DiffPrefix::Less;
+        self.line(a)?;
+        self.prefix = DiffPrefix::Greater;
+        self.line(b)
     }
 
     fn indent_begin(&mut self) -> Result<()> {
