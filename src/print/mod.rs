@@ -30,8 +30,7 @@ pub trait Printer {
     fn line(&mut self, buf: &[u8]) -> Result<()>;
     fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()>;
 
-    fn indent_begin(&mut self) -> Result<()>;
-    fn indent_end(&mut self) -> Result<()>;
+    fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()>;
 
     fn prefix(&mut self, prefix: DiffPrefix);
 
@@ -71,10 +70,12 @@ impl<'a> PrintState<'a> {
     where
         F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.printer.indent_begin()?;
-        let ret = f(self);
-        self.printer.indent_end()?;
-        ret
+        let hash = self.hash;
+        let options = self.options;
+        self.printer.indent(&mut |printer| {
+            let mut state = PrintState::new(printer, hash, options);
+            f(&mut state)
+        })
     }
 
     pub fn inline<F>(&mut self, mut f: F) -> Result<()>
@@ -139,11 +140,31 @@ impl<'a> PrintState<'a> {
         })
     }
 
-    pub fn sort_list<T: SortList>(&mut self, arg: &T::Arg, list: &mut [&T]) -> Result<()> {
-        list.sort_by(|a, b| T::cmp_by(self.hash, a, self.hash, b, self.options));
-        for item in list {
-            item.print(self, arg)?;
+    pub fn sort_list<T: SortList>(
+        &mut self,
+        label: &str,
+        arg: &T::Arg,
+        list: &mut [&T],
+    ) -> Result<()> {
+        if list.is_empty() {
+            return Ok(());
         }
+        list.sort_by(|a, b| T::cmp_by(self.hash, a, self.hash, b, self.options));
+
+        if label.is_empty() {
+            for item in list {
+                item.print(self, arg)?;
+            }
+        } else {
+            self.printer.line(format!("{}:", label).as_bytes())?;
+            self.indent(|state| {
+                for item in &*list {
+                    item.print(state, arg)?;
+                }
+                Ok(())
+            })?;
+        }
+
         Ok(())
     }
 }
@@ -238,10 +259,20 @@ impl<'a> DiffState<'a> {
     where
         F: FnMut(&mut DiffState) -> Result<()>,
     {
-        self.printer.indent_begin()?;
-        let ret = f(self);
-        self.printer.indent_end()?;
-        ret
+        let hash_a = self.hash_a;
+        let hash_b = self.hash_b;
+        let options = self.options;
+        let mut diff = false;
+        self.printer.indent(&mut |printer| {
+            let mut state = DiffState::new(printer, hash_a, hash_b, options);
+            f(&mut state)?;
+            diff = state.diff;
+            Ok(())
+        })?;
+        if diff {
+            self.diff = true;
+        }
+        Ok(())
     }
 
     pub fn inline<F>(&mut self, mut f: F) -> Result<()>
@@ -445,6 +476,7 @@ impl<'a> DiffState<'a> {
     // - display of added/deleted options
     pub fn sort_list<T: SortList>(
         &mut self,
+        label: &str,
         arg_a: &T::Arg,
         list_a: &mut [&T],
         arg_b: &T::Arg,
@@ -462,20 +494,30 @@ impl<'a> DiffState<'a> {
             })
         });
 
-        for item in list {
-            match item {
-                MergeResult::Both(a, b) => {
-                    self.diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
+        let print_list = |state: &mut DiffState| -> Result<()> {
+            for item in &list {
+                match *item {
+                    MergeResult::Both(ref a, ref b) => {
+                        state.diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
+                    }
+                    MergeResult::Left(ref a) => if !state.options.ignore_deleted {
+                        state.prefix_less(|state| a.print(state, arg_a))?;
+                    },
+                    MergeResult::Right(ref b) => if !state.options.ignore_added {
+                        state.prefix_greater(|state| b.print(state, arg_b))?;
+                    },
                 }
-                MergeResult::Left(a) => if !self.options.ignore_deleted {
-                    self.prefix_less(|state| a.print(state, arg_a))?;
-                },
-                MergeResult::Right(b) => if !self.options.ignore_added {
-                    self.prefix_greater(|state| b.print(state, arg_b))?;
-                },
             }
+            Ok(())
+        };
+
+        if label.is_empty() {
+            print_list(self)
+        } else {
+            self.printer.prefix(DiffPrefix::Equal);
+            self.printer.line(format!("{}:", label).as_bytes())?;
+            self.indent(print_list)
         }
-        Ok(())
     }
 }
 

@@ -352,7 +352,7 @@ impl<'input> File<'input> {
             state.line_break()?;
         }
 
-        state.sort_list(&(), &mut *self.filter_units(options))
+        state.sort_list("", &(), &mut *self.filter_units(options))
     }
 
     pub fn diff(
@@ -396,6 +396,7 @@ impl<'input> File<'input> {
         }
 
         state.sort_list(
+            "",
             &(),
             &mut *file_a.filter_units(options),
             &(),

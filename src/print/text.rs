@@ -74,12 +74,9 @@ impl<'w> Printer for TextPrinter<'w> {
         self.line(b)
     }
 
-    fn indent_begin(&mut self) -> Result<()> {
+    fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()> {
         self.indent += 1;
-        Ok(())
-    }
-
-    fn indent_end(&mut self) -> Result<()> {
+        body(self)?;
         self.indent -= 1;
         Ok(())
     }

@@ -161,17 +161,16 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn indent_begin(&mut self) -> Result<()> {
+    fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()> {
         if !self.line_started {
             write!(self.w, "<li>")?;
         }
         self.line_started = false;
         self.indent += 1;
         writeln!(self.w, "<ul>")?;
-        Ok(())
-    }
 
-    fn indent_end(&mut self) -> Result<()> {
+        body(self)?;
+
         if self.line_started {
             writeln!(self.w, "</li>")?;
         }
