@@ -105,8 +105,10 @@ impl<'a> PrintState<'a> {
                 Ok(())
             })
         })?;
-        if !optional || !body_buf.is_empty() {
+        if !body_buf.is_empty() {
             self.printer.write_buf(&*buf)?;
+        } else if !optional {
+            header(self)?;
         }
         Ok(())
     }
@@ -315,8 +317,7 @@ impl<'a> DiffState<'a> {
                     }
                     Ok(())
                 })?;
-                //FIXME: remove diff check
-                if !optional || diff || !body_buf.is_empty() {
+                if !body_buf.is_empty() {
                     printer.write_buf(&*body_buf)?;
                 }
                 Ok(())
@@ -325,9 +326,10 @@ impl<'a> DiffState<'a> {
         if diff {
             self.diff = true;
         }
-        //FIXME: remove diff check
-        if !optional || diff || !body_buf.is_empty() {
+        if !body_buf.is_empty() {
             self.printer.write_buf(&*buf)?;
+        } else if !optional || diff {
+            header(self)?;
         }
         Ok(())
     }
