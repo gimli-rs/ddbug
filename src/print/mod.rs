@@ -12,7 +12,7 @@ pub use self::text::TextPrinter;
 mod html;
 pub use self::html::HtmlPrinter;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DiffPrefix {
     None,
     Equal,
@@ -21,9 +21,13 @@ pub enum DiffPrefix {
 }
 
 pub trait Printer {
-    /// Calls `f` to write to a temporary buffer, then only
-    /// outputs that buffer if `f` return true.
-    fn buffer(&mut self, f: &mut FnMut(&mut Printer) -> Result<bool>) -> Result<bool>;
+    /// Calls `f` to write to a temporary buffer.
+    fn buffer(
+        &mut self,
+        buf: &mut Vec<u8>,
+        f: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()>;
+    fn write_buf(&mut self, buf: &[u8]) -> Result<()>;
 
     fn line_break(&mut self) -> Result<()>;
 
@@ -66,16 +70,60 @@ impl<'a> PrintState<'a> {
         }
     }
 
-    pub fn indent<F>(&mut self, mut f: F) -> Result<()>
+    // Output the header with an indented body.
+    // If optional is true, then only output if the body is not empty.
+    fn indent_impl<FHeader, FBody>(
+        &mut self,
+        optional: bool,
+        mut header: FHeader,
+        mut body: FBody,
+    ) -> Result<()>
     where
-        F: FnMut(&mut PrintState) -> Result<()>,
+        FHeader: FnMut(&mut PrintState) -> Result<()>,
+        FBody: FnMut(&mut PrintState) -> Result<()>,
     {
         let hash = self.hash;
         let options = self.options;
-        self.printer.indent(&mut |printer| {
-            let mut state = PrintState::new(printer, hash, options);
-            f(&mut state)
-        })
+        let mut buf = Vec::new();
+        let mut body_buf = Vec::new();
+        // Buffer so that we can avoid printing if body is empty.
+        self.printer.buffer(&mut buf, &mut |printer| {
+            {
+                let mut state = PrintState::new(printer, hash, options);
+                header(&mut state)?;
+            }
+            printer.indent(&mut |printer| {
+                // Buffer so that we can determine if body is empty.
+                printer.buffer(&mut body_buf, &mut |printer| {
+                    let mut state = PrintState::new(printer, hash, options);
+                    body(&mut state)?;
+                    Ok(())
+                })?;
+                if !optional || !body_buf.is_empty() {
+                    printer.write_buf(&*body_buf)?;
+                }
+                Ok(())
+            })
+        })?;
+        if !optional || !body_buf.is_empty() {
+            self.printer.write_buf(&*buf)?;
+        }
+        Ok(())
+    }
+
+    pub fn indent<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
+    where
+        FHeader: FnMut(&mut PrintState) -> Result<()>,
+        FBody: FnMut(&mut PrintState) -> Result<()>,
+    {
+        self.indent_impl(false, header, body)
+    }
+
+    pub fn labelled_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    where
+        FBody: FnMut(&mut PrintState) -> Result<()>,
+    {
+        self.indent_impl(true, |state| state.label(label), body)
     }
 
     pub fn inline<F>(&mut self, mut f: F) -> Result<()>
@@ -104,6 +152,10 @@ impl<'a> PrintState<'a> {
         self.printer.line_break()
     }
 
+    pub fn label(&mut self, label: &str) -> Result<()> {
+        self.printer.line(format!("{}:", label).as_bytes())
+    }
+
     pub fn line<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash) -> Result<()>,
@@ -120,51 +172,18 @@ impl<'a> PrintState<'a> {
         })
     }
 
-    pub fn list<T: Print>(&mut self, label: &str, arg: &T::Arg, list: &[T]) -> Result<()> {
-        if list.is_empty() {
-            return Ok(());
+    pub fn list<T: Print>(&mut self, arg: &T::Arg, list: &[T]) -> Result<()> {
+        for item in list {
+            item.print(self, arg)?;
         }
-
-        if !label.is_empty() {
-            self.line(|w, _| {
-                write!(w, "{}:", label)?;
-                Ok(())
-            })?;
-        }
-
-        self.indent(|state| {
-            for item in list {
-                item.print(state, arg)?;
-            }
-            Ok(())
-        })
+        Ok(())
     }
 
-    pub fn sort_list<T: SortList>(
-        &mut self,
-        label: &str,
-        arg: &T::Arg,
-        list: &mut [&T],
-    ) -> Result<()> {
-        if list.is_empty() {
-            return Ok(());
-        }
+    pub fn sort_list<T: SortList>(&mut self, arg: &T::Arg, list: &mut [&T]) -> Result<()> {
         list.sort_by(|a, b| T::cmp_by(self.hash, a, self.hash, b, self.options));
-
-        if label.is_empty() {
-            for item in list {
-                item.print(self, arg)?;
-            }
-        } else {
-            self.printer.line(format!("{}:", label).as_bytes())?;
-            self.indent(|state| {
-                for item in &*list {
-                    item.print(state, arg)?;
-                }
-                Ok(())
-            })?;
+        for item in list {
+            item.print(self, arg)?;
         }
-
         Ok(())
     }
 }
@@ -224,19 +243,23 @@ impl<'a> DiffState<'a> {
 
     // Write output of `f` to a temporary buffer, then only
     // output that buffer if there were any differences.
-    pub fn diff<F>(&mut self, mut f: F) -> Result<()>
+    fn print_if_diff<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut DiffState) -> Result<()>,
     {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
         let options = self.options;
-        let diff = self.printer.buffer(&mut |printer| {
+        let mut buf = Vec::new();
+        let mut diff = false;
+        self.printer.buffer(&mut buf, &mut |printer| {
             let mut state = DiffState::new(printer, hash_a, hash_b, options);
             f(&mut state)?;
-            Ok(state.diff)
+            diff = state.diff;
+            Ok(())
         })?;
         if diff {
+            self.printer.write_buf(&*buf)?;
             self.diff = true;
         }
         Ok(())
@@ -255,24 +278,73 @@ impl<'a> DiffState<'a> {
         Ok(())
     }
 
-    pub fn indent<F>(&mut self, mut f: F) -> Result<()>
+    // Output the header with an indented body.
+    // If optional is true, then only output if there is a difference, or if the body is not empty.
+    fn indent_impl<FHeader, FBody>(
+        &mut self,
+        optional: bool,
+        mut header: FHeader,
+        mut body: FBody,
+    ) -> Result<()>
     where
-        F: FnMut(&mut DiffState) -> Result<()>,
+        FHeader: FnMut(&mut DiffState) -> Result<()>,
+        FBody: FnMut(&mut DiffState) -> Result<()>,
     {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
         let options = self.options;
+        let mut buf = Vec::new();
+        let mut body_buf = Vec::new();
         let mut diff = false;
-        self.printer.indent(&mut |printer| {
-            let mut state = DiffState::new(printer, hash_a, hash_b, options);
-            f(&mut state)?;
-            diff = state.diff;
-            Ok(())
+        // Buffer so that we can avoid printing if body is empty.
+        self.printer.buffer(&mut buf, &mut |printer| {
+            {
+                let mut state = DiffState::new(printer, hash_a, hash_b, options);
+                header(&mut state)?;
+                if state.diff {
+                    diff = true;
+                }
+            }
+            printer.indent(&mut |printer| {
+                // Buffer so that we can determine if body is empty.
+                printer.buffer(&mut body_buf, &mut |printer| {
+                    let mut state = DiffState::new(printer, hash_a, hash_b, options);
+                    body(&mut state)?;
+                    if state.diff {
+                        diff = true;
+                    }
+                    Ok(())
+                })?;
+                //FIXME: remove diff check
+                if !optional || diff || !body_buf.is_empty() {
+                    printer.write_buf(&*body_buf)?;
+                }
+                Ok(())
+            })
         })?;
         if diff {
             self.diff = true;
         }
+        //FIXME: remove diff check
+        if !optional || diff || !body_buf.is_empty() {
+            self.printer.write_buf(&*buf)?;
+        }
         Ok(())
+    }
+
+    pub fn indent<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
+    where
+        FHeader: FnMut(&mut DiffState) -> Result<()>,
+        FBody: FnMut(&mut DiffState) -> Result<()>,
+    {
+        self.indent_impl(false, header, body)
+    }
+
+    pub fn labelled_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    where
+        FBody: FnMut(&mut DiffState) -> Result<()>,
+    {
+        self.indent_impl(true, |state| state.label(label), body)
     }
 
     pub fn inline<F>(&mut self, mut f: F) -> Result<()>
@@ -317,13 +389,15 @@ impl<'a> DiffState<'a> {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
         let options = self.options;
-        let diff = self.printer.buffer(&mut |printer| {
+        let mut buf = Vec::new();
+        self.printer.buffer(&mut buf, &mut |printer| {
             let mut state = DiffState::new(printer, hash_a, hash_b, options);
             state.a().prefix(DiffPrefix::Less, &mut |state| f(state, arg_a))?;
             state.b().prefix(DiffPrefix::Greater, &mut |state| f(state, arg_b))?;
-            Ok(true)
+            Ok(())
         })?;
-        if diff {
+        if !buf.is_empty() {
+            self.printer.write_buf(&*buf)?;
             self.diff = true;
         }
         Ok(())
@@ -331,6 +405,11 @@ impl<'a> DiffState<'a> {
 
     pub fn line_break(&mut self) -> Result<()> {
         self.printer.line_break()
+    }
+
+    pub fn label(&mut self, label: &str) -> Result<()> {
+        self.printer.prefix(DiffPrefix::Equal);
+        self.printer.line(format!("{}:", label).as_bytes())
     }
 
     pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>
@@ -374,53 +453,37 @@ impl<'a> DiffState<'a> {
 
     pub fn list<T: DiffList>(
         &mut self,
-        label: &str,
         arg_a: &T::Arg,
         list_a: &[T],
         arg_b: &T::Arg,
         list_b: &[T],
     ) -> Result<()> {
-        if list_a.is_empty() && list_b.is_empty() {
-            return Ok(());
-        }
-
-        if !label.is_empty() {
-            self.line(list_a, list_b, |w, _state, list| {
-                if !list.is_empty() {
-                    write!(w, "{}:", label)?;
-                }
-                Ok(())
-            })?;
-        }
-
-        self.indent(|state| {
-            let path = shortest_path(
-                list_a,
-                list_b,
-                |a| a.step_cost(state, arg_a),
-                |b| b.step_cost(state, arg_b),
-                |a, b| T::diff_cost(state, arg_a, a, arg_b, b),
-            );
-            let mut iter_a = list_a.iter();
-            let mut iter_b = list_b.iter();
-            for dir in path {
-                match dir {
-                    Direction::None => break,
-                    Direction::Diagonal => {
-                        if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
-                            T::diff(state, arg_a, a, arg_b, b)?;
-                        }
+        let path = shortest_path(
+            list_a,
+            list_b,
+            |a| a.step_cost(self, arg_a),
+            |b| b.step_cost(self, arg_b),
+            |a, b| T::diff_cost(self, arg_a, a, arg_b, b),
+        );
+        let mut iter_a = list_a.iter();
+        let mut iter_b = list_b.iter();
+        for dir in path {
+            match dir {
+                Direction::None => break,
+                Direction::Diagonal => {
+                    if let (Some(a), Some(b)) = (iter_a.next(), iter_b.next()) {
+                        T::diff(self, arg_a, a, arg_b, b)?;
                     }
-                    Direction::Horizontal => if let Some(a) = iter_a.next() {
-                        state.prefix_less(|state| a.print(state, arg_a))?;
-                    },
-                    Direction::Vertical => if let Some(b) = iter_b.next() {
-                        state.prefix_greater(|state| b.print(state, arg_b))?;
-                    },
                 }
+                Direction::Horizontal => if let Some(a) = iter_a.next() {
+                    self.prefix_less(|state| a.print(state, arg_a))?;
+                },
+                Direction::Vertical => if let Some(b) = iter_b.next() {
+                    self.prefix_greater(|state| b.print(state, arg_b))?;
+                },
             }
-            Ok(())
-        })
+        }
+        Ok(())
     }
 
     // This is similar to `list`, but because the items are ordered
@@ -429,41 +492,25 @@ impl<'a> DiffState<'a> {
     // The caller must provide lists that are already sorted.
     pub fn ord_list<T: Ord + Print>(
         &mut self,
-        label: &str,
         arg_a: &T::Arg,
         list_a: &[T],
         arg_b: &T::Arg,
         list_b: &[T],
     ) -> Result<()> {
-        if list_a.is_empty() && list_b.is_empty() {
-            return Ok(());
-        }
-
-        if !label.is_empty() {
-            self.line(list_a, list_b, |w, _state, list| {
-                if !list.is_empty() {
-                    write!(w, "{}:", label)?;
+        for item in MergeIterator::new(list_a.iter(), list_b.iter(), T::cmp) {
+            match item {
+                MergeResult::Both(a, b) => {
+                    T::diff(self, arg_a, a, arg_b, b)?;
                 }
-                Ok(())
-            })?;
-        }
-
-        self.indent(|state| {
-            for item in MergeIterator::new(list_a.iter(), list_b.iter(), T::cmp) {
-                match item {
-                    MergeResult::Both(a, b) => {
-                        T::diff(state, arg_a, a, arg_b, b)?;
-                    }
-                    MergeResult::Left(a) => {
-                        state.prefix_less(|state| a.print(state, arg_a))?;
-                    }
-                    MergeResult::Right(b) => {
-                        state.prefix_greater(|state| b.print(state, arg_b))?;
-                    }
+                MergeResult::Left(a) => {
+                    self.prefix_less(|state| a.print(state, arg_a))?;
+                }
+                MergeResult::Right(b) => {
+                    self.prefix_greater(|state| b.print(state, arg_b))?;
                 }
             }
-            Ok(())
-        })
+        }
+        Ok(())
     }
 
     // This is similar to `list`, but because the items are ordered
@@ -476,7 +523,6 @@ impl<'a> DiffState<'a> {
     // - display of added/deleted options
     pub fn sort_list<T: SortList>(
         &mut self,
-        label: &str,
         arg_a: &T::Arg,
         list_a: &mut [&T],
         arg_b: &T::Arg,
@@ -494,30 +540,20 @@ impl<'a> DiffState<'a> {
             })
         });
 
-        let print_list = |state: &mut DiffState| -> Result<()> {
-            for item in &list {
-                match *item {
-                    MergeResult::Both(ref a, ref b) => {
-                        state.diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
-                    }
-                    MergeResult::Left(ref a) => if !state.options.ignore_deleted {
-                        state.prefix_less(|state| a.print(state, arg_a))?;
-                    },
-                    MergeResult::Right(ref b) => if !state.options.ignore_added {
-                        state.prefix_greater(|state| b.print(state, arg_b))?;
-                    },
+        for item in &list {
+            match *item {
+                MergeResult::Both(ref a, ref b) => {
+                    self.print_if_diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
                 }
+                MergeResult::Left(ref a) => if !self.options.ignore_deleted {
+                    self.prefix_less(|state| a.print(state, arg_a))?;
+                },
+                MergeResult::Right(ref b) => if !self.options.ignore_added {
+                    self.prefix_greater(|state| b.print(state, arg_b))?;
+                },
             }
-            Ok(())
-        };
-
-        if label.is_empty() {
-            print_list(self)
-        } else {
-            self.printer.prefix(DiffPrefix::Equal);
-            self.printer.line(format!("{}:", label).as_bytes())?;
-            self.indent(print_list)
         }
+        Ok(())
     }
 }
 

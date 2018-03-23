@@ -113,19 +113,28 @@ impl<'input> Unit<'input> {
     pub fn print(&self, state: &mut PrintState) -> Result<()> {
         let options = state.options();
 
+        let print_header = |state: &mut PrintState| {
+            state.line(|w, _state| {
+                write!(w, "unit ")?;
+                self.print_ref(w)
+            })
+        };
+
         let print_unit = |state: &mut PrintState| {
             let unknown_ranges = self.unknown_ranges(state.hash());
 
             if options.print_unit_address {
                 let ranges = self.ranges(state.hash());
                 if ranges.list().len() > 1 {
-                    state.list("addresses", &(), ranges.list())?;
+                    state.labelled_indent("addresses", |state| state.list(&(), ranges.list()))?;
                 } else {
                     let range = ranges.list().first().cloned();
                     state.line(|w, _state| self.print_address(w, range))?;
                 }
 
-                state.list("unknown addresses", &(), unknown_ranges.list())?;
+                state.labelled_indent("unknown addresses", |state| {
+                    state.list(&(), unknown_ranges.list())
+                })?;
             }
 
             let fn_size = self.function_size();
@@ -147,71 +156,56 @@ impl<'input> Unit<'input> {
             Ok(())
         };
 
-        let print_children = |state: &mut PrintState| -> Result<()> {
+        let print_types = |state: &mut PrintState| -> Result<()> {
             if options.category_type {
                 let mut types = self.filter_types(state.hash(), options, false);
-                state.sort_list(
-                    if options.html {
-                        "types"
-                    } else {
-                        ""
-                    },
-                    self,
-                    &mut *types,
-                )?;
+                state.sort_list(self, &mut *types)?;
             }
+            Ok(())
+        };
+        let print_functions = |state: &mut PrintState| -> Result<()> {
             if options.category_function {
-                state.sort_list(
-                    if options.html {
-                        "functions"
-                    } else {
-                        ""
-                    },
-                    self,
-                    &mut *self.filter_functions(options),
-                )?;
+                state.sort_list(self, &mut *self.filter_functions(options))?;
             }
+            Ok(())
+        };
+        let print_variables = |state: &mut PrintState| -> Result<()> {
             if options.category_variable {
-                state.sort_list(
-                    if options.html {
-                        "variables"
-                    } else {
-                        ""
-                    },
-                    self,
-                    &mut *self.filter_variables(options),
-                )?;
+                state.sort_list(self, &mut *self.filter_variables(options))?;
             }
             Ok(())
         };
 
         if options.html {
-            state.line(|w, _state| {
-                write!(w, "unit ")?;
-                self.print_ref(w)
-            })?;
-            state.indent(|state| {
+            state.indent(print_header, |state| {
                 if options.category_unit {
                     print_unit(state)?;
                 }
-                print_children(state)?;
+                state.labelled_indent("types", &print_types)?;
+                state.labelled_indent("functions", &print_functions)?;
+                state.labelled_indent("variables", &print_variables)?;
                 Ok(())
             })?;
         } else {
             if options.category_unit {
-                state.line(|w, _state| {
-                    write!(w, "unit ")?;
-                    self.print_ref(w)
-                })?;
-                state.indent(print_unit)?;
+                state.indent(print_header, print_unit)?;
             }
-            print_children(state)?;
+            print_types(state)?;
+            print_functions(state)?;
+            print_variables(state)?;
         }
         Ok(())
     }
 
     pub fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
         let options = state.options();
+
+        let diff_header = |state: &mut DiffState| {
+            state.line(unit_a, unit_b, |w, _state, unit| {
+                write!(w, "unit ")?;
+                unit.print_ref(w)
+            })
+        };
 
         let diff_unit = |state: &mut DiffState| -> Result<()> {
             let unknown_ranges_a = unit_a.unknown_ranges(state.hash_a());
@@ -221,7 +215,9 @@ impl<'input> Unit<'input> {
                 let ranges_a = unit_a.ranges(state.hash_a());
                 let ranges_b = unit_b.ranges(state.hash_b());
                 if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
-                    state.ord_list("addresses", &(), ranges_a.list(), &(), ranges_b.list())?;
+                    state.labelled_indent("addresses", |state| {
+                        state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
+                    })?;
                 } else {
                     let range_a = ranges_a.list().first().cloned();
                     let range_b = ranges_b.list().first().cloned();
@@ -232,13 +228,9 @@ impl<'input> Unit<'input> {
                     )?;
                 }
 
-                state.ord_list(
-                    "unknown addresses",
-                    &(),
-                    unknown_ranges_a.list(),
-                    &(),
-                    unknown_ranges_b.list(),
-                )?;
+                state.labelled_indent("unknown addresses", |state| {
+                    state.ord_list(&(), unknown_ranges_a.list(), &(), unknown_ranges_b.list())
+                })?;
             }
 
             let fn_size_a = unit_a.function_size();
@@ -263,42 +255,28 @@ impl<'input> Unit<'input> {
             Ok(())
         };
 
-        let diff_children = |state: &mut DiffState| -> Result<()> {
+        let diff_types = |state: &mut DiffState| -> Result<()> {
             if options.category_type {
                 let mut types_a = unit_a.filter_types(state.hash_a(), options, true);
                 let mut types_b = unit_b.filter_types(state.hash_b(), options, true);
-                state.sort_list(
-                    if options.html {
-                        "types"
-                    } else {
-                        ""
-                    },
-                    unit_a,
-                    &mut *types_a,
-                    unit_b,
-                    &mut *types_b,
-                )?;
+                state.sort_list(unit_a, &mut *types_a, unit_b, &mut *types_b)?;
             }
+            Ok(())
+        };
+        let diff_functions = |state: &mut DiffState| -> Result<()> {
             if options.category_function {
                 state.sort_list(
-                    if options.html {
-                        "functions"
-                    } else {
-                        ""
-                    },
                     unit_a,
                     &mut *unit_a.filter_functions(options),
                     unit_b,
                     &mut *unit_b.filter_functions(options),
                 )?;
             }
+            Ok(())
+        };
+        let diff_variables = |state: &mut DiffState| -> Result<()> {
             if options.category_variable {
                 state.sort_list(
-                    if options.html {
-                        "variables"
-                    } else {
-                        ""
-                    },
                     unit_a,
                     &mut *unit_a.filter_variables(options),
                     unit_b,
@@ -309,26 +287,22 @@ impl<'input> Unit<'input> {
         };
 
         if options.html {
-            state.line(unit_a, unit_b, |w, _state, unit| {
-                write!(w, "unit ")?;
-                unit.print_ref(w)
-            })?;
-            state.indent(|state| {
+            state.indent(diff_header, |state| {
                 if options.category_unit {
                     diff_unit(state)?;
                 }
-                diff_children(state)?;
+                state.labelled_indent("types", &diff_types)?;
+                state.labelled_indent("functions", &diff_functions)?;
+                state.labelled_indent("variables", &diff_variables)?;
                 Ok(())
             })?;
         } else {
             if options.category_unit {
-                state.line(unit_a, unit_b, |w, _state, unit| {
-                    write!(w, "unit ")?;
-                    unit.print_ref(w)
-                })?;
-                state.indent(diff_unit)?;
+                state.indent(diff_header, diff_unit)?;
             }
-            diff_children(state)?;
+            diff_types(state)?;
+            diff_functions(state)?;
+            diff_variables(state)?;
         }
         Ok(())
     }

@@ -69,6 +69,7 @@ pub struct HtmlPrinter<'w> {
     indent: usize,
     prefix: DiffPrefix,
     inline_depth: usize,
+    // Hack to allow indented <ul> to be included within parent <li>.
     line_started: bool,
 }
 
@@ -98,26 +99,35 @@ impl<'w> HtmlPrinter<'w> {
 }
 
 impl<'w> Printer for HtmlPrinter<'w> {
-    /// Calls `f` to write to a temporary buffer, then only
-    /// outputs that buffer if `f` return true.
-    fn buffer(&mut self, f: &mut FnMut(&mut Printer) -> Result<bool>) -> Result<bool> {
-        let mut buf = Vec::new();
-        let ret = {
-            let mut p = HtmlPrinter {
-                w: &mut buf,
-                // TODO: need to ensure these are all unchanged?
-                indent: self.indent,
-                prefix: self.prefix,
-                inline_depth: self.inline_depth,
-                line_started: self.line_started,
-            };
-            f(&mut p)?
+    /// Calls `f` to write to a temporary buffer.
+    fn buffer(
+        &mut self,
+        buf: &mut Vec<u8>,
+        f: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()> {
+        let mut p = HtmlPrinter {
+            w: buf,
+            // TODO: need to ensure these are all unchanged?
+            indent: self.indent,
+            prefix: self.prefix,
+            inline_depth: self.inline_depth,
+            line_started: self.line_started,
         };
-        let ret = ret && !buf.is_empty();
-        if ret {
-            self.w.write_all(&*buf)?;
+        f(&mut p)?;
+
+        if self.line_started != p.line_started {
+            if p.line_started {
+                writeln!(p.w, "</li>")?;
+            } else {
+                write!(p.w, "<li>")?;
+            }
         }
-        Ok(ret)
+        Ok(())
+    }
+
+    fn write_buf(&mut self, buf: &[u8]) -> Result<()> {
+        self.w.write_all(buf)?;
+        Ok(())
     }
 
     fn line_break(&mut self) -> Result<()> {
@@ -169,6 +179,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
         self.indent += 1;
         writeln!(self.w, "<ul>")?;
 
+        // TODO: omit <ul></ul> if body is empty
         body(self)?;
 
         if self.line_started {

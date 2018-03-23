@@ -22,24 +22,24 @@ impl<'w> TextPrinter<'w> {
 }
 
 impl<'w> Printer for TextPrinter<'w> {
-    /// Calls `f` to write to a temporary buffer, then only
-    /// outputs that buffer if `f` return true.
-    fn buffer(&mut self, f: &mut FnMut(&mut Printer) -> Result<bool>) -> Result<bool> {
-        let mut buf = Vec::new();
-        let ret = {
-            let mut p = TextPrinter {
-                w: &mut buf,
-                indent: self.indent,
-                prefix: self.prefix,
-                inline_depth: self.inline_depth,
-            };
-            f(&mut p)?
+    /// Calls `f` to write to a temporary buffer.
+    fn buffer(
+        &mut self,
+        buf: &mut Vec<u8>,
+        f: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()> {
+        let mut p = TextPrinter {
+            w: buf,
+            indent: self.indent,
+            prefix: self.prefix,
+            inline_depth: self.inline_depth,
         };
-        let ret = ret && !buf.is_empty();
-        if ret {
-            self.w.write_all(&*buf)?;
-        }
-        Ok(ret)
+        f(&mut p)
+    }
+
+    fn write_buf(&mut self, buf: &[u8]) -> Result<()> {
+        self.w.write_all(buf)?;
+        Ok(())
     }
 
     fn line_break(&mut self) -> Result<()> {

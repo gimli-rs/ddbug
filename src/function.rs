@@ -85,30 +85,37 @@ impl<'input> Function<'input> {
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(|w, _state| self.print_name(w))?;
-        state.indent(|state| {
-            state.line(|w, _state| self.print_linkage_name(w))?;
-            state.line(|w, _state| self.print_symbol_name(w))?;
-            if state.options().print_source {
-                state.line(|w, _state| self.print_source(w, unit))?;
-            }
-            state.line(|w, _state| self.print_address(w))?;
-            state.line(|w, _state| self.print_size(w))?;
-            state.line(|w, _state| self.print_inline(w))?;
-            state.line(|w, _state| self.print_declaration(w))?;
-            state.line(|w, _state| self.print_return_type_label(w))?;
-            state.indent(|state| state.line(|w, state| self.print_return_type(w, state)))?;
-            state.list("parameters", unit, &self.parameters)?;
-            if state.options().print_function_variables {
-                state.list("variables", unit, &self.variables)?;
-            }
-            state.inline(|state| state.list("inlined functions", unit, &self.inlined_functions))?;
-            if state.options().print_function_calls {
-                let calls = self.calls(state.hash().file);
-                state.list("calls", &(), &calls)?;
-            }
-            Ok(())
-        })?;
+        state.indent(
+            |state| state.line(|w, _state| self.print_name(w)),
+            |state| {
+                state.line(|w, _state| self.print_linkage_name(w))?;
+                state.line(|w, _state| self.print_symbol_name(w))?;
+                if state.options().print_source {
+                    state.line(|w, _state| self.print_source(w, unit))?;
+                }
+                state.line(|w, _state| self.print_address(w))?;
+                state.line(|w, _state| self.print_size(w))?;
+                state.line(|w, _state| self.print_inline(w))?;
+                state.line(|w, _state| self.print_declaration(w))?;
+                state.labelled_indent("return type", |state| {
+                    state.line(|w, state| self.print_return_type(w, state))
+                })?;
+                state.labelled_indent("parameters", |state| state.list(unit, &self.parameters))?;
+                if state.options().print_function_variables {
+                    state.labelled_indent("variables", |state| state.list(unit, &self.variables))?;
+                }
+                state.inline(|state| {
+                    state.labelled_indent("inlined functions", |state| {
+                        state.list(unit, &self.inlined_functions)
+                    })
+                })?;
+                if state.options().print_function_calls {
+                    let calls = self.calls(state.hash().file);
+                    state.labelled_indent("calls", |state| state.list(&(), &calls))?;
+                }
+                Ok(())
+            },
+        )?;
         state.line_break()?;
         Ok(())
     }
@@ -120,55 +127,63 @@ impl<'input> Function<'input> {
         unit_b: &Unit,
         b: &Function,
     ) -> Result<()> {
-        state.line(a, b, |w, _state, x| x.print_name(w))?;
-        state.indent(|state| {
-            state.line(a, b, |w, _state, x| x.print_linkage_name(w))?;
-            let flag = state.options().ignore_function_symbol_name;
-            state.ignore_diff(flag, |state| {
-                state.line(a, b, |w, _state, x| x.print_symbol_name(w))
-            })?;
-            if state.options().print_source {
-                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                    x.print_source(w, unit)
+        state.indent(
+            |state| state.line(a, b, |w, _state, x| x.print_name(w)),
+            |state| {
+                state.line(a, b, |w, _state, x| x.print_linkage_name(w))?;
+                let flag = state.options().ignore_function_symbol_name;
+                state.ignore_diff(flag, |state| {
+                    state.line(a, b, |w, _state, x| x.print_symbol_name(w))
                 })?;
-            }
-            let flag = state.options().ignore_function_address;
-            state.ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_address(w)))?;
-            let flag = state.options().ignore_function_size;
-            state.ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_size(w)))?;
-            let flag = state.options().ignore_function_inline;
-            state.ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_inline(w)))?;
-            state.line(a, b, |w, _state, x| x.print_declaration(w))?;
-            state.line(a, b, |w, _state, x| x.print_return_type_label(w))?;
-            state.indent(|state| state.line(a, b, |w, state, x| x.print_return_type(w, state)))?;
-            state.list("parameters", unit_a, &a.parameters, unit_b, &b.parameters)?;
-            if state.options().print_function_variables {
-                let mut variables_a: Vec<_> = a.variables.iter().collect();
-                variables_a.sort_by(|x, y| {
-                    LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y, state.options())
-                });
-                let mut variables_b: Vec<_> = b.variables.iter().collect();
-                variables_b.sort_by(|x, y| {
-                    LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
-                });
-                state.list("variables", unit_a, &variables_a, unit_b, &variables_b)?;
-            }
-            state.inline(|state| {
-                state.list(
-                    "inlined functions",
-                    unit_a,
-                    &a.inlined_functions,
-                    unit_b,
-                    &b.inlined_functions,
-                )
-            })?;
-            if state.options().print_function_calls {
-                let calls_a = a.calls(state.hash_a().file);
-                let calls_b = b.calls(state.hash_b().file);
-                state.list("calls", &(), &calls_a, &(), &calls_b)?;
-            }
-            Ok(())
-        })?;
+                if state.options().print_source {
+                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                        x.print_source(w, unit)
+                    })?;
+                }
+                let flag = state.options().ignore_function_address;
+                state.ignore_diff(flag, |state| {
+                    state.line(a, b, |w, _state, x| x.print_address(w))
+                })?;
+                let flag = state.options().ignore_function_size;
+                state.ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_size(w)))?;
+                let flag = state.options().ignore_function_inline;
+                state
+                    .ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_inline(w)))?;
+                state.line(a, b, |w, _state, x| x.print_declaration(w))?;
+                state.labelled_indent("return type", |state| {
+                    state.line(a, b, |w, state, x| x.print_return_type(w, state))
+                })?;
+                state.labelled_indent("parameters", |state| {
+                    state.list(unit_a, &a.parameters, unit_b, &b.parameters)
+                })?;
+                if state.options().print_function_variables {
+                    let mut variables_a: Vec<_> = a.variables.iter().collect();
+                    variables_a.sort_by(|x, y| {
+                        LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y, state.options())
+                    });
+                    let mut variables_b: Vec<_> = b.variables.iter().collect();
+                    variables_b.sort_by(|x, y| {
+                        LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
+                    });
+                    state.labelled_indent("variables", |state| {
+                        state.list(unit_a, &variables_a, unit_b, &variables_b)
+                    })?;
+                }
+                state.inline(|state| {
+                    state.labelled_indent("inlined functions", |state| {
+                        state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
+                    })
+                })?;
+                if state.options().print_function_calls {
+                    let calls_a = a.calls(state.hash_a().file);
+                    let calls_b = b.calls(state.hash_b().file);
+                    state.labelled_indent("calls", |state| {
+                        state.list(&(), &calls_a, &(), &calls_b)
+                    })?;
+                }
+                Ok(())
+            },
+        )?;
         state.line_break()?;
         Ok(())
     }
@@ -229,13 +244,6 @@ impl<'input> Function<'input> {
     fn print_declaration(&self, w: &mut Write) -> Result<()> {
         if self.declaration {
             write!(w, "declaration: yes")?;
-        }
-        Ok(())
-    }
-
-    fn print_return_type_label(&self, w: &mut Write) -> Result<()> {
-        if self.return_type.is_some() {
-            write!(w, "return type:")?;
         }
         Ok(())
     }
@@ -482,35 +490,40 @@ impl<'input> Print for InlinedFunction<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(|w, state| self.print_size_and_decl(w, state, unit))?;
-        state.indent(|state| {
-            // TODO: print parameters and variables?
-            if state.options().print_source {
-                state.line(|w, _state| self.print_call_source(w, unit))?;
-            }
-            Ok(())
-        })?;
-        state.inline(|state| state.list("", unit, &self.inlined_functions))?;
+        state.indent(
+            |state| state.line(|w, state| self.print_size_and_decl(w, state, unit)),
+            |state| {
+                // TODO: print parameters and variables?
+                if state.options().print_source {
+                    state.line(|w, _state| self.print_call_source(w, unit))?;
+                }
+                state.inline(|state| state.list(unit, &self.inlined_functions))?;
+                Ok(())
+            },
+        )?;
         Ok(())
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
-        state.line((unit_a, a), (unit_b, b), |w, state, (unit, x)| {
-            x.print_size_and_decl(w, state, unit)
-        })?;
-        state.indent(|state| {
-            // TODO: diff parameters and variables?
-            if state.options().print_source {
-                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                    x.print_call_source(w, unit)
+        state.indent(
+            |state| {
+                state.line((unit_a, a), (unit_b, b), |w, state, (unit, x)| {
+                    x.print_size_and_decl(w, state, unit)
+                })
+            },
+            |state| {
+                // TODO: diff parameters and variables?
+                if state.options().print_source {
+                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                        x.print_call_source(w, unit)
+                    })?;
+                }
+                state.inline(|state| {
+                    state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
                 })?;
-            }
-            Ok(())
-        })?;
-
-        state.inline(|state| {
-            state.list("", unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
-        })?;
+                Ok(())
+            },
+        )?;
 
         Ok(())
     }

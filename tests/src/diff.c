@@ -115,7 +115,7 @@ EXPECT(
     "- type ", S(T), " = char\n",
     "+ type ", S(T), " = struct <anon>\n",
     "  \tsize: 1\n",
-    "+ \tmembers:\n",
+    "  \tmembers:\n",
     "+ \t\t0[1]\tc: char\n",
     "\n")
 
@@ -139,9 +139,8 @@ EXPECT(
     "- type ", S(T), " = struct <anon>\n",
     "+ type ", S(T), " = union <anon>\n",
     "  \tsize: 1\n",
-    "- \tmembers:\n",
+    "  \tmembers:\n",
     "- \t\t0[1]\tc: char\n",
-    "+ \tmembers:\n",
     "+ \t\t0[1]\tc: char\n",
     "\n")
 
@@ -162,7 +161,7 @@ EXPECT(
     "- type ", S(T), " = struct <anon>\n",
     "+ type ", S(T), " = char\n",
     "  \tsize: 1\n",
-    "- \tmembers:\n",
+    "  \tmembers:\n",
     "- \t\t0[1]\tc: char\n",
     "\n")
 
@@ -249,7 +248,7 @@ EXPECT(
     "  struct ", S(T), "\n",
     "+ \tdeclaration: yes\n",
     "- \tsize: 1\n",
-    "- \tmembers:\n",
+    "  \tmembers:\n",
     "- \t\t0[1]\tc: char\n",
     "\n")
 
@@ -270,7 +269,7 @@ EXPECT(
     "  struct ", S(T), "\n",
     "- \tdeclaration: yes\n",
     "+ \tsize: 1\n",
-    "+ \tmembers:\n",
+    "  \tmembers:\n",
     "+ \t\t0[1]\tc: char\n",
     "\n")
 
@@ -413,7 +412,7 @@ EXPECT(
     "  union ", S(T), "\n",
     "+ \tdeclaration: yes\n",
     "- \tsize: 1\n",
-    "- \tmembers:\n",
+    "  \tmembers:\n",
     "- \t\t0[1]\tc: char\n",
     "\n")
 
@@ -435,7 +434,7 @@ EXPECT(
     "  union ", S(T), "\n",
     "- \tdeclaration: yes\n",
     "+ \tsize: 1\n",
-    "+ \tmembers:\n",
+    "  \tmembers:\n",
     "+ \t\t0[1]\tc: char\n",
     "\n")
 

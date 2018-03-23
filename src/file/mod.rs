@@ -329,30 +329,34 @@ impl<'input> File<'input> {
         let mut state = PrintState::new(printer, &hash, options);
 
         if options.category_file {
-            state.line(|w, _hash| {
-                write!(w, "file {}", self.path)?;
-                Ok(())
-            })?;
-            state.indent(|state| {
-                let ranges = self.ranges(state.hash());
-                let size = ranges.size();
-                let fn_size = self.function_size();
-                let var_size = self.variable_size(state.hash());
-                let other_size = size - fn_size - var_size;
-                if options.print_file_address {
-                    state.list("addresses", &(), ranges.list())?;
-                }
-                state.line_u64("size", size)?;
-                state.line_u64("fn size", fn_size)?;
-                state.line_u64("var size", var_size)?;
-                state.line_u64("other size", other_size)?;
-                state.list("sections", &(), &*self.sections)?;
-                Ok(())
-            })?;
+            state.indent(
+                |state| {
+                    state.line(|w, _hash| {
+                        write!(w, "file {}", self.path)?;
+                        Ok(())
+                    })
+                },
+                |state| {
+                    let ranges = self.ranges(state.hash());
+                    let size = ranges.size();
+                    let fn_size = self.function_size();
+                    let var_size = self.variable_size(state.hash());
+                    let other_size = size - fn_size - var_size;
+                    if options.print_file_address {
+                        state.labelled_indent("addresses", |state| state.list(&(), ranges.list()))?;
+                    }
+                    state.line_u64("size", size)?;
+                    state.line_u64("fn size", fn_size)?;
+                    state.line_u64("var size", var_size)?;
+                    state.line_u64("other size", other_size)?;
+                    state.labelled_indent("sections", |state| state.list(&(), &*self.sections))?;
+                    Ok(())
+                },
+            )?;
             state.line_break()?;
         }
 
-        state.sort_list("", &(), &mut *self.filter_units(options))
+        state.sort_list(&(), &mut *self.filter_units(options))
     }
 
     pub fn diff(
@@ -366,37 +370,44 @@ impl<'input> File<'input> {
         let mut state = DiffState::new(printer, &hash_a, &hash_b, options);
 
         if options.category_file {
-            state.line(file_a, file_b, |w, _hash, x| {
-                write!(w, "file {}", x.path)?;
-                Ok(())
-            })?;
-            state.indent(|state| {
-                let ranges_a = file_a.ranges(state.hash_a());
-                let ranges_b = file_b.ranges(state.hash_b());
-                let size_a = ranges_a.size();
-                let size_b = ranges_b.size();
-                let fn_size_a = file_a.function_size();
-                let fn_size_b = file_b.function_size();
-                let var_size_a = file_a.variable_size(state.hash_a());
-                let var_size_b = file_b.variable_size(state.hash_b());
-                let other_size_a = size_a - fn_size_a - var_size_a;
-                let other_size_b = size_b - fn_size_b - var_size_b;
-                if options.print_file_address {
-                    state.ord_list("addresses", &(), ranges_a.list(), &(), ranges_b.list())?;
-                }
-                state.line_u64("size", size_a, size_b)?;
-                state.line_u64("fn size", fn_size_a, fn_size_b)?;
-                state.line_u64("var size", var_size_a, var_size_b)?;
-                state.line_u64("other size", other_size_a, other_size_b)?;
-                // TODO: sort sections
-                state.list("sections", &(), &*file_a.sections, &(), &*file_b.sections)?;
-                Ok(())
-            })?;
+            state.indent(
+                |state| {
+                    state.line(file_a, file_b, |w, _hash, x| {
+                        write!(w, "file {}", x.path)?;
+                        Ok(())
+                    })
+                },
+                |state| {
+                    let ranges_a = file_a.ranges(state.hash_a());
+                    let ranges_b = file_b.ranges(state.hash_b());
+                    let size_a = ranges_a.size();
+                    let size_b = ranges_b.size();
+                    let fn_size_a = file_a.function_size();
+                    let fn_size_b = file_b.function_size();
+                    let var_size_a = file_a.variable_size(state.hash_a());
+                    let var_size_b = file_b.variable_size(state.hash_b());
+                    let other_size_a = size_a - fn_size_a - var_size_a;
+                    let other_size_b = size_b - fn_size_b - var_size_b;
+                    if options.print_file_address {
+                        state.labelled_indent("addresses", |state| {
+                            state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
+                        })?;
+                    }
+                    state.line_u64("size", size_a, size_b)?;
+                    state.line_u64("fn size", fn_size_a, fn_size_b)?;
+                    state.line_u64("var size", var_size_a, var_size_b)?;
+                    state.line_u64("other size", other_size_a, other_size_b)?;
+                    // TODO: sort sections
+                    state.labelled_indent("sections", |state| {
+                        state.list(&(), &*file_a.sections, &(), &*file_b.sections)
+                    })?;
+                    Ok(())
+                },
+            )?;
             state.line_break()?;
         }
 
         state.sort_list(
-            "",
             &(),
             &mut *file_a.filter_units(options),
             &(),
@@ -493,19 +504,23 @@ impl<'input> Print for Section<'input> {
     type Arg = ();
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(|w, _state| self.print_name(w))?;
-        state.indent(|state| {
-            state.line(|w, _state| self.print_address(w))?;
-            state.line_u64("size", self.size)
-        })
+        state.indent(
+            |state| state.line(|w, _state| self.print_name(w)),
+            |state| {
+                state.line(|w, _state| self.print_address(w))?;
+                state.line_u64("size", self.size)
+            },
+        )
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.line(a, b, |w, _state, x| x.print_name(w))?;
-        state.indent(|state| {
-            state.line(a, b, |w, _state, x| x.print_address(w))?;
-            state.line_u64("size", a.size, b.size)
-        })
+        state.indent(
+            |state| state.line(a, b, |w, _state, x| x.print_name(w)),
+            |state| {
+                state.line(a, b, |w, _state, x| x.print_address(w))?;
+                state.line_u64("size", a.size, b.size)
+            },
+        )
     }
 }
 
@@ -570,19 +585,23 @@ impl<'input> Print for Symbol<'input> {
     type Arg = ();
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(|w, _state| self.print_name(w))?;
-        state.indent(|state| {
-            state.line(|w, _state| self.print_address(w))?;
-            state.line_u64("size", self.size)
-        })
+        state.indent(
+            |state| state.line(|w, _state| self.print_name(w)),
+            |state| {
+                state.line(|w, _state| self.print_address(w))?;
+                state.line_u64("size", self.size)
+            },
+        )
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.line(a, b, |w, _state, x| x.print_name(w))?;
-        state.indent(|state| {
-            state.line(a, b, |w, _state, x| x.print_address(w))?;
-            state.line_u64("size", a.size, b.size)
-        })
+        state.indent(
+            |state| state.line(a, b, |w, _state, x| x.print_name(w)),
+            |state| {
+                state.line(a, b, |w, _state, x| x.print_address(w))?;
+                state.line_u64("size", a.size, b.size)
+            },
+        )
     }
 }
 

@@ -62,18 +62,20 @@ impl<'input> Variable<'input> {
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.line(|w, state| self.print_name(w, state))?;
-        state.indent(|state| {
-            state.line(|w, _state| self.print_linkage_name(w))?;
-            state.line(|w, _state| self.print_symbol_name(w))?;
-            if state.options().print_source {
-                state.line(|w, _state| self.print_source(w, unit))?;
-            }
-            state.line(|w, _state| self.print_address(w))?;
-            state.line(|w, state| self.print_size(w, state))?;
-            state.line(|w, _state| self.print_declaration(w))
-            // TODO: print anon type inline
-        })?;
+        state.indent(
+            |state| state.line(|w, state| self.print_name(w, state)),
+            |state| {
+                state.line(|w, _state| self.print_linkage_name(w))?;
+                state.line(|w, _state| self.print_symbol_name(w))?;
+                if state.options().print_source {
+                    state.line(|w, _state| self.print_source(w, unit))?;
+                }
+                state.line(|w, _state| self.print_address(w))?;
+                state.line(|w, state| self.print_size(w, state))?;
+                state.line(|w, _state| self.print_declaration(w))
+                // TODO: print anon type inline
+            },
+        )?;
         state.line_break()?;
         Ok(())
     }
@@ -85,23 +87,27 @@ impl<'input> Variable<'input> {
         unit_b: &Unit,
         b: &Variable,
     ) -> Result<()> {
-        state.line(a, b, |w, state, x| x.print_name(w, state))?;
-        state.indent(|state| {
-            state.line(a, b, |w, _state, x| x.print_linkage_name(w))?;
-            let flag = state.options().ignore_variable_symbol_name;
-            state.ignore_diff(flag, |state| {
-                state.line(a, b, |w, _state, x| x.print_symbol_name(w))
-            })?;
-            if state.options().print_source {
-                state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                    x.print_source(w, unit)
+        state.indent(
+            |state| state.line(a, b, |w, state, x| x.print_name(w, state)),
+            |state| {
+                state.line(a, b, |w, _state, x| x.print_linkage_name(w))?;
+                let flag = state.options().ignore_variable_symbol_name;
+                state.ignore_diff(flag, |state| {
+                    state.line(a, b, |w, _state, x| x.print_symbol_name(w))
                 })?;
-            }
-            let flag = state.options().ignore_variable_address;
-            state.ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_address(w)))?;
-            state.line(a, b, |w, state, x| x.print_size(w, state))?;
-            state.line(a, b, |w, _state, x| x.print_declaration(w))
-        })?;
+                if state.options().print_source {
+                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                        x.print_source(w, unit)
+                    })?;
+                }
+                let flag = state.options().ignore_variable_address;
+                state.ignore_diff(flag, |state| {
+                    state.line(a, b, |w, _state, x| x.print_address(w))
+                })?;
+                state.line(a, b, |w, state, x| x.print_size(w, state))?;
+                state.line(a, b, |w, _state, x| x.print_declaration(w))
+            },
+        )?;
         state.line_break()?;
         Ok(())
     }
