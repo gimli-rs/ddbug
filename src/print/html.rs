@@ -10,25 +10,30 @@ const HEADER: &str = r#"<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <style>
-.collapsible li {
-    cursor: pointer;
+ul.collapsible {
     list-style: none;
-    border: 1px solid black;
 }
-.collapsible li ul {
+ul.collapsible ul {
     display: none;
+    list-style: none;
 }
-.collapsible div.del {
+ul.collapsible div.del {
     background-color: #ffdce0;
 }
-.collapsible div.add {
+ul.collapsible div.add {
     background-color: #cdffd8;
+}
+li.collapsible {
+    cursor: pointer;
+    border: 1px solid black;
 }
 </style>
 <script language="javascript">
 window.onload = function () {
-    var lis = document.querySelectorAll(".collapsible li");
-    [].forEach.call(lis, function(li) {
+    var uls = document.querySelectorAll(".collapsible li > ul");
+    [].forEach.call(uls, function(ul) {
+        var li = ul.parentNode;
+        li.classList.add("collapsible");
         li.addEventListener("click", toggle);
     });
 
