@@ -343,13 +343,13 @@ impl<'input> File<'input> {
                     let var_size = self.variable_size(state.hash());
                     let other_size = size - fn_size - var_size;
                     if options.print_file_address {
-                        state.labelled_indent("addresses", |state| state.list(&(), ranges.list()))?;
+                        state.field_indent("addresses", |state| state.list(&(), ranges.list()))?;
                     }
-                    state.line_u64("size", size)?;
-                    state.line_u64("fn size", fn_size)?;
-                    state.line_u64("var size", var_size)?;
-                    state.line_u64("other size", other_size)?;
-                    state.labelled_indent("sections", |state| state.list(&(), &*self.sections))?;
+                    state.field_u64("size", size)?;
+                    state.field_u64("fn size", fn_size)?;
+                    state.field_u64("var size", var_size)?;
+                    state.field_u64("other size", other_size)?;
+                    state.field_indent("sections", |state| state.list(&(), &*self.sections))?;
                     Ok(())
                 },
             )?;
@@ -389,16 +389,16 @@ impl<'input> File<'input> {
                     let other_size_a = size_a - fn_size_a - var_size_a;
                     let other_size_b = size_b - fn_size_b - var_size_b;
                     if options.print_file_address {
-                        state.labelled_indent("addresses", |state| {
+                        state.field_indent("addresses", |state| {
                             state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
                         })?;
                     }
-                    state.line_u64("size", size_a, size_b)?;
-                    state.line_u64("fn size", fn_size_a, fn_size_b)?;
-                    state.line_u64("var size", var_size_a, var_size_b)?;
-                    state.line_u64("other size", other_size_a, other_size_b)?;
+                    state.field_u64("size", size_a, size_b)?;
+                    state.field_u64("fn size", fn_size_a, fn_size_b)?;
+                    state.field_u64("var size", var_size_a, var_size_b)?;
+                    state.field_u64("other size", other_size_a, other_size_b)?;
                     // TODO: sort sections
-                    state.labelled_indent("sections", |state| {
+                    state.field_indent("sections", |state| {
                         state.list(&(), &*file_a.sections, &(), &*file_b.sections)
                     })?;
                     Ok(())
@@ -493,7 +493,6 @@ impl<'input> Section<'input> {
 
     fn print_address(&self, w: &mut Write) -> Result<()> {
         if let Some(address) = self.address() {
-            write!(w, "address: ")?;
             address.print_address(w)?;
         }
         Ok(())
@@ -507,8 +506,8 @@ impl<'input> Print for Section<'input> {
         state.indent(
             |state| state.line(|w, _state| self.print_name(w)),
             |state| {
-                state.line(|w, _state| self.print_address(w))?;
-                state.line_u64("size", self.size)
+                state.field("address", |w, _state| self.print_address(w))?;
+                state.field_u64("size", self.size)
             },
         )
     }
@@ -517,8 +516,8 @@ impl<'input> Print for Section<'input> {
         state.indent(
             |state| state.line(a, b, |w, _state, x| x.print_name(w)),
             |state| {
-                state.line(a, b, |w, _state, x| x.print_address(w))?;
-                state.line_u64("size", a.size, b.size)
+                state.field("address", a, b, |w, _state, x| x.print_address(w))?;
+                state.field_u64("size", a.size, b.size)
             },
         )
     }
@@ -575,7 +574,6 @@ impl<'input> Symbol<'input> {
     }
 
     fn print_address(&self, w: &mut Write) -> Result<()> {
-        write!(w, "address: ")?;
         self.address().print_address(w)?;
         Ok(())
     }
@@ -588,8 +586,8 @@ impl<'input> Print for Symbol<'input> {
         state.indent(
             |state| state.line(|w, _state| self.print_name(w)),
             |state| {
-                state.line(|w, _state| self.print_address(w))?;
-                state.line_u64("size", self.size)
+                state.field("address", |w, _state| self.print_address(w))?;
+                state.field_u64("size", self.size)
             },
         )
     }
@@ -598,8 +596,8 @@ impl<'input> Print for Symbol<'input> {
         state.indent(
             |state| state.line(a, b, |w, _state, x| x.print_name(w)),
             |state| {
-                state.line(a, b, |w, _state, x| x.print_address(w))?;
-                state.line_u64("size", a.size, b.size)
+                state.field("address", a, b, |w, _state, x| x.print_address(w))?;
+                state.field_u64("size", a.size, b.size)
             },
         )
     }

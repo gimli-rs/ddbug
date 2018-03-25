@@ -17,15 +17,25 @@ ul.collapsible ul {
     display: none;
     list-style: none;
 }
-ul.collapsible div.del {
+ul.collapsible li {
+    white-space: nowrap;
+}
+ul.collapsible span {
+    white-space: normal;
+}
+ul.collapsible .del {
     background-color: #ffdce0;
 }
-ul.collapsible div.add {
+ul.collapsible .add {
     background-color: #cdffd8;
 }
 li.collapsible {
     cursor: pointer;
     border: 1px solid black;
+}
+span.field {
+    display: inline-block;
+    vertical-align: top;
 }
 </style>
 <script language="javascript">
@@ -139,40 +149,53 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn line(&mut self, buf: &[u8]) -> Result<()> {
-        if buf.is_empty() {
-            return Ok(());
-        }
+    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
         if self.line_started {
             writeln!(self.w, "</li>")?;
         }
         write!(self.w, "<li>")?;
         self.line_started = true;
+        if buf.is_empty() {
+            write!(self.w, "{}:", label)?;
+            return Ok(());
+        }
+        if !label.is_empty() {
+            write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
+        }
         match self.prefix {
-            DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<div>")?,
+            DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<span>")?,
             DiffPrefix::Less => {
-                write!(self.w, "<div class=\"del\">")?;
+                write!(self.w, "<span class=\"del\">")?;
             }
             DiffPrefix::Greater => {
-                write!(self.w, "</div>\n<div class=\"add\">")?;
+                write!(self.w, "</span>\n<span class=\"add\">")?;
             }
         }
         self.w.write_all(&*escaped(buf))?;
-        write!(self.w, "</div>")?;
+        write!(self.w, "</span>")?;
+        if !label.is_empty() {
+            write!(self.w, "</span>")?;
+        }
         Ok(())
     }
 
-    fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         if self.line_started {
             writeln!(self.w, "</li>")?;
         }
         write!(self.w, "<li>")?;
         self.line_started = true;
-        write!(self.w, "<div class=\"del\">")?;
+        if !label.is_empty() {
+            write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
+        }
+        write!(self.w, "<span class=\"del\">")?;
         self.w.write_all(&*escaped(a))?;
-        write!(self.w, "</div>\n<div class=\"add\">")?;
+        write!(self.w, "</span><br>\n<span class=\"add\">")?;
         self.w.write_all(&*escaped(b))?;
-        write!(self.w, "</div>")?;
+        write!(self.w, "</span>")?;
+        if !label.is_empty() {
+            write!(self.w, "</span>")?;
+        }
         Ok(())
     }
 

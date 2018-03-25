@@ -510,7 +510,6 @@ impl<'input> TypeDef<'input> {
 
     fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
-            write!(w, "source: ")?;
             self.source.print(w, unit)?;
         }
         Ok(())
@@ -518,7 +517,7 @@ impl<'input> TypeDef<'input> {
 
     fn print_byte_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         if let Some(byte_size) = self.byte_size(hash) {
-            write!(w, "size: {}", byte_size)?;
+            write!(w, "{}", byte_size)?;
         }
         Ok(())
     }
@@ -529,12 +528,12 @@ impl<'input> TypeDef<'input> {
             |state| state.line(|w, state| self.print_name(w, state)),
             |state| {
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_source(w, unit))?;
+                    state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
-                state.line(|w, state| self.print_byte_size(w, state))?;
+                state.field("size", |w, state| self.print_byte_size(w, state))?;
                 if let Some(ty) = ty {
                     if ty.is_anon() {
-                        state.labelled_indent("members", |state| {
+                        state.field_indent("members", |state| {
                             Type::print_members(state, unit, Some(ty))
                         })?;
                     }
@@ -557,14 +556,14 @@ impl<'input> TypeDef<'input> {
             |state| state.line(a, b, |w, state, x| x.print_name(w, state)),
             |state| {
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                         x.print_source(w, unit)
                     })?;
                 }
-                state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
+                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
                 let ty_a = filter_option(a.ty(state.hash_a()), Type::is_anon);
                 let ty_b = filter_option(b.ty(state.hash_b()), Type::is_anon);
-                state.labelled_indent("members", |state| {
+                state.field_indent("members", |state| {
                     Type::diff_members(state, unit_a, ty_a, unit_b, ty_b)
                 })
             },
@@ -641,11 +640,11 @@ impl<'input> StructType<'input> {
             |state| state.line(|w, _state| self.print_ref(w)),
             |state| {
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_source(w, unit))?;
+                    state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
-                state.line(|w, state| self.print_declaration(w, state))?;
-                state.line(|w, state| self.print_byte_size(w, state))?;
-                state.labelled_indent("members", |state| self.print_members(state, unit))
+                state.field("declaration", |w, state| self.print_declaration(w, state))?;
+                state.field("size", |w, state| self.print_byte_size(w, state))?;
+                state.field_indent("members", |state| self.print_members(state, unit))
             },
         )?;
         state.line_break()?;
@@ -664,13 +663,13 @@ impl<'input> StructType<'input> {
             |state| state.line(a, b, |w, _state, x| x.print_ref(w)),
             |state| {
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                         x.print_source(w, unit)
                     })?;
                 }
-                state.line(a, b, |w, state, x| x.print_declaration(w, state))?;
-                state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
-                state.labelled_indent("members", |state| {
+                state.field("declaration", a, b, |w, state, x| x.print_declaration(w, state))?;
+                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
+                state.field_indent("members", |state| {
                     Self::diff_members(state, unit_a, a, unit_b, b)
                 })
             },
@@ -681,7 +680,6 @@ impl<'input> StructType<'input> {
 
     fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
-            write!(w, "source: ")?;
             self.source.print(w, unit)?;
         }
         Ok(())
@@ -689,7 +687,7 @@ impl<'input> StructType<'input> {
 
     fn print_byte_size(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size {
-            write!(w, "size: {}", size)?;
+            write!(w, "{}", size)?;
         } else if !self.declaration {
             debug!("struct with no size");
         }
@@ -698,7 +696,7 @@ impl<'input> StructType<'input> {
 
     fn print_declaration(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if self.declaration {
-            write!(w, "declaration: yes")?;
+            write!(w, "yes")?;
         }
         Ok(())
     }
@@ -771,11 +769,11 @@ impl<'input> UnionType<'input> {
             |state| state.line(|w, _state| self.print_ref(w)),
             |state| {
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_source(w, unit))?;
+                    state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
-                state.line(|w, state| self.print_declaration(w, state))?;
-                state.line(|w, state| self.print_byte_size(w, state))?;
-                state.labelled_indent("members", |state| self.print_members(state, unit))
+                state.field("declaration", |w, state| self.print_declaration(w, state))?;
+                state.field("size", |w, state| self.print_byte_size(w, state))?;
+                state.field_indent("members", |state| self.print_members(state, unit))
             },
         )?;
         state.line_break()?;
@@ -794,13 +792,13 @@ impl<'input> UnionType<'input> {
             |state| state.line(a, b, |w, _state, x| x.print_ref(w)),
             |state| {
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                         x.print_source(w, unit)
                     })?;
                 }
-                state.line(a, b, |w, state, x| x.print_declaration(w, state))?;
-                state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
-                state.labelled_indent("members", |state| {
+                state.field("declaration", a, b, |w, state, x| x.print_declaration(w, state))?;
+                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
+                state.field_indent("members", |state| {
                     Self::diff_members(state, unit_a, a, unit_b, b)
                 })
             },
@@ -811,7 +809,6 @@ impl<'input> UnionType<'input> {
 
     fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
-            write!(w, "source: ")?;
             self.source.print(w, unit)?;
         }
         Ok(())
@@ -819,7 +816,7 @@ impl<'input> UnionType<'input> {
 
     fn print_byte_size(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size {
-            write!(w, "size: {}", size)?;
+            write!(w, "{}", size)?;
         } else if !self.declaration {
             debug!("struct with no size");
         }
@@ -828,7 +825,7 @@ impl<'input> UnionType<'input> {
 
     fn print_declaration(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
         if self.declaration {
-            write!(w, "declaration: yes")?;
+            write!(w, "yes")?;
         }
         Ok(())
     }
@@ -1059,11 +1056,11 @@ impl<'input> EnumerationType<'input> {
             |state| state.line(|w, _state| self.print_ref(w)),
             |state| {
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_source(w, unit))?;
+                    state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
-                state.line(|w, _state| self.print_declaration(w))?;
-                state.line(|w, state| self.print_byte_size(w, state))?;
-                state.labelled_indent("enumerators", |state| state.list(unit, &self.enumerators))
+                state.field("declaration", |w, _state| self.print_declaration(w))?;
+                state.field("size", |w, state| self.print_byte_size(w, state))?;
+                state.field_indent("enumerators", |state| state.list(unit, &self.enumerators))
             },
         )?;
         state.line_break()?;
@@ -1082,14 +1079,14 @@ impl<'input> EnumerationType<'input> {
             |state| state.line(a, b, |w, _state, x| x.print_ref(w)),
             |state| {
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                         x.print_source(w, unit)
                     })?;
                 }
-                state.line(a, b, |w, _state, x| x.print_declaration(w))?;
-                state.line(a, b, |w, state, x| x.print_byte_size(w, state))?;
+                state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))?;
+                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
                 // TODO: handle reordering better
-                state.labelled_indent("enumerators", |state| {
+                state.field_indent("enumerators", |state| {
                     state.list(unit_a, &a.enumerators, unit_b, &b.enumerators)
                 })
             },
@@ -1100,7 +1097,6 @@ impl<'input> EnumerationType<'input> {
 
     fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
-            write!(w, "source: ")?;
             self.source.print(w, unit)?;
         }
         Ok(())
@@ -1108,14 +1104,14 @@ impl<'input> EnumerationType<'input> {
 
     fn print_declaration(&self, w: &mut Write) -> Result<()> {
         if self.declaration {
-            write!(w, "declaration: yes")?;
+            write!(w, "yes")?;
         }
         Ok(())
     }
 
     fn print_byte_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size(hash) {
-            write!(w, "size: {}", size)?;
+            write!(w, "{}", size)?;
         } else {
             debug!("enum with no size");
         }

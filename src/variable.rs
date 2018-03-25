@@ -65,14 +65,14 @@ impl<'input> Variable<'input> {
         state.indent(
             |state| state.line(|w, state| self.print_name(w, state)),
             |state| {
-                state.line(|w, _state| self.print_linkage_name(w))?;
-                state.line(|w, _state| self.print_symbol_name(w))?;
+                state.field("linkage name", |w, _state| self.print_linkage_name(w))?;
+                state.field("symbol name", |w, _state| self.print_symbol_name(w))?;
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_source(w, unit))?;
+                    state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
-                state.line(|w, _state| self.print_address(w))?;
-                state.line(|w, state| self.print_size(w, state))?;
-                state.line(|w, _state| self.print_declaration(w))
+                state.field("address", |w, _state| self.print_address(w))?;
+                state.field("size", |w, state| self.print_size(w, state))?;
+                state.field("declaration", |w, _state| self.print_declaration(w))
                 // TODO: print anon type inline
             },
         )?;
@@ -90,22 +90,22 @@ impl<'input> Variable<'input> {
         state.indent(
             |state| state.line(a, b, |w, state, x| x.print_name(w, state)),
             |state| {
-                state.line(a, b, |w, _state, x| x.print_linkage_name(w))?;
+                state.field("linkage name", a, b, |w, _state, x| x.print_linkage_name(w))?;
                 let flag = state.options().ignore_variable_symbol_name;
                 state.ignore_diff(flag, |state| {
-                    state.line(a, b, |w, _state, x| x.print_symbol_name(w))
+                    state.field("symbol name", a, b, |w, _state, x| x.print_symbol_name(w))
                 })?;
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                         x.print_source(w, unit)
                     })?;
                 }
                 let flag = state.options().ignore_variable_address;
                 state.ignore_diff(flag, |state| {
-                    state.line(a, b, |w, _state, x| x.print_address(w))
+                    state.field("address", a, b, |w, _state, x| x.print_address(w))
                 })?;
-                state.line(a, b, |w, state, x| x.print_size(w, state))?;
-                state.line(a, b, |w, _state, x| x.print_declaration(w))
+                state.field("size", a, b, |w, state, x| x.print_size(w, state))?;
+                state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))
             },
         )?;
         state.line_break()?;
@@ -122,21 +122,20 @@ impl<'input> Variable<'input> {
 
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
-            write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
+            write!(w, "{}", String::from_utf8_lossy(linkage_name))?;
         }
         Ok(())
     }
 
     fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
         if let Some(symbol_name) = self.symbol_name {
-            write!(w, "symbol name: {}", String::from_utf8_lossy(symbol_name))?;
+            write!(w, "{}", String::from_utf8_lossy(symbol_name))?;
         }
         Ok(())
     }
 
     fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
-            write!(w, "source: ")?;
             self.source.print(w, unit)?;
         }
         Ok(())
@@ -144,14 +143,14 @@ impl<'input> Variable<'input> {
 
     fn print_address(&self, w: &mut Write) -> Result<()> {
         if let Some(address) = self.address {
-            write!(w, "address: 0x{:x}", address)?;
+            write!(w, "0x{:x}", address)?;
         }
         Ok(())
     }
 
     fn print_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
         if let Some(byte_size) = self.byte_size(hash) {
-            write!(w, "size: {}", byte_size)?;
+            write!(w, "{}", byte_size)?;
         } else if !self.declaration {
             debug!("variable with no size");
         }
@@ -160,7 +159,7 @@ impl<'input> Variable<'input> {
 
     fn print_declaration(&self, w: &mut Write) -> Result<()> {
         if self.declaration {
-            write!(w, "declaration: yes")?;
+            write!(w, "yes")?;
         }
         Ok(())
     }

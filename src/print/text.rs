@@ -46,32 +46,36 @@ impl<'w> Printer for TextPrinter<'w> {
         writeln!(self.w).map_err(From::from)
     }
 
-    fn line(&mut self, buf: &[u8]) -> Result<()> {
-        if !buf.is_empty() {
-            match self.prefix {
-                DiffPrefix::None => {}
-                DiffPrefix::Equal => write!(self.w, "  ")?,
-                DiffPrefix::Less => {
-                    write!(self.w, "- ")?;
-                }
-                DiffPrefix::Greater => {
-                    write!(self.w, "+ ")?;
-                }
+    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
+        match self.prefix {
+            DiffPrefix::None => {}
+            DiffPrefix::Equal => write!(self.w, "  ")?,
+            DiffPrefix::Less => {
+                write!(self.w, "- ")?;
             }
-            for _ in 0..self.indent {
-                write!(self.w, "\t")?;
+            DiffPrefix::Greater => {
+                write!(self.w, "+ ")?;
             }
-            self.w.write_all(buf)?;
-            writeln!(self.w)?;
         }
+        for _ in 0..self.indent {
+            write!(self.w, "\t")?;
+        }
+        if !label.is_empty() {
+            write!(self.w, "{}:", label)?;
+            if !buf.is_empty() {
+                write!(self.w, " ")?;
+            }
+        }
+        self.w.write_all(buf)?;
+        writeln!(self.w)?;
         Ok(())
     }
 
-    fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         self.prefix = DiffPrefix::Less;
-        self.line(a)?;
+        self.line(label, a)?;
         self.prefix = DiffPrefix::Greater;
-        self.line(b)
+        self.line(label, b)
     }
 
     fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()> {

@@ -126,30 +126,30 @@ impl<'input> Unit<'input> {
             if options.print_unit_address {
                 let ranges = self.ranges(state.hash());
                 if ranges.list().len() > 1 {
-                    state.labelled_indent("addresses", |state| state.list(&(), ranges.list()))?;
+                    state.field_indent("addresses", |state| state.list(&(), ranges.list()))?;
                 } else {
                     let range = ranges.list().first().cloned();
-                    state.line(|w, _state| self.print_address(w, range))?;
+                    state.field("address", |w, _state| self.print_address(w, range))?;
                 }
 
-                state.labelled_indent("unknown addresses", |state| {
+                state.field_indent("unknown addresses", |state| {
                     state.list(&(), unknown_ranges.list())
                 })?;
             }
 
             let fn_size = self.function_size();
             if fn_size != 0 {
-                state.line_u64("fn size", fn_size)?;
+                state.field_u64("fn size", fn_size)?;
             }
 
             let var_size = self.variable_size(state.hash());
             if var_size != 0 {
-                state.line_u64("var size", var_size)?;
+                state.field_u64("var size", var_size)?;
             }
 
             let unknown_size = unknown_ranges.size();
             if unknown_size != 0 {
-                state.line_u64("unknown size", unknown_size)?;
+                state.field_u64("unknown size", unknown_size)?;
             }
 
             state.line_break()?;
@@ -181,9 +181,9 @@ impl<'input> Unit<'input> {
                 if options.category_unit {
                     print_unit(state)?;
                 }
-                state.labelled_indent("types", &print_types)?;
-                state.labelled_indent("functions", &print_functions)?;
-                state.labelled_indent("variables", &print_variables)?;
+                state.field_indent("types", &print_types)?;
+                state.field_indent("functions", &print_functions)?;
+                state.field_indent("variables", &print_variables)?;
                 Ok(())
             })?;
         } else {
@@ -215,20 +215,21 @@ impl<'input> Unit<'input> {
                 let ranges_a = unit_a.ranges(state.hash_a());
                 let ranges_b = unit_b.ranges(state.hash_b());
                 if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
-                    state.labelled_indent("addresses", |state| {
+                    state.field_indent("addresses", |state| {
                         state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
                     })?;
                 } else {
                     let range_a = ranges_a.list().first().cloned();
                     let range_b = ranges_b.list().first().cloned();
-                    state.line(
+                    state.field(
+                        "address",
                         (unit_a, range_a),
                         (unit_b, range_b),
                         |w, _state, (unit, range)| unit.print_address(w, range),
                     )?;
                 }
 
-                state.labelled_indent("unknown addresses", |state| {
+                state.field_indent("unknown addresses", |state| {
                     state.ord_list(&(), unknown_ranges_a.list(), &(), unknown_ranges_b.list())
                 })?;
             }
@@ -236,19 +237,19 @@ impl<'input> Unit<'input> {
             let fn_size_a = unit_a.function_size();
             let fn_size_b = unit_b.function_size();
             if fn_size_a != 0 || fn_size_b != 0 {
-                state.line_u64("fn size", fn_size_a, fn_size_b)?;
+                state.field_u64("fn size", fn_size_a, fn_size_b)?;
             }
 
             let var_size_a = unit_a.variable_size(state.hash_a());
             let var_size_b = unit_b.variable_size(state.hash_b());
             if var_size_a != 0 || var_size_b != 0 {
-                state.line_u64("var size", var_size_a, var_size_b)?;
+                state.field_u64("var size", var_size_a, var_size_b)?;
             }
 
             let unknown_size_a = unknown_ranges_a.size();
             let unknown_size_b = unknown_ranges_b.size();
             if unknown_size_a != 0 || unknown_size_b != 0 {
-                state.line_u64("unknown size", unknown_size_a, unknown_size_b)?;
+                state.field_u64("unknown size", unknown_size_a, unknown_size_b)?;
             }
 
             state.line_break()?;
@@ -291,9 +292,9 @@ impl<'input> Unit<'input> {
                 if options.category_unit {
                     diff_unit(state)?;
                 }
-                state.labelled_indent("types", &diff_types)?;
-                state.labelled_indent("functions", &diff_functions)?;
-                state.labelled_indent("variables", &diff_variables)?;
+                state.field_indent("types", &diff_types)?;
+                state.field_indent("functions", &diff_functions)?;
+                state.field_indent("variables", &diff_variables)?;
                 Ok(())
             })?;
         } else {
@@ -309,10 +310,9 @@ impl<'input> Unit<'input> {
 
     fn print_address(&self, w: &mut Write, range: Option<Range>) -> Result<()> {
         if let Some(range) = range {
-            write!(w, "address: ")?;
             range.print_address(w)?;
         } else if let Some(low_pc) = self.low_pc {
-            write!(w, "address: 0x{:x}", low_pc)?;
+            write!(w, "0x{:x}", low_pc)?;
         }
         Ok(())
     }

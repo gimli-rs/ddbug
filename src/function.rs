@@ -88,30 +88,30 @@ impl<'input> Function<'input> {
         state.indent(
             |state| state.line(|w, _state| self.print_name(w)),
             |state| {
-                state.line(|w, _state| self.print_linkage_name(w))?;
-                state.line(|w, _state| self.print_symbol_name(w))?;
+                state.field("linkage name", |w, _state| self.print_linkage_name(w))?;
+                state.field("symbol name", |w, _state| self.print_symbol_name(w))?;
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_source(w, unit))?;
+                    state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
-                state.line(|w, _state| self.print_address(w))?;
-                state.line(|w, _state| self.print_size(w))?;
-                state.line(|w, _state| self.print_inline(w))?;
-                state.line(|w, _state| self.print_declaration(w))?;
-                state.labelled_indent("return type", |state| {
+                state.field("address", |w, _state| self.print_address(w))?;
+                state.field("size", |w, _state| self.print_size(w))?;
+                state.field("inline", |w, _state| self.print_inline(w))?;
+                state.field("declaration", |w, _state| self.print_declaration(w))?;
+                state.field_indent("return type", |state| {
                     state.line(|w, state| self.print_return_type(w, state))
                 })?;
-                state.labelled_indent("parameters", |state| state.list(unit, &self.parameters))?;
+                state.field_indent("parameters", |state| state.list(unit, &self.parameters))?;
                 if state.options().print_function_variables {
-                    state.labelled_indent("variables", |state| state.list(unit, &self.variables))?;
+                    state.field_indent("variables", |state| state.list(unit, &self.variables))?;
                 }
                 state.inline(|state| {
-                    state.labelled_indent("inlined functions", |state| {
+                    state.field_indent("inlined functions", |state| {
                         state.list(unit, &self.inlined_functions)
                     })
                 })?;
                 if state.options().print_function_calls {
                     let calls = self.calls(state.hash().file);
-                    state.labelled_indent("calls", |state| state.list(&(), &calls))?;
+                    state.field_indent("calls", |state| state.list(&(), &calls))?;
                 }
                 Ok(())
             },
@@ -130,30 +130,33 @@ impl<'input> Function<'input> {
         state.indent(
             |state| state.line(a, b, |w, _state, x| x.print_name(w)),
             |state| {
-                state.line(a, b, |w, _state, x| x.print_linkage_name(w))?;
+                state.field("linkage name", a, b, |w, _state, x| x.print_linkage_name(w))?;
                 let flag = state.options().ignore_function_symbol_name;
                 state.ignore_diff(flag, |state| {
-                    state.line(a, b, |w, _state, x| x.print_symbol_name(w))
+                    state.field("symbol name", a, b, |w, _state, x| x.print_symbol_name(w))
                 })?;
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
+                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
                         x.print_source(w, unit)
                     })?;
                 }
                 let flag = state.options().ignore_function_address;
                 state.ignore_diff(flag, |state| {
-                    state.line(a, b, |w, _state, x| x.print_address(w))
+                    state.field("address", a, b, |w, _state, x| x.print_address(w))
                 })?;
                 let flag = state.options().ignore_function_size;
-                state.ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_size(w)))?;
+                state.ignore_diff(flag, |state| {
+                    state.field("size", a, b, |w, _state, x| x.print_size(w))
+                })?;
                 let flag = state.options().ignore_function_inline;
-                state
-                    .ignore_diff(flag, |state| state.line(a, b, |w, _state, x| x.print_inline(w)))?;
-                state.line(a, b, |w, _state, x| x.print_declaration(w))?;
-                state.labelled_indent("return type", |state| {
+                state.ignore_diff(flag, |state| {
+                    state.field("inline", a, b, |w, _state, x| x.print_inline(w))
+                })?;
+                state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))?;
+                state.field_indent("return type", |state| {
                     state.line(a, b, |w, state, x| x.print_return_type(w, state))
                 })?;
-                state.labelled_indent("parameters", |state| {
+                state.field_indent("parameters", |state| {
                     state.list(unit_a, &a.parameters, unit_b, &b.parameters)
                 })?;
                 if state.options().print_function_variables {
@@ -165,21 +168,19 @@ impl<'input> Function<'input> {
                     variables_b.sort_by(|x, y| {
                         LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
                     });
-                    state.labelled_indent("variables", |state| {
+                    state.field_indent("variables", |state| {
                         state.list(unit_a, &variables_a, unit_b, &variables_b)
                     })?;
                 }
                 state.inline(|state| {
-                    state.labelled_indent("inlined functions", |state| {
+                    state.field_indent("inlined functions", |state| {
                         state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
                     })
                 })?;
                 if state.options().print_function_calls {
                     let calls_a = a.calls(state.hash_a().file);
                     let calls_b = b.calls(state.hash_b().file);
-                    state.labelled_indent("calls", |state| {
-                        state.list(&(), &calls_a, &(), &calls_b)
-                    })?;
+                    state.field_indent("calls", |state| state.list(&(), &calls_a, &(), &calls_b))?;
                 }
                 Ok(())
             },
@@ -199,21 +200,20 @@ impl<'input> Function<'input> {
 
     fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
-            write!(w, "linkage name: {}", String::from_utf8_lossy(linkage_name))?;
+            write!(w, "{}", String::from_utf8_lossy(linkage_name))?;
         }
         Ok(())
     }
 
     fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
         if let Some(symbol_name) = self.symbol_name {
-            write!(w, "symbol name: {}", String::from_utf8_lossy(symbol_name))?;
+            write!(w, "{}", String::from_utf8_lossy(symbol_name))?;
         }
         Ok(())
     }
 
     fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
-            write!(w, "source: ")?;
             self.source.print(w, unit)?;
         }
         Ok(())
@@ -221,7 +221,6 @@ impl<'input> Function<'input> {
 
     fn print_address(&self, w: &mut Write) -> Result<()> {
         if let Some(range) = self.address() {
-            write!(w, "address: ")?;
             range.print_address(w)?;
         }
         Ok(())
@@ -229,21 +228,21 @@ impl<'input> Function<'input> {
 
     fn print_size(&self, w: &mut Write) -> Result<()> {
         if let Some(size) = self.size {
-            write!(w, "size: {}", size)?;
+            write!(w, "{}", size)?;
         }
         Ok(())
     }
 
     fn print_inline(&self, w: &mut Write) -> Result<()> {
         if self.inline {
-            write!(w, "inline: yes")?;
+            write!(w, "yes")?;
         }
         Ok(())
     }
 
     fn print_declaration(&self, w: &mut Write) -> Result<()> {
         if self.declaration {
-            write!(w, "declaration: yes")?;
+            write!(w, "yes")?;
         }
         Ok(())
     }
@@ -479,7 +478,6 @@ impl<'input> InlinedFunction<'input> {
 
     fn print_call_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
         if self.call_source.is_some() {
-            write!(w, "call source: ")?;
             self.call_source.print(w, unit)?;
         }
         Ok(())
@@ -495,7 +493,7 @@ impl<'input> Print for InlinedFunction<'input> {
             |state| {
                 // TODO: print parameters and variables?
                 if state.options().print_source {
-                    state.line(|w, _state| self.print_call_source(w, unit))?;
+                    state.field("call source", |w, _state| self.print_call_source(w, unit))?;
                 }
                 state.inline(|state| state.list(unit, &self.inlined_functions))?;
                 Ok(())
@@ -514,9 +512,12 @@ impl<'input> Print for InlinedFunction<'input> {
             |state| {
                 // TODO: diff parameters and variables?
                 if state.options().print_source {
-                    state.line((unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_call_source(w, unit)
-                    })?;
+                    state.field(
+                        "call source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_call_source(w, unit),
+                    )?;
                 }
                 state.inline(|state| {
                     state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)

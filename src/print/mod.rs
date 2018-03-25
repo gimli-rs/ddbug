@@ -31,8 +31,8 @@ pub trait Printer {
 
     fn line_break(&mut self) -> Result<()>;
 
-    fn line(&mut self, buf: &[u8]) -> Result<()>;
-    fn line_diff(&mut self, a: &[u8], b: &[u8]) -> Result<()>;
+    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()>;
+    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()>;
 
     fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()>;
 
@@ -121,7 +121,7 @@ impl<'a> PrintState<'a> {
         self.indent_impl(false, header, body)
     }
 
-    pub fn labelled_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    pub fn field_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
     where
         FBody: FnMut(&mut PrintState) -> Result<()>,
     {
@@ -155,21 +155,31 @@ impl<'a> PrintState<'a> {
     }
 
     pub fn label(&mut self, label: &str) -> Result<()> {
-        self.printer.line(format!("{}:", label).as_bytes())
+        self.printer.line(label, &[])
     }
 
-    pub fn line<F>(&mut self, mut f: F) -> Result<()>
+    pub fn line<F>(&mut self, f: F) -> Result<()>
+    where
+        F: FnMut(&mut Write, &FileHash) -> Result<()>,
+    {
+        self.field("", f)
+    }
+
+    pub fn field<F>(&mut self, label: &str, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash) -> Result<()>,
     {
         let mut buf = Vec::new();
         f(&mut buf, self.hash)?;
-        self.printer.line(&*buf)
+        if !buf.is_empty() {
+            self.printer.line(label, &*buf)?;
+        }
+        Ok(())
     }
 
-    pub fn line_u64(&mut self, label: &str, arg: u64) -> Result<()> {
-        self.line(|w, _| {
-            write!(w, "{}: {}", label, arg)?;
+    pub fn field_u64(&mut self, label: &str, arg: u64) -> Result<()> {
+        self.field(label, |w, _| {
+            write!(w, "{}", arg)?;
             Ok(())
         })
     }
@@ -342,7 +352,7 @@ impl<'a> DiffState<'a> {
         self.indent_impl(false, header, body)
     }
 
-    pub fn labelled_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    pub fn field_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
     where
         FBody: FnMut(&mut DiffState) -> Result<()>,
     {
@@ -411,10 +421,17 @@ impl<'a> DiffState<'a> {
 
     pub fn label(&mut self, label: &str) -> Result<()> {
         self.printer.prefix(DiffPrefix::Equal);
-        self.printer.line(format!("{}:", label).as_bytes())
+        self.printer.line(label, &[])
     }
 
-    pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, mut f: F) -> Result<()>
+    pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
+    where
+        F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
+    {
+        self.field("", arg_a, arg_b, f)
+    }
+
+    pub fn field<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
         F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
     {
@@ -425,27 +442,29 @@ impl<'a> DiffState<'a> {
         f(&mut b, self.hash_b(), arg_b)?;
 
         if a == b {
-            self.printer.prefix(DiffPrefix::Equal);
-            self.printer.line(&*a)?;
+            if !a.is_empty() {
+                self.printer.prefix(DiffPrefix::Equal);
+                self.printer.line(label, &*a)?;
+            }
         } else {
             if a.is_empty() {
                 self.printer.prefix(DiffPrefix::Greater);
-                self.printer.line(&*b)?;
+                self.printer.line(label, &*b)?;
             } else if b.is_empty() {
                 self.printer.prefix(DiffPrefix::Less);
-                self.printer.line(&*a)?;
+                self.printer.line(label, &*a)?;
             } else {
-                self.printer.line_diff(&*a, &*b)?;
+                self.printer.line_diff(label, &*a, &*b)?;
             }
             self.diff = true;
         }
         Ok(())
     }
 
-    pub fn line_u64(&mut self, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
+    pub fn field_u64(&mut self, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
         let base = arg_a;
-        self.line(arg_a, arg_b, |w, _hash, arg| {
-            write!(w, "{}: {}", label, arg)?;
+        self.field(label, arg_a, arg_b, |w, _hash, arg| {
+            write!(w, "{}", arg)?;
             if arg != base {
                 write!(w, " ({:+})", arg as i64 - base as i64)?;
             }
