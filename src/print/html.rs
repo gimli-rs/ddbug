@@ -19,6 +19,11 @@ ul.collapsible ul {
 }
 ul.collapsible li {
     white-space: nowrap;
+    cursor: default;
+}
+ul.collapsible li.collapsible {
+    cursor: pointer;
+    border: 1px solid black;
 }
 ul.collapsible span {
     white-space: normal;
@@ -28,10 +33,6 @@ ul.collapsible .del {
 }
 ul.collapsible .add {
     background-color: #cdffd8;
-}
-li.collapsible {
-    cursor: pointer;
-    border: 1px solid black;
 }
 span.field {
     display: inline-block;
