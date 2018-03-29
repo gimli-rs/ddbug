@@ -78,10 +78,27 @@ impl<'w> Printer for TextPrinter<'w> {
         self.line(label, b)
     }
 
-    fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()> {
-        self.indent += 1;
-        body(self)?;
-        self.indent -= 1;
+    fn indent_body(
+        &mut self,
+        buf: &mut Vec<u8>,
+        body: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()> {
+        let mut printer = TextPrinter {
+            w: buf,
+            indent: self.indent + 1,
+            prefix: self.prefix,
+            inline_depth: self.inline_depth,
+        };
+        body(&mut printer)
+    }
+
+    fn indent_header(
+        &mut self,
+        body: &[u8],
+        header: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()> {
+        header(self)?;
+        self.write_buf(body)?;
         Ok(())
     }
 

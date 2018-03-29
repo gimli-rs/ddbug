@@ -106,9 +106,6 @@ impl<'w> HtmlPrinter<'w> {
     }
 
     pub fn end(&mut self) -> Result<()> {
-        if self.line_started {
-            writeln!(self.w, "</li>")?;
-        }
         self.w.write_all(FOOTER.as_bytes())?;
         Ok(())
     }
@@ -130,14 +127,6 @@ impl<'w> Printer for HtmlPrinter<'w> {
             line_started: self.line_started,
         };
         f(&mut p)?;
-
-        if self.line_started != p.line_started {
-            if p.line_started {
-                writeln!(p.w, "</li>")?;
-            } else {
-                write!(p.w, "<li>")?;
-            }
-        }
         Ok(())
     }
 
@@ -151,41 +140,40 @@ impl<'w> Printer for HtmlPrinter<'w> {
     }
 
     fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
-        if self.line_started {
-            writeln!(self.w, "</li>")?;
+        if !self.line_started {
+            write!(self.w, "<li>")?;
         }
-        write!(self.w, "<li>")?;
-        self.line_started = true;
         if buf.is_empty() {
             write!(self.w, "{}:", label)?;
-            return Ok(());
-        }
-        if !label.is_empty() {
-            write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
-        }
-        match self.prefix {
-            DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<span>")?,
-            DiffPrefix::Less => {
-                write!(self.w, "<span class=\"del\">")?;
+        } else {
+            if !label.is_empty() {
+                write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
             }
-            DiffPrefix::Greater => {
-                write!(self.w, "</span>\n<span class=\"add\">")?;
+            match self.prefix {
+                DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<span>")?,
+                DiffPrefix::Less => {
+                    write!(self.w, "<span class=\"del\">")?;
+                }
+                DiffPrefix::Greater => {
+                    write!(self.w, "</span>\n<span class=\"add\">")?;
+                }
             }
-        }
-        self.w.write_all(&*escaped(buf))?;
-        write!(self.w, "</span>")?;
-        if !label.is_empty() {
+            self.w.write_all(&*escaped(buf))?;
             write!(self.w, "</span>")?;
+            if !label.is_empty() {
+                write!(self.w, "</span>")?;
+            }
+        }
+        if !self.line_started {
+            writeln!(self.w, "</li>")?;
         }
         Ok(())
     }
 
     fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
-        if self.line_started {
-            writeln!(self.w, "</li>")?;
+        if !self.line_started {
+            write!(self.w, "<li>")?;
         }
-        write!(self.w, "<li>")?;
-        self.line_started = true;
         if !label.is_empty() {
             write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
         }
@@ -197,26 +185,42 @@ impl<'w> Printer for HtmlPrinter<'w> {
         if !label.is_empty() {
             write!(self.w, "</span>")?;
         }
+        if !self.line_started {
+            writeln!(self.w, "</li>")?;
+        }
         Ok(())
     }
 
-    fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()> {
-        if !self.line_started {
-            write!(self.w, "<li>")?;
-        }
-        self.line_started = false;
-        self.indent += 1;
-        writeln!(self.w, "<ul>")?;
+    fn indent_body(
+        &mut self,
+        buf: &mut Vec<u8>,
+        body: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()> {
+        let mut printer = HtmlPrinter {
+            w: buf,
+            // TODO: need to ensure these are all unchanged?
+            indent: self.indent + 1,
+            prefix: self.prefix,
+            inline_depth: self.inline_depth,
+            line_started: false,
+        };
+        body(&mut printer)?;
+        Ok(())
+    }
 
-        // TODO: omit <ul></ul> if body is empty
-        body(self)?;
-
-        if self.line_started {
-            writeln!(self.w, "</li>")?;
-        }
+    fn indent_header(
+        &mut self,
+        body: &[u8],
+        header: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()> {
+        debug_assert!(!self.line_started);
+        write!(self.w, "<li>")?;
         self.line_started = true;
-        self.indent -= 1;
-        write!(self.w, "</ul>")?;
+        header(self)?;
+        writeln!(self.w, "<ul>")?;
+        self.write_buf(body)?;
+        writeln!(self.w, "</ul></li>")?;
+        self.line_started = false;
         Ok(())
     }
 

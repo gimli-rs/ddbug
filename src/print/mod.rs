@@ -34,7 +34,16 @@ pub trait Printer {
     fn line(&mut self, label: &str, buf: &[u8]) -> Result<()>;
     fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()>;
 
-    fn indent(&mut self, body: &mut FnMut(&mut Printer) -> Result<()>) -> Result<()>;
+    fn indent_body(
+        &mut self,
+        buf: &mut Vec<u8>,
+        body: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()>;
+    fn indent_header(
+        &mut self,
+        body: &[u8],
+        header: &mut FnMut(&mut Printer) -> Result<()>,
+    ) -> Result<()>;
 
     fn prefix(&mut self, prefix: DiffPrefix);
 
@@ -84,29 +93,18 @@ impl<'a> PrintState<'a> {
     {
         let hash = self.hash;
         let options = self.options;
-        let mut buf = Vec::new();
         let mut body_buf = Vec::new();
-        // Buffer so that we can avoid printing if body is empty.
-        self.printer.buffer(&mut buf, &mut |printer| {
-            {
-                let mut state = PrintState::new(printer, hash, options);
-                header(&mut state)?;
-            }
-            printer.indent(&mut |printer| {
-                // Buffer so that we can determine if body is empty.
-                printer.buffer(&mut body_buf, &mut |printer| {
-                    let mut state = PrintState::new(printer, hash, options);
-                    body(&mut state)?;
-                    Ok(())
-                })?;
-                if !optional || !body_buf.is_empty() {
-                    printer.write_buf(&*body_buf)?;
-                }
-                Ok(())
-            })
+        self.printer.indent_body(&mut body_buf, &mut |printer| {
+            let mut state = PrintState::new(printer, hash, options);
+            body(&mut state)?;
+            Ok(())
         })?;
         if !body_buf.is_empty() {
-            self.printer.write_buf(&*buf)?;
+            self.printer.indent_header(&*body_buf, &mut |printer| {
+                let mut state = PrintState::new(printer, hash, options);
+                header(&mut state)?;
+                Ok(())
+            })?;
         } else if !optional {
             header(self)?;
         }
@@ -305,40 +303,31 @@ impl<'a> DiffState<'a> {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
         let options = self.options;
-        let mut buf = Vec::new();
+
         let mut body_buf = Vec::new();
         let mut diff = false;
-        // Buffer so that we can avoid printing if body is empty.
-        self.printer.buffer(&mut buf, &mut |printer| {
-            {
+        self.printer.indent_body(&mut body_buf, &mut |printer| {
+            let mut state = DiffState::new(printer, hash_a, hash_b, options);
+            body(&mut state)?;
+            if state.diff {
+                diff = true;
+            }
+            Ok(())
+        })?;
+
+        if !body_buf.is_empty() {
+            self.printer.indent_header(&*body_buf, &mut |printer| {
                 let mut state = DiffState::new(printer, hash_a, hash_b, options);
                 header(&mut state)?;
                 if state.diff {
                     diff = true;
                 }
-            }
-            printer.indent(&mut |printer| {
-                // Buffer so that we can determine if body is empty.
-                printer.buffer(&mut body_buf, &mut |printer| {
-                    let mut state = DiffState::new(printer, hash_a, hash_b, options);
-                    body(&mut state)?;
-                    if state.diff {
-                        diff = true;
-                    }
-                    Ok(())
-                })?;
-                if !body_buf.is_empty() {
-                    printer.write_buf(&*body_buf)?;
-                }
                 Ok(())
-            })
-        })?;
-        if diff {
-            self.diff = true;
-        }
-        if !body_buf.is_empty() {
-            self.printer.write_buf(&*buf)?;
-        } else if !optional || diff {
+            })?;
+            if diff {
+                self.diff = diff;
+            }
+        } else if !optional {
             header(self)?;
         }
         Ok(())

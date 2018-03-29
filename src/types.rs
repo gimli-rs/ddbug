@@ -944,20 +944,21 @@ impl<'input> Print for Member<'input> {
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let hash = state.hash();
         let bit_size = self.bit_size(hash);
-        state.line(|w, state| self.print_name(w, state, bit_size))?;
-        if self.is_inline(hash) {
-            state.indent(|_| Ok(()), |state| Type::print_members(state, unit, self.ty(hash)))?;
-        }
+        let ty = if self.is_inline(hash) {
+            self.ty(hash)
+        } else {
+            None
+        };
+        state.indent(
+            |state| state.line(|w, state| self.print_name(w, state, bit_size)),
+            |state| Type::print_members(state, unit, ty),
+        )?;
         state.line(|w, state| self.print_padding(w, state, bit_size))
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
         let bit_size_a = a.bit_size(state.hash_a());
         let bit_size_b = b.bit_size(state.hash_b());
-        state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
-            x.print_name(w, state, bit_size)
-        })?;
-
         let ty_a = if a.is_inline(state.hash_a()) {
             a.ty(state.hash_a())
         } else {
@@ -968,7 +969,14 @@ impl<'input> Print for Member<'input> {
         } else {
             None
         };
-        state.indent(|_| Ok(()), |state| Type::diff_members(state, unit_a, ty_a, unit_b, ty_b))?;
+        state.indent(
+            |state| {
+                state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
+                    x.print_name(w, state, bit_size)
+                })
+            },
+            |state| Type::diff_members(state, unit_a, ty_a, unit_b, ty_b),
+        )?;
 
         state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
             x.print_padding(w, state, bit_size)
