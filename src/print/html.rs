@@ -34,6 +34,9 @@ ul.collapsible .del {
 ul.collapsible .add {
     background-color: #cdffd8;
 }
+ul.collapsible .mod {
+    background-color: #ffffa0;
+}
 span.field {
     display: inline-block;
     vertical-align: top;
@@ -144,18 +147,27 @@ impl<'w> Printer for HtmlPrinter<'w> {
             write!(self.w, "<li>")?;
         }
         if buf.is_empty() {
-            write!(self.w, "{}:", label)?;
+            if self.prefix == DiffPrefix::Modify {
+                write!(self.w, "<span class=\"field mod\">")?;
+                write!(self.w, "{}:", label)?;
+                write!(self.w, "</span>")?;
+            } else {
+                write!(self.w, "{}:", label)?;
+            }
         } else {
             if !label.is_empty() {
-                write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
+                write!(self.w, "<span class=\"field\">{}:</span> ", label)?;
             }
             match self.prefix {
-                DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<span>")?,
-                DiffPrefix::Less => {
-                    write!(self.w, "<span class=\"del\">")?;
+                DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<span class=\"field\">")?,
+                DiffPrefix::Modify => {
+                    write!(self.w, "<span class=\"field mod\">")?;
                 }
-                DiffPrefix::Greater => {
-                    write!(self.w, "</span>\n<span class=\"add\">")?;
+                DiffPrefix::Delete => {
+                    write!(self.w, "<span class=\"field del\">")?;
+                }
+                DiffPrefix::Add => {
+                    write!(self.w, "<span class=\"field add\">")?;
                 }
             }
             self.w.write_all(&*escaped(buf))?;
@@ -226,6 +238,10 @@ impl<'w> Printer for HtmlPrinter<'w> {
 
     fn prefix(&mut self, prefix: DiffPrefix) {
         self.prefix = prefix;
+    }
+
+    fn get_prefix(&self) -> DiffPrefix {
+        self.prefix
     }
 
     fn inline_begin(&mut self) -> bool {

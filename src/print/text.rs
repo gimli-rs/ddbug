@@ -49,11 +49,11 @@ impl<'w> Printer for TextPrinter<'w> {
     fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
         match self.prefix {
             DiffPrefix::None => {}
-            DiffPrefix::Equal => write!(self.w, "  ")?,
-            DiffPrefix::Less => {
+            DiffPrefix::Equal | DiffPrefix::Modify => write!(self.w, "  ")?,
+            DiffPrefix::Delete => {
                 write!(self.w, "- ")?;
             }
-            DiffPrefix::Greater => {
+            DiffPrefix::Add => {
                 write!(self.w, "+ ")?;
             }
         }
@@ -72,9 +72,9 @@ impl<'w> Printer for TextPrinter<'w> {
     }
 
     fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
-        self.prefix = DiffPrefix::Less;
+        self.prefix = DiffPrefix::Delete;
         self.line(label, a)?;
-        self.prefix = DiffPrefix::Greater;
+        self.prefix = DiffPrefix::Add;
         self.line(label, b)
     }
 
@@ -104,6 +104,10 @@ impl<'w> Printer for TextPrinter<'w> {
 
     fn prefix(&mut self, prefix: DiffPrefix) {
         self.prefix = prefix;
+    }
+
+    fn get_prefix(&self) -> DiffPrefix {
+        self.prefix
     }
 
     fn inline_begin(&mut self) -> bool {

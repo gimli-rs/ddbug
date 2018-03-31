@@ -16,8 +16,9 @@ pub use self::html::HtmlPrinter;
 pub enum DiffPrefix {
     None,
     Equal,
-    Less,
-    Greater,
+    Delete,
+    Add,
+    Modify,
 }
 
 pub trait Printer {
@@ -46,6 +47,7 @@ pub trait Printer {
     ) -> Result<()>;
 
     fn prefix(&mut self, prefix: DiffPrefix);
+    fn get_prefix(&self) -> DiffPrefix;
 
     fn inline_begin(&mut self) -> bool;
     fn inline_end(&mut self);
@@ -201,7 +203,7 @@ impl<'a> PrintState<'a> {
 pub(crate) struct DiffState<'a> {
     printer: &'a mut Printer,
 
-    // True if DiffPrefix::Less or DiffPrefix::Greater was printed.
+    // True if DiffPrefix::Delete or DiffPrefix::Add was printed.
     diff: bool,
 
     // The remaining fields contain information that is commonly needed in print methods.
@@ -269,8 +271,10 @@ impl<'a> DiffState<'a> {
             Ok(())
         })?;
         if diff {
-            self.printer.write_buf(&*buf)?;
             self.diff = true;
+        }
+        if diff || options.html {
+            self.printer.write_buf(&*buf)?;
         }
         Ok(())
     }
@@ -289,7 +293,7 @@ impl<'a> DiffState<'a> {
     }
 
     // Output the header with an indented body.
-    // If optional is true, then only output if there is a difference, or if the body is not empty.
+    // If optional is true, then only output if the body is not empty.
     fn indent_impl<FHeader, FBody>(
         &mut self,
         optional: bool,
@@ -307,6 +311,7 @@ impl<'a> DiffState<'a> {
         let mut body_buf = Vec::new();
         let mut diff = false;
         self.printer.indent_body(&mut body_buf, &mut |printer| {
+            printer.prefix(DiffPrefix::Equal);
             let mut state = DiffState::new(printer, hash_a, hash_b, options);
             body(&mut state)?;
             if state.diff {
@@ -317,6 +322,11 @@ impl<'a> DiffState<'a> {
 
         if !body_buf.is_empty() {
             self.printer.indent_header(&*body_buf, &mut |printer| {
+                if diff {
+                    printer.prefix(DiffPrefix::Modify);
+                } else {
+                    printer.prefix(DiffPrefix::Equal);
+                }
                 let mut state = DiffState::new(printer, hash_a, hash_b, options);
                 header(&mut state)?;
                 if state.diff {
@@ -361,21 +371,21 @@ impl<'a> DiffState<'a> {
         }
     }
 
-    fn prefix_less<F>(&mut self, mut f: F) -> Result<()>
+    fn prefix_delete<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.a().prefix(DiffPrefix::Less, &mut f)?;
+        self.a().prefix(DiffPrefix::Delete, &mut f)?;
         // Assume something is always written.
         self.diff = true;
         Ok(())
     }
 
-    fn prefix_greater<F>(&mut self, mut f: F) -> Result<()>
+    fn prefix_add<F>(&mut self, mut f: F) -> Result<()>
     where
         F: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.b().prefix(DiffPrefix::Greater, &mut f)?;
+        self.b().prefix(DiffPrefix::Add, &mut f)?;
         // Assume something is always written.
         self.diff = true;
         Ok(())
@@ -393,8 +403,8 @@ impl<'a> DiffState<'a> {
         let mut buf = Vec::new();
         self.printer.buffer(&mut buf, &mut |printer| {
             let mut state = DiffState::new(printer, hash_a, hash_b, options);
-            state.a().prefix(DiffPrefix::Less, &mut |state| f(state, arg_a))?;
-            state.b().prefix(DiffPrefix::Greater, &mut |state| f(state, arg_b))?;
+            state.a().prefix(DiffPrefix::Delete, &mut |state| f(state, arg_a))?;
+            state.b().prefix(DiffPrefix::Add, &mut |state| f(state, arg_b))?;
             Ok(())
         })?;
         if !buf.is_empty() {
@@ -409,7 +419,9 @@ impl<'a> DiffState<'a> {
     }
 
     pub fn label(&mut self, label: &str) -> Result<()> {
-        self.printer.prefix(DiffPrefix::Equal);
+        if self.printer.get_prefix() != DiffPrefix::Modify {
+            self.printer.prefix(DiffPrefix::Equal);
+        }
         self.printer.line(label, &[])
     }
 
@@ -432,15 +444,17 @@ impl<'a> DiffState<'a> {
 
         if a == b {
             if !a.is_empty() {
-                self.printer.prefix(DiffPrefix::Equal);
+                if self.printer.get_prefix() != DiffPrefix::Modify {
+                    self.printer.prefix(DiffPrefix::Equal);
+                }
                 self.printer.line(label, &*a)?;
             }
         } else {
             if a.is_empty() {
-                self.printer.prefix(DiffPrefix::Greater);
+                self.printer.prefix(DiffPrefix::Add);
                 self.printer.line(label, &*b)?;
             } else if b.is_empty() {
-                self.printer.prefix(DiffPrefix::Less);
+                self.printer.prefix(DiffPrefix::Delete);
                 self.printer.line(label, &*a)?;
             } else {
                 self.printer.line_diff(label, &*a, &*b)?;
@@ -486,10 +500,10 @@ impl<'a> DiffState<'a> {
                     }
                 }
                 Direction::Horizontal => if let Some(a) = iter_a.next() {
-                    self.prefix_less(|state| a.print(state, arg_a))?;
+                    self.prefix_delete(|state| a.print(state, arg_a))?;
                 },
                 Direction::Vertical => if let Some(b) = iter_b.next() {
-                    self.prefix_greater(|state| b.print(state, arg_b))?;
+                    self.prefix_add(|state| b.print(state, arg_b))?;
                 },
             }
         }
@@ -513,10 +527,10 @@ impl<'a> DiffState<'a> {
                     T::diff(self, arg_a, a, arg_b, b)?;
                 }
                 MergeResult::Left(a) => {
-                    self.prefix_less(|state| a.print(state, arg_a))?;
+                    self.prefix_delete(|state| a.print(state, arg_a))?;
                 }
                 MergeResult::Right(b) => {
-                    self.prefix_greater(|state| b.print(state, arg_b))?;
+                    self.prefix_add(|state| b.print(state, arg_b))?;
                 }
             }
         }
@@ -556,10 +570,10 @@ impl<'a> DiffState<'a> {
                     self.print_if_diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
                 }
                 MergeResult::Left(ref a) => if !self.options.ignore_deleted {
-                    self.prefix_less(|state| a.print(state, arg_a))?;
+                    self.prefix_delete(|state| a.print(state, arg_a))?;
                 },
                 MergeResult::Right(ref b) => if !self.options.ignore_added {
-                    self.prefix_greater(|state| b.print(state, arg_b))?;
+                    self.prefix_add(|state| b.print(state, arg_b))?;
                 },
             }
         }
