@@ -126,13 +126,13 @@ impl<'input> Unit<'input> {
             if options.print_unit_address {
                 let ranges = self.ranges(state.hash());
                 if ranges.list().len() > 1 {
-                    state.field_indent("addresses", |state| state.list(&(), ranges.list()))?;
+                    state.field_collapsed("addresses", |state| state.list(&(), ranges.list()))?;
                 } else {
                     let range = ranges.list().first().cloned();
                     state.field("address", |w, _state| self.print_address(w, range))?;
                 }
 
-                state.field_indent("unknown addresses", |state| {
+                state.field_collapsed("unknown addresses", |state| {
                     state.list(&(), unknown_ranges.list())
                 })?;
             }
@@ -177,18 +177,18 @@ impl<'input> Unit<'input> {
         };
 
         if options.html {
-            state.indent(print_header, |state| {
+            state.collapsed(print_header, |state| {
                 if options.category_unit {
                     print_unit(state)?;
                 }
-                state.field_indent("types", &print_types)?;
-                state.field_indent("functions", &print_functions)?;
-                state.field_indent("variables", &print_variables)?;
+                state.field_collapsed("types", &print_types)?;
+                state.field_collapsed("functions", &print_functions)?;
+                state.field_collapsed("variables", &print_variables)?;
                 Ok(())
             })?;
         } else {
             if options.category_unit {
-                state.indent(print_header, print_unit)?;
+                state.collapsed(print_header, print_unit)?;
             }
             print_types(state)?;
             print_functions(state)?;
@@ -215,7 +215,7 @@ impl<'input> Unit<'input> {
                 let ranges_a = unit_a.ranges(state.hash_a());
                 let ranges_b = unit_b.ranges(state.hash_b());
                 if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
-                    state.field_indent("addresses", |state| {
+                    state.field_collapsed("addresses", |state| {
                         state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
                     })?;
                 } else {
@@ -229,7 +229,7 @@ impl<'input> Unit<'input> {
                     )?;
                 }
 
-                state.field_indent("unknown addresses", |state| {
+                state.field_collapsed("unknown addresses", |state| {
                     state.ord_list(&(), unknown_ranges_a.list(), &(), unknown_ranges_b.list())
                 })?;
             }
@@ -288,18 +288,18 @@ impl<'input> Unit<'input> {
         };
 
         if options.html {
-            state.indent(diff_header, |state| {
+            state.collapsed(diff_header, |state| {
                 if options.category_unit {
                     diff_unit(state)?;
                 }
-                state.field_indent("types", &diff_types)?;
-                state.field_indent("functions", &diff_functions)?;
-                state.field_indent("variables", &diff_variables)?;
+                state.field_collapsed("types", &diff_types)?;
+                state.field_collapsed("functions", &diff_functions)?;
+                state.field_collapsed("variables", &diff_variables)?;
                 Ok(())
             })?;
         } else {
             if options.category_unit {
-                state.indent(diff_header, diff_unit)?;
+                state.collapsed(diff_header, diff_unit)?;
             }
             diff_types(state)?;
             diff_functions(state)?;

@@ -62,7 +62,7 @@ impl<'input> Variable<'input> {
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(|w, state| self.print_name(w, state)),
             |state| {
                 state.field("linkage name", |w, _state| self.print_linkage_name(w))?;
@@ -87,7 +87,7 @@ impl<'input> Variable<'input> {
         unit_b: &Unit,
         b: &Variable,
     ) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(a, b, |w, state, x| x.print_name(w, state)),
             |state| {
                 state.field("linkage name", a, b, |w, _state, x| x.print_linkage_name(w))?;

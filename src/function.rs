@@ -85,7 +85,7 @@ impl<'input> Function<'input> {
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(|w, _state| self.print_name(w)),
             |state| {
                 state.field("linkage name", |w, _state| self.print_linkage_name(w))?;
@@ -97,21 +97,21 @@ impl<'input> Function<'input> {
                 state.field("size", |w, _state| self.print_size(w))?;
                 state.field("inline", |w, _state| self.print_inline(w))?;
                 state.field("declaration", |w, _state| self.print_declaration(w))?;
-                state.field_indent("return type", |state| {
+                state.field_expanded("return type", |state| {
                     state.line(|w, state| self.print_return_type(w, state))
                 })?;
-                state.field_indent("parameters", |state| state.list(unit, &self.parameters))?;
+                state.field_expanded("parameters", |state| state.list(unit, &self.parameters))?;
                 if state.options().print_function_variables {
-                    state.field_indent("variables", |state| state.list(unit, &self.variables))?;
+                    state.field_collapsed("variables", |state| state.list(unit, &self.variables))?;
                 }
                 state.inline(|state| {
-                    state.field_indent("inlined functions", |state| {
+                    state.field_collapsed("inlined functions", |state| {
                         state.list(unit, &self.inlined_functions)
                     })
                 })?;
                 if state.options().print_function_calls {
                     let calls = self.calls(state.hash().file);
-                    state.field_indent("calls", |state| state.list(&(), &calls))?;
+                    state.field_collapsed("calls", |state| state.list(&(), &calls))?;
                 }
                 Ok(())
             },
@@ -127,7 +127,7 @@ impl<'input> Function<'input> {
         unit_b: &Unit,
         b: &Function,
     ) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 state.field("linkage name", a, b, |w, _state, x| x.print_linkage_name(w))?;
@@ -153,10 +153,10 @@ impl<'input> Function<'input> {
                     state.field("inline", a, b, |w, _state, x| x.print_inline(w))
                 })?;
                 state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))?;
-                state.field_indent("return type", |state| {
+                state.field_expanded("return type", |state| {
                     state.line(a, b, |w, state, x| x.print_return_type(w, state))
                 })?;
-                state.field_indent("parameters", |state| {
+                state.field_expanded("parameters", |state| {
                     state.list(unit_a, &a.parameters, unit_b, &b.parameters)
                 })?;
                 if state.options().print_function_variables {
@@ -168,19 +168,21 @@ impl<'input> Function<'input> {
                     variables_b.sort_by(|x, y| {
                         LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
                     });
-                    state.field_indent("variables", |state| {
+                    state.field_collapsed("variables", |state| {
                         state.list(unit_a, &variables_a, unit_b, &variables_b)
                     })?;
                 }
                 state.inline(|state| {
-                    state.field_indent("inlined functions", |state| {
+                    state.field_collapsed("inlined functions", |state| {
                         state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
                     })
                 })?;
                 if state.options().print_function_calls {
                     let calls_a = a.calls(state.hash_a().file);
                     let calls_b = b.calls(state.hash_b().file);
-                    state.field_indent("calls", |state| state.list(&(), &calls_a, &(), &calls_b))?;
+                    state.field_collapsed("calls", |state| {
+                        state.list(&(), &calls_a, &(), &calls_b)
+                    })?;
                 }
                 Ok(())
             },
@@ -488,7 +490,7 @@ impl<'input> Print for InlinedFunction<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(|w, state| self.print_size_and_decl(w, state, unit)),
             |state| {
                 // TODO: print parameters and variables?
@@ -503,7 +505,7 @@ impl<'input> Print for InlinedFunction<'input> {
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| {
                 state.line((unit_a, a), (unit_b, b), |w, state, (unit, x)| {
                     x.print_size_and_decl(w, state, unit)

@@ -94,6 +94,7 @@ impl<'w> Printer for TextPrinter<'w> {
 
     fn indent_header(
         &mut self,
+        _collapsed: bool,
         body: &[u8],
         header: &mut FnMut(&mut Printer) -> Result<()>,
     ) -> Result<()> {

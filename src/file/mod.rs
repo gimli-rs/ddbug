@@ -329,7 +329,7 @@ impl<'input> File<'input> {
         let mut state = PrintState::new(printer, &hash, options);
 
         if options.category_file {
-            state.indent(
+            state.collapsed(
                 |state| {
                     state.line(|w, _hash| {
                         write!(w, "file {}", self.path)?;
@@ -343,13 +343,13 @@ impl<'input> File<'input> {
                     let var_size = self.variable_size(state.hash());
                     let other_size = size - fn_size - var_size;
                     if options.print_file_address {
-                        state.field_indent("addresses", |state| state.list(&(), ranges.list()))?;
+                        state.field_collapsed("addresses", |state| state.list(&(), ranges.list()))?;
                     }
                     state.field_u64("size", size)?;
                     state.field_u64("fn size", fn_size)?;
                     state.field_u64("var size", var_size)?;
                     state.field_u64("other size", other_size)?;
-                    state.field_indent("sections", |state| state.list(&(), &*self.sections))?;
+                    state.field_collapsed("sections", |state| state.list(&(), &*self.sections))?;
                     Ok(())
                 },
             )?;
@@ -370,7 +370,7 @@ impl<'input> File<'input> {
         let mut state = DiffState::new(printer, &hash_a, &hash_b, options);
 
         if options.category_file {
-            state.indent(
+            state.collapsed(
                 |state| {
                     state.line(file_a, file_b, |w, _hash, x| {
                         write!(w, "file {}", x.path)?;
@@ -389,7 +389,7 @@ impl<'input> File<'input> {
                     let other_size_a = size_a - fn_size_a - var_size_a;
                     let other_size_b = size_b - fn_size_b - var_size_b;
                     if options.print_file_address {
-                        state.field_indent("addresses", |state| {
+                        state.field_collapsed("addresses", |state| {
                             state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
                         })?;
                     }
@@ -398,7 +398,7 @@ impl<'input> File<'input> {
                     state.field_u64("var size", var_size_a, var_size_b)?;
                     state.field_u64("other size", other_size_a, other_size_b)?;
                     // TODO: sort sections
-                    state.field_indent("sections", |state| {
+                    state.field_collapsed("sections", |state| {
                         state.list(&(), &*file_a.sections, &(), &*file_b.sections)
                     })?;
                     Ok(())
@@ -503,7 +503,7 @@ impl<'input> Print for Section<'input> {
     type Arg = ();
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(|w, _state| self.print_name(w)),
             |state| {
                 state.field("address", |w, _state| self.print_address(w))?;
@@ -513,7 +513,7 @@ impl<'input> Print for Section<'input> {
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 state.field("address", a, b, |w, _state, x| x.print_address(w))?;
@@ -583,7 +583,7 @@ impl<'input> Print for Symbol<'input> {
     type Arg = ();
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(|w, _state| self.print_name(w)),
             |state| {
                 state.field("address", |w, _state| self.print_address(w))?;
@@ -593,7 +593,7 @@ impl<'input> Print for Symbol<'input> {
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.indent(
+        state.collapsed(
             |state| state.line(a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 state.field("address", a, b, |w, _state, x| x.print_address(w))?;

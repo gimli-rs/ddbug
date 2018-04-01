@@ -14,7 +14,6 @@ ul.collapsible {
     list-style: none;
 }
 ul.collapsible ul {
-    display: none;
     list-style: none;
 }
 ul.collapsible li {
@@ -64,10 +63,10 @@ window.onload = function () {
                     li = li.parentNode;
                 }
                 if (li === node) {
-                    if (ul.style.display == "block") {
-                        ul.style.display = "none";
-                    } else {
+                    if (ul.style.display == "none") {
                         ul.style.display = "block";
+                    } else {
+                        ul.style.display = "none";
                     }
                 }
             });
@@ -222,6 +221,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
 
     fn indent_header(
         &mut self,
+        collapsed: bool,
         body: &[u8],
         header: &mut FnMut(&mut Printer) -> Result<()>,
     ) -> Result<()> {
@@ -229,7 +229,11 @@ impl<'w> Printer for HtmlPrinter<'w> {
         write!(self.w, "<li>")?;
         self.line_started = true;
         header(self)?;
-        writeln!(self.w, "<ul>")?;
+        if collapsed {
+            writeln!(self.w, "<ul style=\"display:none\">")?;
+        } else {
+            writeln!(self.w, "<ul>")?;
+        }
         self.write_buf(body)?;
         writeln!(self.w, "</ul></li>")?;
         self.line_started = false;

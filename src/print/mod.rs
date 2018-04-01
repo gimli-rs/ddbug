@@ -42,6 +42,7 @@ pub trait Printer {
     ) -> Result<()>;
     fn indent_header(
         &mut self,
+        collapsed: bool,
         body: &[u8],
         header: &mut FnMut(&mut Printer) -> Result<()>,
     ) -> Result<()>;
@@ -86,6 +87,7 @@ impl<'a> PrintState<'a> {
     fn indent_impl<FHeader, FBody>(
         &mut self,
         optional: bool,
+        collapsed: bool,
         mut header: FHeader,
         mut body: FBody,
     ) -> Result<()>
@@ -102,7 +104,7 @@ impl<'a> PrintState<'a> {
             Ok(())
         })?;
         if !body_buf.is_empty() {
-            self.printer.indent_header(&*body_buf, &mut |printer| {
+            self.printer.indent_header(collapsed, &*body_buf, &mut |printer| {
                 let mut state = PrintState::new(printer, hash, options);
                 header(&mut state)?;
                 Ok(())
@@ -113,19 +115,34 @@ impl<'a> PrintState<'a> {
         Ok(())
     }
 
-    pub fn indent<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
+    pub fn collapsed<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
     where
         FHeader: FnMut(&mut PrintState) -> Result<()>,
         FBody: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.indent_impl(false, header, body)
+        self.indent_impl(false, true, header, body)
     }
 
-    pub fn field_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    pub fn expanded<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
+    where
+        FHeader: FnMut(&mut PrintState) -> Result<()>,
+        FBody: FnMut(&mut PrintState) -> Result<()>,
+    {
+        self.indent_impl(false, false, header, body)
+    }
+
+    pub fn field_collapsed<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
     where
         FBody: FnMut(&mut PrintState) -> Result<()>,
     {
-        self.indent_impl(true, |state| state.label(label), body)
+        self.indent_impl(true, true, |state| state.label(label), body)
+    }
+
+    pub fn field_expanded<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    where
+        FBody: FnMut(&mut PrintState) -> Result<()>,
+    {
+        self.indent_impl(true, false, |state| state.label(label), body)
     }
 
     pub fn inline<F>(&mut self, mut f: F) -> Result<()>
@@ -297,6 +314,7 @@ impl<'a> DiffState<'a> {
     fn indent_impl<FHeader, FBody>(
         &mut self,
         optional: bool,
+        collapsed: bool,
         mut header: FHeader,
         mut body: FBody,
     ) -> Result<()>
@@ -321,7 +339,7 @@ impl<'a> DiffState<'a> {
         })?;
 
         if !body_buf.is_empty() {
-            self.printer.indent_header(&*body_buf, &mut |printer| {
+            self.printer.indent_header(collapsed, &*body_buf, &mut |printer| {
                 if diff {
                     printer.prefix(DiffPrefix::Modify);
                 } else {
@@ -343,19 +361,34 @@ impl<'a> DiffState<'a> {
         Ok(())
     }
 
-    pub fn indent<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
+    pub fn collapsed<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
     where
         FHeader: FnMut(&mut DiffState) -> Result<()>,
         FBody: FnMut(&mut DiffState) -> Result<()>,
     {
-        self.indent_impl(false, header, body)
+        self.indent_impl(false, true, header, body)
     }
 
-    pub fn field_indent<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    pub fn expanded<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
+    where
+        FHeader: FnMut(&mut DiffState) -> Result<()>,
+        FBody: FnMut(&mut DiffState) -> Result<()>,
+    {
+        self.indent_impl(false, false, header, body)
+    }
+
+    pub fn field_collapsed<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
     where
         FBody: FnMut(&mut DiffState) -> Result<()>,
     {
-        self.indent_impl(true, |state| state.label(label), body)
+        self.indent_impl(true, true, |state| state.label(label), body)
+    }
+
+    pub fn field_expanded<FBody>(&mut self, label: &str, body: FBody) -> Result<()>
+    where
+        FBody: FnMut(&mut DiffState) -> Result<()>,
+    {
+        self.indent_impl(true, false, |state| state.label(label), body)
     }
 
     pub fn inline<F>(&mut self, mut f: F) -> Result<()>
