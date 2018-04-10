@@ -690,13 +690,13 @@ pub(crate) trait SortList: Print {
     ) -> cmp::Ordering;
 }
 
-enum MergeResult<T> {
+enum MergeResult<T, U> {
     Left(T),
-    Right(T),
-    Both(T, T),
+    Right(U),
+    Both(T, U),
 }
 
-impl<T> MergeResult<T> {
+impl<T> MergeResult<T, T> {
     fn cmp<Arg, F>(x: &Self, y: &Self, arg_left: Arg, arg_right: Arg, f: F) -> cmp::Ordering
     where
         Arg: Copy,
@@ -722,24 +722,26 @@ impl<T> MergeResult<T> {
     }
 }
 
-struct MergeIterator<T, I, C>
+struct MergeIterator<T, U, L, R, C>
 where
-    I: Iterator<Item = T>,
-    C: Fn(&T, &T) -> cmp::Ordering,
+    L: Iterator<Item = T>,
+    R: Iterator<Item = U>,
+    C: Fn(&T, &U) -> cmp::Ordering,
 {
-    iter_left: I,
-    iter_right: I,
+    iter_left: L,
+    iter_right: R,
     item_left: Option<T>,
-    item_right: Option<T>,
+    item_right: Option<U>,
     item_cmp: C,
 }
 
-impl<T, I, C> MergeIterator<T, I, C>
+impl<T, U, L, R, C> MergeIterator<T, U, L, R, C>
 where
-    I: Iterator<Item = T>,
-    C: Fn(&T, &T) -> cmp::Ordering,
+    L: Iterator<Item = T>,
+    R: Iterator<Item = U>,
+    C: Fn(&T, &U) -> cmp::Ordering,
 {
-    fn new(mut iter_left: I, mut iter_right: I, item_cmp: C) -> Self {
+    fn new(mut iter_left: L, mut iter_right: R, item_cmp: C) -> Self {
         let item_left = iter_left.next();
         let item_right = iter_right.next();
         MergeIterator {
@@ -752,14 +754,15 @@ where
     }
 }
 
-impl<T, I, C> Iterator for MergeIterator<T, I, C>
+impl<T, U, L, R, C> Iterator for MergeIterator<T, U, L, R, C>
 where
-    I: Iterator<Item = T>,
-    C: Fn(&T, &T) -> cmp::Ordering,
+    L: Iterator<Item = T>,
+    R: Iterator<Item = U>,
+    C: Fn(&T, &U) -> cmp::Ordering,
 {
-    type Item = MergeResult<T>;
+    type Item = MergeResult<T, U>;
 
-    fn next(&mut self) -> Option<MergeResult<T>> {
+    fn next(&mut self) -> Option<MergeResult<T, U>> {
         match (self.item_left.take(), self.item_right.take()) {
             (Some(left), Some(right)) => match (self.item_cmp)(&left, &right) {
                 cmp::Ordering::Equal => {
