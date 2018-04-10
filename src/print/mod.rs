@@ -554,7 +554,7 @@ impl<'a> DiffState<'a> {
         arg_b: &T::Arg,
         list_b: &[T],
     ) -> Result<()> {
-        for item in MergeIterator::new(list_a.iter(), list_b.iter(), T::cmp) {
+        for item in MergeIterator::new(list_a.iter(), list_b.iter(), <&T>::cmp) {
             match item {
                 MergeResult::Both(a, b) => {
                     T::diff(self, arg_a, a, arg_b, b)?;
@@ -724,9 +724,8 @@ impl<T> MergeResult<T> {
 
 struct MergeIterator<T, I, C>
 where
-    T: Copy,
     I: Iterator<Item = T>,
-    C: Fn(T, T) -> cmp::Ordering,
+    C: Fn(&T, &T) -> cmp::Ordering,
 {
     iter_left: I,
     iter_right: I,
@@ -737,9 +736,8 @@ where
 
 impl<T, I, C> MergeIterator<T, I, C>
 where
-    T: Copy,
     I: Iterator<Item = T>,
-    C: Fn(T, T) -> cmp::Ordering,
+    C: Fn(&T, &T) -> cmp::Ordering,
 {
     fn new(mut iter_left: I, mut iter_right: I, item_cmp: C) -> Self {
         let item_left = iter_left.next();
@@ -756,15 +754,14 @@ where
 
 impl<T, I, C> Iterator for MergeIterator<T, I, C>
 where
-    T: Copy,
     I: Iterator<Item = T>,
-    C: Fn(T, T) -> cmp::Ordering,
+    C: Fn(&T, &T) -> cmp::Ordering,
 {
     type Item = MergeResult<T>;
 
     fn next(&mut self) -> Option<MergeResult<T>> {
-        match (self.item_left, self.item_right) {
-            (Some(left), Some(right)) => match (self.item_cmp)(left, right) {
+        match (self.item_left.take(), self.item_right.take()) {
+            (Some(left), Some(right)) => match (self.item_cmp)(&left, &right) {
                 cmp::Ordering::Equal => {
                     self.item_left = self.iter_left.next();
                     self.item_right = self.iter_right.next();
@@ -772,9 +769,11 @@ where
                 }
                 cmp::Ordering::Less => {
                     self.item_left = self.iter_left.next();
+                    self.item_right = Some(right);
                     Some(MergeResult::Left(left))
                 }
                 cmp::Ordering::Greater => {
+                    self.item_left = Some(left);
                     self.item_right = self.iter_right.next();
                     Some(MergeResult::Right(right))
                 }
