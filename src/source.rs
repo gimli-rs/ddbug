@@ -1,6 +1,5 @@
-use std::io::Write;
-
 use Result;
+use print::ValuePrinter;
 use unit::Unit;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -40,7 +39,7 @@ impl<'input> Source<'input> {
         })
     }
 
-    pub fn print(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    pub fn print(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if let Some(path) = self.path(unit) {
             write!(w, "{}", String::from_utf8_lossy(&*path))?;
             if self.line != 0 {

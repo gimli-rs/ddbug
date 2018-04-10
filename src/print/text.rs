@@ -1,7 +1,8 @@
+use std;
 use std::io::Write;
 
 use {Options, Result};
-use super::{DiffPrefix, Printer};
+use super::{DiffPrefix, Printer, ValuePrinter};
 
 pub struct TextPrinter<'w> {
     w: &'w mut Write,
@@ -22,6 +23,17 @@ impl<'w> TextPrinter<'w> {
 }
 
 impl<'w> Printer for TextPrinter<'w> {
+    fn value(
+        &mut self,
+        buf: &mut Vec<u8>,
+        f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
+    ) -> Result<()> {
+        let mut p = TextValuePrinter {
+            w: buf,
+        };
+        f(&mut p)
+    }
+
     /// Calls `f` to write to a temporary buffer.
     fn buffer(
         &mut self,
@@ -124,3 +136,19 @@ impl<'w> Printer for TextPrinter<'w> {
         self.inline_depth += 1;
     }
 }
+
+struct TextValuePrinter<'w> {
+    w: &'w mut Vec<u8>,
+}
+
+impl<'w> Write for TextValuePrinter<'w> {
+    fn write(&mut self, buf: &[u8]) -> std::result::Result<usize, std::io::Error> {
+        self.w.write(buf)
+    }
+
+    fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
+        self.w.flush()
+    }
+}
+
+impl<'w> ValuePrinter for TextValuePrinter<'w> {}

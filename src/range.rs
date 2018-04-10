@@ -1,8 +1,7 @@
-use std::io::Write;
 use std::mem;
 
 use Result;
-use print::{DiffState, Print, PrintState};
+use print::{DiffState, Print, PrintState, ValuePrinter};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Range {
@@ -15,7 +14,7 @@ impl Range {
         self.end - self.begin
     }
 
-    pub fn print_address(&self, w: &mut Write) -> Result<()> {
+    pub fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.end > self.begin {
             write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
         } else {
@@ -24,7 +23,7 @@ impl Range {
         Ok(())
     }
 
-    pub fn print_address_and_size(&self, w: &mut Write) -> Result<()> {
+    pub fn print_address_and_size(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.end > self.begin {
             write!(w, "0x{:x}-0x{:x} ({})", self.begin, self.end - 1, self.end - self.begin)?;
         } else {

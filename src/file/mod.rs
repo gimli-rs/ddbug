@@ -3,7 +3,6 @@ use std::cmp;
 use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
-use std::io::Write;
 
 mod dwarf;
 mod pdb;
@@ -15,7 +14,7 @@ use panopticon;
 
 use {Options, Result};
 use function::{Function, FunctionOffset};
-use print::{DiffList, DiffState, Print, PrintState, Printer};
+use print::{DiffList, DiffState, Print, PrintState, Printer, ValuePrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
@@ -480,7 +479,7 @@ impl<'input> Section<'input> {
         })
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref segment) = self.segment {
             write!(w, "{},", String::from_utf8_lossy(&*segment))?;
         }
@@ -491,7 +490,7 @@ impl<'input> Section<'input> {
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write) -> Result<()> {
+    fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(address) = self.address() {
             address.print_address(w)?;
         }
@@ -561,7 +560,7 @@ impl<'input> Symbol<'input> {
         }
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         match self.ty {
             SymbolType::Variable => write!(w, "var ")?,
             SymbolType::Function => write!(w, "fn ")?,
@@ -573,7 +572,7 @@ impl<'input> Symbol<'input> {
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write) -> Result<()> {
+    fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
         self.address().print_address(w)?;
         Ok(())
     }

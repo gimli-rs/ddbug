@@ -22,6 +22,12 @@ pub enum DiffPrefix {
 }
 
 pub trait Printer {
+    fn value(
+        &mut self,
+        buf: &mut Vec<u8>,
+        f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
+    ) -> Result<()>;
+
     /// Calls `f` to write to a temporary buffer.
     fn buffer(
         &mut self,
@@ -53,6 +59,8 @@ pub trait Printer {
     fn inline_begin(&mut self) -> bool;
     fn inline_end(&mut self);
 }
+
+pub trait ValuePrinter: Write {}
 
 pub(crate) struct PrintState<'a> {
     // 'w lifetime needed due to invariance
@@ -177,17 +185,18 @@ impl<'a> PrintState<'a> {
 
     pub fn line<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &FileHash) -> Result<()>,
+        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
     {
         self.field("", f)
     }
 
     pub fn field<F>(&mut self, label: &str, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &FileHash) -> Result<()>,
+        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
     {
         let mut buf = Vec::new();
-        f(&mut buf, self.hash)?;
+        let hash = self.hash;
+        self.printer.value(&mut buf, &mut |printer| f(printer, hash))?;
         if !buf.is_empty() {
             self.printer.line(label, &*buf)?;
         }
@@ -460,20 +469,24 @@ impl<'a> DiffState<'a> {
 
     pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
+        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        T: Copy,
     {
         self.field("", arg_a, arg_b, f)
     }
 
     pub fn field<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut Write, &FileHash, T) -> Result<()>,
+        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        T: Copy,
     {
         let mut a = Vec::new();
-        f(&mut a, self.hash_a(), arg_a)?;
+        let hash_a = &self.hash_a;
+        self.printer.value(&mut a, &mut |printer| f(printer, hash_a, arg_a))?;
 
         let mut b = Vec::new();
-        f(&mut b, self.hash_b(), arg_b)?;
+        let hash_b = &self.hash_b;
+        self.printer.value(&mut b, &mut |printer| f(printer, hash_b, arg_b))?;
 
         if a == b {
             if !a.is_empty() {

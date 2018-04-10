@@ -1,11 +1,10 @@
 use std::cmp;
-use std::io::Write;
 use std::rc::Rc;
 
 use {Options, Result, Sort};
 use file::FileHash;
 use namespace::Namespace;
-use print::{DiffList, DiffState, Print, PrintState, SortList};
+use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use range::Range;
 use source::Source;
 use types::{Type, TypeOffset};
@@ -50,7 +49,7 @@ impl<'input> Variable<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
@@ -112,7 +111,7 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         write!(w, "var ")?;
         self.print_ref(w)?;
         write!(w, ": ")?;
@@ -120,35 +119,35 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
+    fn print_linkage_name(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
             write!(w, "{}", String::from_utf8_lossy(linkage_name))?;
         }
         Ok(())
     }
 
-    fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
+    fn print_symbol_name(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(symbol_name) = self.symbol_name {
             write!(w, "{}", String::from_utf8_lossy(symbol_name))?;
         }
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             self.source.print(w, unit)?;
         }
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write) -> Result<()> {
+    fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(address) = self.address {
             write!(w, "0x{:x}", address)?;
         }
         Ok(())
     }
 
-    fn print_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_size(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         if let Some(byte_size) = self.byte_size(hash) {
             write!(w, "{}", byte_size)?;
         } else if !self.declaration {
@@ -157,7 +156,7 @@ impl<'input> Variable<'input> {
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write) -> Result<()> {
+    fn print_declaration(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.declaration {
             write!(w, "yes")?;
         }
@@ -235,7 +234,7 @@ impl<'input> LocalVariable<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -243,14 +242,14 @@ impl<'input> LocalVariable<'input> {
         Ok(())
     }
 
-    fn print_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         self.print_ref(w)?;
         write!(w, ": ")?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
-    fn print_size_and_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_size_and_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         match self.byte_size(hash) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,

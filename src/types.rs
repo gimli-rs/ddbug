@@ -1,5 +1,4 @@
 use std::cmp;
-use std::io::Write;
 use std::rc::Rc;
 use std::marker;
 
@@ -7,7 +6,7 @@ use {Options, Result, Sort};
 use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
-use print::{DiffList, DiffState, Print, PrintState, SortList};
+use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use source::Source;
 use unit::Unit;
 
@@ -149,7 +148,7 @@ impl<'input> Type<'input> {
         }
     }
 
-    pub fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    pub fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         match self.kind {
             TypeKind::Base(ref val) => val.print_ref(w),
             TypeKind::Def(ref val) => val.print_ref(w),
@@ -165,7 +164,7 @@ impl<'input> Type<'input> {
     }
 
     pub fn print_ref_from_offset(
-        w: &mut Write,
+        w: &mut ValuePrinter,
         hash: &FileHash,
         offset: Option<TypeOffset>,
     ) -> Result<()> {
@@ -395,7 +394,7 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}", String::from_utf8_lossy(name))?;
         } else {
@@ -456,7 +455,7 @@ impl<'input> BaseType<'input> {
         self.byte_size
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon-base-type>")?,
@@ -489,7 +488,7 @@ impl<'input> TypeDef<'input> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
@@ -500,7 +499,7 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         write!(w, "type ")?;
         self.print_ref(w)?;
         write!(w, " = ")?;
@@ -508,14 +507,14 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             self.source.print(w, unit)?;
         }
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_byte_size(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         if let Some(byte_size) = self.byte_size(hash) {
             write!(w, "{}", byte_size)?;
         }
@@ -623,7 +622,7 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "struct ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -678,14 +677,14 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             self.source.print(w, unit)?;
         }
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
+    fn print_byte_size(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size {
             write!(w, "{}", size)?;
         } else if !self.declaration {
@@ -694,7 +693,7 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
+    fn print_declaration(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
         if self.declaration {
             write!(w, "yes")?;
         }
@@ -752,7 +751,7 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "union ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -807,14 +806,14 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             self.source.print(w, unit)?;
         }
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
+    fn print_byte_size(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size {
             write!(w, "{}", size)?;
         } else if !self.declaration {
@@ -823,7 +822,7 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
+    fn print_declaration(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
         if self.declaration {
             write!(w, "yes")?;
         }
@@ -909,7 +908,12 @@ impl<'input> Member<'input> {
         None
     }
 
-    fn print_name(&self, w: &mut Write, hash: &FileHash, bit_size: Option<u64>) -> Result<()> {
+    fn print_name(
+        &self,
+        w: &mut ValuePrinter,
+        hash: &FileHash,
+        bit_size: Option<u64>,
+    ) -> Result<()> {
         write!(w, "{}", format_bit(self.bit_offset))?;
         match bit_size {
             Some(bit_size) => {
@@ -930,7 +934,12 @@ impl<'input> Member<'input> {
         Ok(())
     }
 
-    fn print_padding(&self, w: &mut Write, hash: &FileHash, bit_size: Option<u64>) -> Result<()> {
+    fn print_padding(
+        &self,
+        w: &mut ValuePrinter,
+        hash: &FileHash,
+        bit_size: Option<u64>,
+    ) -> Result<()> {
         if let Some(padding) = self.padding(bit_size) {
             padding.print(w, hash)?;
         }
@@ -1017,7 +1026,7 @@ struct Padding {
 }
 
 impl Padding {
-    fn print(&self, w: &mut Write, _hash: &FileHash) -> Result<()> {
+    fn print(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
         write!(w, "{}[{}]\t<padding>", format_bit(self.bit_offset), format_bit(self.bit_size))?;
         Ok(())
     }
@@ -1047,7 +1056,7 @@ impl<'input> EnumerationType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "enum ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -1103,21 +1112,21 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             self.source.print(w, unit)?;
         }
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write) -> Result<()> {
+    fn print_declaration(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.declaration {
             write!(w, "yes")?;
         }
         Ok(())
     }
 
-    fn print_byte_size(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_byte_size(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         if let Some(size) = self.byte_size(hash) {
             write!(w, "{}", size)?;
         } else {
@@ -1145,7 +1154,7 @@ pub(crate) struct Enumerator<'input> {
 }
 
 impl<'input> Enumerator<'input> {
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -1153,7 +1162,7 @@ impl<'input> Enumerator<'input> {
         Ok(())
     }
 
-    fn print_name_value(&self, w: &mut Write) -> Result<()> {
+    fn print_name_value(&self, w: &mut ValuePrinter) -> Result<()> {
         self.print_ref(w)?;
         if let Some(value) = self.value {
             write!(w, "({})", value)?;
@@ -1232,7 +1241,7 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         write!(w, "[")?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         if let Some(count) = self.count(hash) {
@@ -1281,7 +1290,7 @@ impl<'input> FunctionType<'input> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         let mut first = true;
         write!(w, "(")?;
         for parameter in &self.parameters {
@@ -1353,7 +1362,7 @@ impl<'input> UnspecifiedType<'input> {
         options.filter_name(self.name) && options.filter_namespace(&self.namespace)
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
@@ -1404,7 +1413,7 @@ impl PointerToMemberType {
         })
     }
 
-    fn print_ref(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         Type::print_ref_from_offset(w, hash, self.containing_ty)?;
         write!(w, "::* ")?;
         Type::print_ref_from_offset(w, hash, self.ty)?;

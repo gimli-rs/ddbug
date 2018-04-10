@@ -1,9 +1,10 @@
+use std;
 use std::io::Write;
 
 use marksman_escape::Escape;
 
 use {Options, Result};
-use super::{DiffPrefix, Printer};
+use super::{DiffPrefix, Printer, ValuePrinter};
 
 const HEADER: &str = r#"<!DOCTYPE html>
 <html>
@@ -114,6 +115,17 @@ impl<'w> HtmlPrinter<'w> {
 }
 
 impl<'w> Printer for HtmlPrinter<'w> {
+    fn value(
+        &mut self,
+        buf: &mut Vec<u8>,
+        f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
+    ) -> Result<()> {
+        let mut p = HtmlValuePrinter {
+            w: buf,
+        };
+        f(&mut p)
+    }
+
     /// Calls `f` to write to a temporary buffer.
     fn buffer(
         &mut self,
@@ -169,7 +181,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
                     write!(self.w, "<span class=\"field add\">")?;
                 }
             }
-            self.w.write_all(&*escaped(buf))?;
+            self.w.write_all(buf)?;
             write!(self.w, "</span>")?;
             if !label.is_empty() {
                 write!(self.w, "</span>")?;
@@ -189,9 +201,9 @@ impl<'w> Printer for HtmlPrinter<'w> {
             write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
         }
         write!(self.w, "<span class=\"del\">")?;
-        self.w.write_all(&*escaped(a))?;
+        self.w.write_all(a)?;
         write!(self.w, "</span><br>\n<span class=\"add\">")?;
-        self.w.write_all(&*escaped(b))?;
+        self.w.write_all(b)?;
         write!(self.w, "</span>")?;
         if !label.is_empty() {
             write!(self.w, "</span>")?;
@@ -265,3 +277,20 @@ impl<'w> Printer for HtmlPrinter<'w> {
 fn escaped(bytes: &[u8]) -> Vec<u8> {
     Escape::new(bytes.iter().map(|x| *x)).collect()
 }
+
+struct HtmlValuePrinter<'w> {
+    w: &'w mut Vec<u8>,
+}
+
+impl<'w> Write for HtmlValuePrinter<'w> {
+    fn write(&mut self, buf: &[u8]) -> std::result::Result<usize, std::io::Error> {
+        self.w.write_all(&*escaped(buf))?;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::result::Result<(), std::io::Error> {
+        self.w.flush()
+    }
+}
+
+impl<'w> ValuePrinter for HtmlValuePrinter<'w> {}

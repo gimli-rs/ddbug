@@ -1,13 +1,12 @@
 use std::collections::{BTreeMap, HashSet};
 use std::cmp;
-use std::io::Write;
 
 use gimli;
 
 use {Options, Result, Sort};
 use file::FileHash;
 use function::{Function, FunctionOffset};
-use print::{DiffState, Print, PrintState, SortList};
+use print::{DiffState, Print, PrintState, SortList, ValuePrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeKind, TypeOffset};
 use variable::{Variable, VariableOffset};
@@ -102,7 +101,7 @@ impl<'input> Unit<'input> {
         inline_types
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
@@ -308,7 +307,7 @@ impl<'input> Unit<'input> {
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write, range: Option<Range>) -> Result<()> {
+    fn print_address(&self, w: &mut ValuePrinter, range: Option<Range>) -> Result<()> {
         if let Some(range) = range {
             range.print_address(w)?;
         } else if let Some(low_pc) = self.low_pc {

@@ -1,7 +1,6 @@
 use std::borrow;
 use std::cmp;
 use std::fmt::Debug;
-use std::io::Write;
 use std::rc::Rc;
 
 use amd64;
@@ -10,7 +9,7 @@ use panopticon;
 use {Options, Result, Sort};
 use file::{CodeRegion, File, FileHash};
 use namespace::Namespace;
-use print::{DiffList, DiffState, Print, PrintState, SortList};
+use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use range::Range;
 use source::Source;
 use types::{Type, TypeOffset};
@@ -76,7 +75,7 @@ impl<'input> Function<'input> {
         Vec::new()
     }
 
-    fn print_ref(&self, w: &mut Write) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
@@ -191,7 +190,7 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut Write) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "fn ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -200,56 +199,56 @@ impl<'input> Function<'input> {
         Ok(())
     }
 
-    fn print_linkage_name(&self, w: &mut Write) -> Result<()> {
+    fn print_linkage_name(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(linkage_name) = self.linkage_name {
             write!(w, "{}", String::from_utf8_lossy(linkage_name))?;
         }
         Ok(())
     }
 
-    fn print_symbol_name(&self, w: &mut Write) -> Result<()> {
+    fn print_symbol_name(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(symbol_name) = self.symbol_name {
             write!(w, "{}", String::from_utf8_lossy(symbol_name))?;
         }
         Ok(())
     }
 
-    fn print_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.source.is_some() {
             self.source.print(w, unit)?;
         }
         Ok(())
     }
 
-    fn print_address(&self, w: &mut Write) -> Result<()> {
+    fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(range) = self.address() {
             range.print_address(w)?;
         }
         Ok(())
     }
 
-    fn print_size(&self, w: &mut Write) -> Result<()> {
+    fn print_size(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(size) = self.size {
             write!(w, "{}", size)?;
         }
         Ok(())
     }
 
-    fn print_inline(&self, w: &mut Write) -> Result<()> {
+    fn print_inline(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.inline {
             write!(w, "yes")?;
         }
         Ok(())
     }
 
-    fn print_declaration(&self, w: &mut Write) -> Result<()> {
+    fn print_declaration(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.declaration {
             write!(w, "yes")?;
         }
         Ok(())
     }
 
-    fn print_return_type(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_return_type(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         if self.return_type.is_some() {
             match self.return_type(hash).and_then(|t| t.byte_size(hash)) {
                 Some(byte_size) => write!(w, "[{}]", byte_size)?,
@@ -363,7 +362,7 @@ impl<'input> Parameter<'input> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
-    pub fn print_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    pub fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         if let Some(name) = self.name {
             write!(w, "{}: ", String::from_utf8_lossy(name))?;
         }
@@ -374,7 +373,7 @@ impl<'input> Parameter<'input> {
         Ok(())
     }
 
-    fn print_size_and_decl(&self, w: &mut Write, hash: &FileHash) -> Result<()> {
+    fn print_size_and_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         match self.byte_size(hash) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
@@ -465,7 +464,12 @@ pub(crate) struct InlinedFunction<'input> {
 }
 
 impl<'input> InlinedFunction<'input> {
-    fn print_size_and_decl(&self, w: &mut Write, _hash: &FileHash, unit: &Unit) -> Result<()> {
+    fn print_size_and_decl(
+        &self,
+        w: &mut ValuePrinter,
+        _hash: &FileHash,
+        unit: &Unit,
+    ) -> Result<()> {
         match self.size {
             Some(size) => write!(w, "[{}]", size)?,
             None => write!(w, "[??]")?,
@@ -478,7 +482,7 @@ impl<'input> InlinedFunction<'input> {
         Ok(())
     }
 
-    fn print_call_source(&self, w: &mut Write, unit: &Unit) -> Result<()> {
+    fn print_call_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if self.call_source.is_some() {
             self.call_source.print(w, unit)?;
         }
@@ -643,7 +647,7 @@ struct Call {
 }
 
 impl Call {
-    fn print(&self, w: &mut Write, hash: &FileHash, options: &Options) -> Result<()> {
+    fn print(&self, w: &mut ValuePrinter, hash: &FileHash, options: &Options) -> Result<()> {
         if !options.ignore_function_address {
             // FIXME: it would be nice to display this in a way that doesn't clutter the output
             // when diffing

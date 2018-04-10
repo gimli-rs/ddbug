@@ -1,8 +1,8 @@
 use std::cmp;
-use std::io::Write;
 use std::rc::Rc;
 
 use Result;
+use print::ValuePrinter;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum NamespaceKind {
@@ -59,7 +59,7 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    pub fn print(&self, w: &mut Write) -> Result<()> {
+    pub fn print(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref parent) = self.parent {
             parent.print(w)?;
         }
