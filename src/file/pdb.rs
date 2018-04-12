@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::io;
 use std::rc::Rc;
@@ -63,6 +64,7 @@ pub(crate) fn parse(
                 unit.types.insert(
                     TypeOffset(index),
                     Type {
+                        id: Cell::new(0),
                         offset: TypeOffset(index),
                         kind: TypeKind::Modifier(TypeModifier {
                             kind: TypeModifierKind::Pointer,
@@ -85,6 +87,7 @@ pub(crate) fn parse(
                 unit.types.insert(
                     TypeOffset(index),
                     Type {
+                        id: Cell::new(0),
                         offset: TypeOffset(index),
                         kind: TypeKind::Modifier(TypeModifier {
                             kind,
@@ -134,6 +137,7 @@ pub(crate) fn parse(
                 unit.functions.insert(
                     FunctionOffset(symbol_index),
                     Function {
+                        id: Cell::new(0),
                         namespace: namespace.clone(),
                         name: Some(symbol.name()?.as_bytes()),
                         symbol_name: None,
@@ -207,6 +211,7 @@ fn add_primitive_type<'input>(
     types.insert(
         TypeOffset(index),
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Base(BaseType {
                 name: Some(name),
@@ -218,6 +223,7 @@ fn add_primitive_type<'input>(
     types.insert(
         TypeOffset(0x400 + index),
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(0x400 + index),
             kind: TypeKind::Modifier(TypeModifier {
                 kind: TypeModifierKind::Pointer,
@@ -232,6 +238,7 @@ fn add_primitive_type<'input>(
     types.insert(
         TypeOffset(0x600 + index),
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(0x600 + index),
             kind: TypeKind::Modifier(TypeModifier {
                 kind: TypeModifierKind::Pointer,
@@ -274,6 +281,7 @@ fn parse_class<'input>(
     unit.types.insert(
         TypeOffset(index),
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Struct(StructType {
                 namespace: namespace.clone(),
@@ -317,6 +325,7 @@ fn parse_union<'input>(
     unit.types.insert(
         TypeOffset(index),
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Union(UnionType {
                 namespace: namespace.clone(),
@@ -351,6 +360,7 @@ fn parse_enumeration<'input>(
     unit.types.insert(
         TypeOffset(index),
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Enumeration(EnumerationType {
                 namespace: namespace.clone(),
@@ -399,6 +409,7 @@ fn parse_procedure<'input>(
         TypeOffset(index),
         // TODO: attributes
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Function(FunctionType {
                 parameters,
@@ -454,6 +465,7 @@ fn parse_member_function<'input>(
         TypeOffset(index),
         // TODO: class_type, attributes, this_adjustment
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Function(FunctionType {
                 parameters,
@@ -476,6 +488,7 @@ fn parse_array<'input>(unit: &mut Unit<'input>, index: usize, data: &pdb::ArrayT
         TypeOffset(index),
         // TODO: indexing_type, stride
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(index),
             kind: TypeKind::Array(ArrayType {
                 ty: element_type,

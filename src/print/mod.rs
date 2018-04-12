@@ -38,8 +38,8 @@ pub trait Printer {
 
     fn line_break(&mut self) -> Result<()>;
 
-    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()>;
-    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()>;
+    fn line(&mut self, id: usize, label: &str, buf: &[u8]) -> Result<()>;
+    fn line_diff(&mut self, id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()>;
 
     fn indent_body(
         &mut self,
@@ -60,7 +60,9 @@ pub trait Printer {
     fn inline_end(&mut self);
 }
 
-pub trait ValuePrinter: Write {}
+pub trait ValuePrinter: Write {
+    fn link(&mut self, id: usize, f: &mut FnMut(&mut ValuePrinter) -> Result<()>) -> Result<()>;
+}
 
 pub(crate) struct PrintState<'a> {
     // 'w lifetime needed due to invariance
@@ -180,17 +182,10 @@ impl<'a> PrintState<'a> {
     }
 
     pub fn label(&mut self, label: &str) -> Result<()> {
-        self.printer.line(label, &[])
+        self.printer.line(0, label, &[])
     }
 
-    pub fn line<F>(&mut self, f: F) -> Result<()>
-    where
-        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
-    {
-        self.field("", f)
-    }
-
-    pub fn field<F>(&mut self, label: &str, mut f: F) -> Result<()>
+    fn line_impl<F>(&mut self, id: usize, label: &str, mut f: F) -> Result<()>
     where
         F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
     {
@@ -198,9 +193,30 @@ impl<'a> PrintState<'a> {
         let hash = self.hash;
         self.printer.value(&mut buf, &mut |printer| f(printer, hash))?;
         if !buf.is_empty() {
-            self.printer.line(label, &*buf)?;
+            self.printer.line(id, label, &*buf)?;
         }
         Ok(())
+    }
+
+    pub fn line<F>(&mut self, f: F) -> Result<()>
+    where
+        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+    {
+        self.line_impl(0, "", f)
+    }
+
+    pub fn id<F>(&mut self, id: usize, f: F) -> Result<()>
+    where
+        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+    {
+        self.line_impl(id, "", f)
+    }
+
+    pub fn field<F>(&mut self, label: &str, f: F) -> Result<()>
+    where
+        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+    {
+        self.line_impl(0, label, f)
     }
 
     pub fn field_u64(&mut self, label: &str, arg: u64) -> Result<()> {
@@ -464,28 +480,27 @@ impl<'a> DiffState<'a> {
         if self.printer.get_prefix() != DiffPrefix::Modify {
             self.printer.prefix(DiffPrefix::Equal);
         }
-        self.printer.line(label, &[])
+        self.printer.line(0, label, &[])
     }
 
-    pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
-    where
-        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
-        T: Copy,
-    {
-        self.field("", arg_a, arg_b, f)
-    }
-
-    pub fn field<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, mut f: F) -> Result<()>
+    fn line_impl<F, T>(
+        &mut self,
+        id: usize,
+        label: &str,
+        arg_a: T,
+        arg_b: T,
+        mut f: F,
+    ) -> Result<()>
     where
         F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
         let mut a = Vec::new();
-        let hash_a = &self.hash_a;
+        let hash_a = self.hash_a;
         self.printer.value(&mut a, &mut |printer| f(printer, hash_a, arg_a))?;
 
         let mut b = Vec::new();
-        let hash_b = &self.hash_b;
+        let hash_b = self.hash_b;
         self.printer.value(&mut b, &mut |printer| f(printer, hash_b, arg_b))?;
 
         if a == b {
@@ -493,21 +508,45 @@ impl<'a> DiffState<'a> {
                 if self.printer.get_prefix() != DiffPrefix::Modify {
                     self.printer.prefix(DiffPrefix::Equal);
                 }
-                self.printer.line(label, &*a)?;
+                self.printer.line(id, label, &*a)?;
             }
         } else {
             if a.is_empty() {
                 self.printer.prefix(DiffPrefix::Add);
-                self.printer.line(label, &*b)?;
+                self.printer.line(id, label, &*b)?;
             } else if b.is_empty() {
                 self.printer.prefix(DiffPrefix::Delete);
-                self.printer.line(label, &*a)?;
+                self.printer.line(id, label, &*a)?;
             } else {
-                self.printer.line_diff(label, &*a, &*b)?;
+                self.printer.line_diff(id, label, &*a, &*b)?;
             }
             self.diff = true;
         }
         Ok(())
+    }
+
+    pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
+    where
+        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        T: Copy,
+    {
+        self.line_impl(0, "", arg_a, arg_b, f)
+    }
+
+    pub fn id<F, T>(&mut self, id: usize, arg_a: T, arg_b: T, f: F) -> Result<()>
+    where
+        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        T: Copy,
+    {
+        self.line_impl(id, "", arg_a, arg_b, f)
+    }
+
+    pub fn field<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, f: F) -> Result<()>
+    where
+        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        T: Copy,
+    {
+        self.line_impl(0, label, arg_a, arg_b, f)
     }
 
     pub fn field_u64(&mut self, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
@@ -583,34 +622,29 @@ impl<'a> DiffState<'a> {
         Ok(())
     }
 
-    // This is similar to `list`, but because the items are ordered
-    // we can do a greedy search.
+    // Sort then display a merged list of items.
     //
     // Items with no difference are not displayed.
     //
     // Also, self.options controls:
     // - sort order
     // - display of added/deleted options
-    pub fn sort_list<T: SortList>(
+    pub fn sort_list<'i, T: SortList>(
         &mut self,
         arg_a: &T::Arg,
-        list_a: &mut [&T],
         arg_b: &T::Arg,
-        list_b: &mut [&T],
-    ) -> Result<()> {
-        list_a.sort_by(|x, y| T::cmp_id_for_sort(self.hash_a, x, self.hash_a, y, self.options));
-        list_b.sort_by(|x, y| T::cmp_id_for_sort(self.hash_b, x, self.hash_b, y, self.options));
-
-        let mut list: Vec<_> = MergeIterator::new(list_a.iter(), list_b.iter(), |a, b| {
-            T::cmp_id(self.hash_a, a, self.hash_b, b, self.options)
-        }).collect();
+        list: &mut [MergeResult<&'i T, &'i T>],
+    ) -> Result<()>
+    where
+        T: 'i,
+    {
         list.sort_by(|x, y| {
             MergeResult::cmp(x, y, &self.hash_a, &self.hash_b, |x, hash_x, y, hash_y| {
                 T::cmp_by(hash_x, x, hash_y, y, self.options)
             })
         });
 
-        for item in &list {
+        for item in list {
             match *item {
                 MergeResult::Both(ref a, ref b) => {
                     self.print_if_diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
@@ -703,7 +737,7 @@ pub(crate) trait SortList: Print {
     ) -> cmp::Ordering;
 }
 
-enum MergeResult<T, U> {
+pub enum MergeResult<T, U> {
     Left(T),
     Right(U),
     Both(T, U),
@@ -735,7 +769,7 @@ impl<T> MergeResult<T, T> {
     }
 }
 
-struct MergeIterator<T, U, L, R, C>
+pub struct MergeIterator<T, U, L, R, C>
 where
     L: Iterator<Item = T>,
     R: Iterator<Item = U>,
@@ -754,7 +788,7 @@ where
     R: Iterator<Item = U>,
     C: Fn(&T, &U) -> cmp::Ordering,
 {
-    fn new(mut iter_left: L, mut iter_right: R, item_cmp: C) -> Self {
+    pub fn new(mut iter_left: L, mut iter_right: R, item_cmp: C) -> Self {
         let item_left = iter_left.next();
         let item_right = iter_right.next();
         MergeIterator {

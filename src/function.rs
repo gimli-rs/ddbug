@@ -1,4 +1,5 @@
 use std::borrow;
+use std::cell::Cell;
 use std::cmp;
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -16,11 +17,12 @@ use types::{Type, TypeOffset};
 use variable::LocalVariable;
 use unit::Unit;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct FunctionOffset(pub usize);
 
 #[derive(Debug, Default)]
 pub(crate) struct Function<'input> {
+    pub id: Cell<usize>,
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,
@@ -76,16 +78,18 @@ impl<'input> Function<'input> {
     }
 
     fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        write!(w, "{}", self.name())?;
-        Ok(())
+        w.link(self.id.get(), &mut |w| {
+            if let Some(ref namespace) = self.namespace {
+                namespace.print(w)?;
+            }
+            write!(w, "{}", self.name())?;
+            Ok(())
+        })
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.collapsed(
-            |state| state.line(|w, _state| self.print_name(w)),
+            |state| state.id(self.id.get(), |w, _state| self.print_name(w)),
             |state| {
                 state.field("linkage name", |w, _state| self.print_linkage_name(w))?;
                 state.field("symbol name", |w, _state| self.print_symbol_name(w))?;
@@ -127,7 +131,7 @@ impl<'input> Function<'input> {
         b: &Function,
     ) -> Result<()> {
         state.collapsed(
-            |state| state.line(a, b, |w, _state, x| x.print_name(w)),
+            |state| state.id(a.id.get(), a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 state.field("linkage name", a, b, |w, _state, x| x.print_linkage_name(w))?;
                 let flag = state.options().ignore_function_symbol_name;

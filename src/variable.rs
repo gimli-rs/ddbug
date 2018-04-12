@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 
@@ -15,6 +16,7 @@ pub(crate) struct VariableOffset(pub usize);
 
 #[derive(Debug, Default)]
 pub(crate) struct Variable<'input> {
+    pub id: Cell<usize>,
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,
@@ -47,17 +49,6 @@ impl<'input> Variable<'input> {
             }),
             _ => None,
         }
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
-        Ok(())
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -113,7 +104,13 @@ impl<'input> Variable<'input> {
 
     fn print_name(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         write!(w, "var ")?;
-        self.print_ref(w)?;
+        if let Some(ref namespace) = self.namespace {
+            namespace.print(w)?;
+        }
+        match self.name {
+            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+            None => write!(w, "<anon>")?,
+        }
         write!(w, ": ")?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
@@ -234,16 +231,11 @@ impl<'input> LocalVariable<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
+    fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
-        Ok(())
-    }
-
-    fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        self.print_ref(w)?;
         write!(w, ": ")?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())

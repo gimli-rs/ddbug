@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 use std::marker;
@@ -46,6 +47,7 @@ pub(crate) struct TypeOffset(pub usize);
 
 #[derive(Debug)]
 pub(crate) struct Type<'input> {
+    pub id: Cell<usize>,
     pub offset: TypeOffset,
     pub kind: TypeKind<'input>,
 }
@@ -53,6 +55,7 @@ pub(crate) struct Type<'input> {
 impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
+            id: Cell::new(0),
             offset: TypeOffset(0),
             kind: TypeKind::Base(BaseType::default()),
         }
@@ -134,11 +137,12 @@ impl<'input> Type<'input> {
     }
 
     pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        let id = self.id.get();
         match self.kind {
-            TypeKind::Def(ref val) => val.print(state, unit),
-            TypeKind::Struct(ref val) => val.print(state, unit),
-            TypeKind::Union(ref val) => val.print(state, unit),
-            TypeKind::Enumeration(ref val) => val.print(state, unit),
+            TypeKind::Def(ref val) => val.print(state, unit, id),
+            TypeKind::Struct(ref val) => val.print(state, unit, id),
+            TypeKind::Union(ref val) => val.print(state, unit, id),
+            TypeKind::Enumeration(ref val) => val.print(state, unit, id),
             TypeKind::Base(..)
             | TypeKind::Array(..)
             | TypeKind::Function(..)
@@ -149,12 +153,13 @@ impl<'input> Type<'input> {
     }
 
     pub fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+        let id = self.id.get();
         match self.kind {
             TypeKind::Base(ref val) => val.print_ref(w),
-            TypeKind::Def(ref val) => val.print_ref(w),
-            TypeKind::Struct(ref val) => val.print_ref(w),
-            TypeKind::Union(ref val) => val.print_ref(w),
-            TypeKind::Enumeration(ref val) => val.print_ref(w),
+            TypeKind::Def(ref val) => val.print_ref(w, id),
+            TypeKind::Struct(ref val) => val.print_ref(w, id),
+            TypeKind::Union(ref val) => val.print_ref(w, id),
+            TypeKind::Enumeration(ref val) => val.print_ref(w, id),
             TypeKind::Array(ref val) => val.print_ref(w, hash),
             TypeKind::Function(ref val) => val.print_ref(w, hash),
             TypeKind::Unspecified(ref val) => val.print_ref(w),
@@ -186,12 +191,13 @@ impl<'input> Type<'input> {
         type_b: &Type,
     ) -> Result<()> {
         use self::TypeKind::*;
+        let id = type_a.id.get();
         match (&type_a.kind, &type_b.kind) {
-            (&Def(ref a), &Def(ref b)) => TypeDef::diff(state, unit_a, a, unit_b, b),
-            (&Struct(ref a), &Struct(ref b)) => StructType::diff(state, unit_a, a, unit_b, b),
-            (&Union(ref a), &Union(ref b)) => UnionType::diff(state, unit_a, a, unit_b, b),
+            (&Def(ref a), &Def(ref b)) => TypeDef::diff(state, id, unit_a, a, unit_b, b),
+            (&Struct(ref a), &Struct(ref b)) => StructType::diff(state, id, unit_a, a, unit_b, b),
+            (&Union(ref a), &Union(ref b)) => UnionType::diff(state, id, unit_a, a, unit_b, b),
             (&Enumeration(ref a), &Enumeration(ref b)) => {
-                EnumerationType::diff(state, unit_a, a, unit_b, b)
+                EnumerationType::diff(state, id, unit_a, a, unit_b, b)
             }
             _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
         }?;
@@ -488,7 +494,7 @@ impl<'input> TypeDef<'input> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
@@ -499,9 +505,13 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print_name(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
+        w.link(id, &mut |w| self.print_name(w))
+    }
+
+    fn print_def(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         write!(w, "type ")?;
-        self.print_ref(w)?;
+        self.print_name(w)?;
         write!(w, " = ")?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
@@ -521,10 +531,10 @@ impl<'input> TypeDef<'input> {
         Ok(())
     }
 
-    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
         let ty = self.ty(state.hash());
         state.collapsed(
-            |state| state.line(|w, state| self.print_name(w, state)),
+            |state| state.id(id, |w, state| self.print_def(w, state)),
             |state| {
                 if state.options().print_source {
                     state.field("source", |w, _state| self.print_source(w, unit))?;
@@ -546,13 +556,14 @@ impl<'input> TypeDef<'input> {
 
     fn diff(
         state: &mut DiffState,
+        id: usize,
         unit_a: &Unit,
         a: &TypeDef,
         unit_b: &Unit,
         b: &TypeDef,
     ) -> Result<()> {
         state.collapsed(
-            |state| state.line(a, b, |w, state, x| x.print_name(w, state)),
+            |state| state.id(id, a, b, |w, state, x| x.print_def(w, state)),
             |state| {
                 if state.options().print_source {
                     state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
@@ -622,7 +633,7 @@ impl<'input> StructType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "struct ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -634,9 +645,13 @@ impl<'input> StructType<'input> {
         Ok(())
     }
 
-    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
+        w.link(id, &mut |w| self.print_name(w))
+    }
+
+    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
         state.collapsed(
-            |state| state.line(|w, _state| self.print_ref(w)),
+            |state| state.id(id, |w, _state| self.print_name(w)),
             |state| {
                 if state.options().print_source {
                     state.field("source", |w, _state| self.print_source(w, unit))?;
@@ -652,6 +667,7 @@ impl<'input> StructType<'input> {
 
     fn diff(
         state: &mut DiffState,
+        id: usize,
         unit_a: &Unit,
         a: &StructType,
         unit_b: &Unit,
@@ -659,7 +675,7 @@ impl<'input> StructType<'input> {
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.collapsed(
-            |state| state.line(a, b, |w, _state, x| x.print_ref(w)),
+            |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 if state.options().print_source {
                     state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
@@ -751,7 +767,7 @@ impl<'input> UnionType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "union ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -763,9 +779,13 @@ impl<'input> UnionType<'input> {
         Ok(())
     }
 
-    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
+        w.link(id, &mut |w| self.print_name(w))
+    }
+
+    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
         state.collapsed(
-            |state| state.line(|w, _state| self.print_ref(w)),
+            |state| state.id(id, |w, _state| self.print_name(w)),
             |state| {
                 if state.options().print_source {
                     state.field("source", |w, _state| self.print_source(w, unit))?;
@@ -781,6 +801,7 @@ impl<'input> UnionType<'input> {
 
     fn diff(
         state: &mut DiffState,
+        id: usize,
         unit_a: &Unit,
         a: &UnionType,
         unit_b: &Unit,
@@ -788,7 +809,7 @@ impl<'input> UnionType<'input> {
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.collapsed(
-            |state| state.line(a, b, |w, _state, x| x.print_ref(w)),
+            |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 if state.options().print_source {
                     state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
@@ -1056,7 +1077,7 @@ impl<'input> EnumerationType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
+    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
         write!(w, "enum ")?;
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
@@ -1068,9 +1089,13 @@ impl<'input> EnumerationType<'input> {
         Ok(())
     }
 
-    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
+        w.link(id, &mut |w| self.print_name(w))
+    }
+
+    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
         state.collapsed(
-            |state| state.line(|w, _state| self.print_ref(w)),
+            |state| state.id(id, |w, _state| self.print_name(w)),
             |state| {
                 if state.options().print_source {
                     state.field("source", |w, _state| self.print_source(w, unit))?;
@@ -1086,6 +1111,7 @@ impl<'input> EnumerationType<'input> {
 
     fn diff(
         state: &mut DiffState,
+        id: usize,
         unit_a: &Unit,
         a: &EnumerationType,
         unit_b: &Unit,
@@ -1093,7 +1119,7 @@ impl<'input> EnumerationType<'input> {
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.collapsed(
-            |state| state.line(a, b, |w, _state, x| x.print_ref(w)),
+            |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 if state.options().print_source {
                     state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
@@ -1154,16 +1180,11 @@ pub(crate) struct Enumerator<'input> {
 }
 
 impl<'input> Enumerator<'input> {
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
+    fn print_name_value(&self, w: &mut ValuePrinter) -> Result<()> {
         match self.name {
             Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
             None => write!(w, "<anon>")?,
         }
-        Ok(())
-    }
-
-    fn print_name_value(&self, w: &mut ValuePrinter) -> Result<()> {
-        self.print_ref(w)?;
         if let Some(value) = self.value {
             write!(w, "({})", value)?;
         }

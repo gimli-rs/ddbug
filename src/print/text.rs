@@ -58,7 +58,7 @@ impl<'w> Printer for TextPrinter<'w> {
         writeln!(self.w).map_err(From::from)
     }
 
-    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
+    fn line(&mut self, _id: usize, label: &str, buf: &[u8]) -> Result<()> {
         match self.prefix {
             DiffPrefix::None => {}
             DiffPrefix::Equal | DiffPrefix::Modify => write!(self.w, "  ")?,
@@ -83,11 +83,11 @@ impl<'w> Printer for TextPrinter<'w> {
         Ok(())
     }
 
-    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         self.prefix = DiffPrefix::Delete;
-        self.line(label, a)?;
+        self.line(id, label, a)?;
         self.prefix = DiffPrefix::Add;
-        self.line(label, b)
+        self.line(id, label, b)
     }
 
     fn indent_body(
@@ -151,4 +151,8 @@ impl<'w> Write for TextValuePrinter<'w> {
     }
 }
 
-impl<'w> ValuePrinter for TextValuePrinter<'w> {}
+impl<'w> ValuePrinter for TextValuePrinter<'w> {
+    fn link(&mut self, _id: usize, f: &mut FnMut(&mut ValuePrinter) -> Result<()>) -> Result<()> {
+        f(self)
+    }
+}

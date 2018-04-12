@@ -6,7 +6,7 @@ use gimli;
 use {Options, Result, Sort};
 use file::FileHash;
 use function::{Function, FunctionOffset};
-use print::{DiffState, Print, PrintState, SortList, ValuePrinter};
+use print::{DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeKind, TypeOffset};
 use variable::{Variable, VariableOffset};
@@ -25,6 +25,129 @@ pub(crate) struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
+    pub fn assign_ids(&self, _options: &Options, mut id: usize) -> usize {
+        for ty in self.types.values() {
+            id += 1;
+            ty.id.set(id);
+        }
+        for function in self.functions.values() {
+            id += 1;
+            function.id.set(id);
+        }
+        for variable in self.variables.values() {
+            id += 1;
+            variable.id.set(id);
+        }
+        id
+    }
+
+    pub fn assign_merged_ids(
+        hash_a: &FileHash,
+        unit_a: &Unit,
+        hash_b: &FileHash,
+        unit_b: &Unit,
+        options: &Options,
+        mut id: usize,
+    ) -> usize {
+        for ty in Self::merged_types(hash_a, unit_a, hash_b, unit_b, options) {
+            id += 1;
+            match ty {
+                MergeResult::Both(a, b) => {
+                    a.id.set(id);
+                    b.id.set(id);
+                }
+                MergeResult::Left(a) => {
+                    a.id.set(id);
+                }
+                MergeResult::Right(b) => {
+                    b.id.set(id);
+                }
+            }
+        }
+
+        for function in Self::merged_functions(hash_a, unit_a, hash_b, unit_b, options) {
+            id += 1;
+            match function {
+                MergeResult::Both(a, b) => {
+                    a.id.set(id);
+                    b.id.set(id);
+                }
+                MergeResult::Left(a) => {
+                    a.id.set(id);
+                }
+                MergeResult::Right(b) => {
+                    b.id.set(id);
+                }
+            }
+        }
+
+        for variable in Self::merged_variables(hash_a, unit_a, hash_b, unit_b, options) {
+            id += 1;
+            match variable {
+                MergeResult::Both(a, b) => {
+                    a.id.set(id);
+                    b.id.set(id);
+                }
+                MergeResult::Left(a) => {
+                    a.id.set(id);
+                }
+                MergeResult::Right(b) => {
+                    b.id.set(id);
+                }
+            }
+        }
+
+        id
+    }
+
+    fn merged_types<'a>(
+        hash_a: &FileHash,
+        unit_a: &'a Unit<'input>,
+        hash_b: &FileHash,
+        unit_b: &'a Unit<'input>,
+        options: &Options,
+    ) -> Vec<MergeResult<&'a Type<'input>, &'a Type<'input>>> {
+        let mut types_a = unit_a.filter_types(hash_a, options, true);
+        types_a.sort_by(|x, y| Type::cmp_id_for_sort(hash_a, x, hash_a, y, options));
+        let mut types_b = unit_b.filter_types(hash_b, options, true);
+        types_b.sort_by(|x, y| Type::cmp_id_for_sort(hash_b, x, hash_b, y, options));
+        MergeIterator::new(types_a.into_iter(), types_b.into_iter(), |a, b| {
+            Type::cmp_id(hash_a, a, hash_b, b)
+        }).collect()
+    }
+
+    fn merged_functions<'a>(
+        hash_a: &FileHash,
+        unit_a: &'a Unit<'input>,
+        hash_b: &FileHash,
+        unit_b: &'a Unit<'input>,
+        options: &Options,
+    ) -> Vec<MergeResult<&'a Function<'input>, &'a Function<'input>>> {
+        let mut functions_a = unit_a.filter_functions(options);
+        functions_a.sort_by(|x, y| Function::cmp_id_for_sort(hash_a, x, hash_a, y, options));
+        let mut functions_b = unit_b.filter_functions(options);
+        functions_b.sort_by(|x, y| Function::cmp_id_for_sort(hash_b, x, hash_b, y, options));
+        MergeIterator::new(functions_a.into_iter(), functions_b.into_iter(), |a, b| {
+            Function::cmp_id(hash_a, a, hash_b, b, options)
+        }).collect()
+    }
+
+    fn merged_variables<'a>(
+        hash_a: &FileHash,
+        unit_a: &'a Unit<'input>,
+        hash_b: &FileHash,
+        unit_b: &'a Unit<'input>,
+        options: &Options,
+    ) -> Vec<MergeResult<&'a Variable<'input>, &'a Variable<'input>>> {
+        let mut variables_a = unit_a.filter_variables(options);
+        variables_a.sort_by(|x, y| Variable::cmp_id_for_sort(hash_a, x, hash_a, y, options));
+        let mut variables_b = unit_b.filter_variables(options);
+        variables_b.sort_by(|x, y| Variable::cmp_id_for_sort(hash_b, x, hash_b, y, options));
+        MergeIterator::new(variables_a.into_iter(), variables_b.into_iter(), |a, b| {
+            Variable::cmp_id(hash_a, a, hash_b, b, options)
+        }).collect()
+    }
+
     // Does not include unknown ranges.
     pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
@@ -158,19 +281,21 @@ impl<'input> Unit<'input> {
         let print_types = |state: &mut PrintState| -> Result<()> {
             if options.category_type {
                 let mut types = self.filter_types(state.hash(), options, false);
-                state.sort_list(self, &mut *types)?;
+                state.sort_list(self, &mut types)?;
             }
             Ok(())
         };
         let print_functions = |state: &mut PrintState| -> Result<()> {
             if options.category_function {
-                state.sort_list(self, &mut *self.filter_functions(options))?;
+                let mut functions = self.filter_functions(options);
+                state.sort_list(self, &mut functions)?;
             }
             Ok(())
         };
         let print_variables = |state: &mut PrintState| -> Result<()> {
             if options.category_variable {
-                state.sort_list(self, &mut *self.filter_variables(options))?;
+                let mut variables = self.filter_variables(options);
+                state.sort_list(self, &mut variables)?;
             }
             Ok(())
         };
@@ -257,31 +382,25 @@ impl<'input> Unit<'input> {
 
         let diff_types = |state: &mut DiffState| -> Result<()> {
             if options.category_type {
-                let mut types_a = unit_a.filter_types(state.hash_a(), options, true);
-                let mut types_b = unit_b.filter_types(state.hash_b(), options, true);
-                state.sort_list(unit_a, &mut *types_a, unit_b, &mut *types_b)?;
+                let mut types =
+                    Self::merged_types(state.hash_a(), unit_a, state.hash_b(), unit_b, options);
+                state.sort_list(unit_a, unit_b, &mut types)?;
             }
             Ok(())
         };
         let diff_functions = |state: &mut DiffState| -> Result<()> {
             if options.category_function {
-                state.sort_list(
-                    unit_a,
-                    &mut *unit_a.filter_functions(options),
-                    unit_b,
-                    &mut *unit_b.filter_functions(options),
-                )?;
+                let mut functions =
+                    Self::merged_functions(state.hash_a(), unit_a, state.hash_b(), unit_b, options);
+                state.sort_list(unit_a, unit_b, &mut functions)?;
             }
             Ok(())
         };
         let diff_variables = |state: &mut DiffState| -> Result<()> {
             if options.category_variable {
-                state.sort_list(
-                    unit_a,
-                    &mut *unit_a.filter_variables(options),
-                    unit_b,
-                    &mut *unit_b.filter_variables(options),
-                )?;
+                let mut variables =
+                    Self::merged_variables(state.hash_a(), unit_a, state.hash_b(), unit_b, options);
+                state.sort_list(unit_a, unit_b, &mut variables)?;
             }
             Ok(())
         };
@@ -318,7 +437,7 @@ impl<'input> Unit<'input> {
 
     /// Filter and the list of types using the options.
     /// Perform additional filtering when diffing.
-    fn filter_types(&self, hash: &FileHash, options: &Options, diff: bool) -> Vec<&Type> {
+    fn filter_types(&self, hash: &FileHash, options: &Options, diff: bool) -> Vec<&Type<'input>> {
         let inline_types = self.inline_types(hash);
         let filter_type = |t: &Type| {
             // Filter by user options.
@@ -348,11 +467,11 @@ impl<'input> Unit<'input> {
         self.types.values().filter(|a| filter_type(a)).collect()
     }
 
-    fn filter_functions(&self, options: &Options) -> Vec<&Function> {
+    fn filter_functions(&self, options: &Options) -> Vec<&Function<'input>> {
         self.functions.values().filter(|a| a.filter(options)).collect()
     }
 
-    fn filter_variables(&self, options: &Options) -> Vec<&Variable> {
+    fn filter_variables(&self, options: &Options) -> Vec<&Variable<'input>> {
         self.variables.values().filter(|a| a.filter(options)).collect()
     }
 
@@ -415,7 +534,7 @@ impl<'input> SortList for Unit<'input> {
         match options.sort {
             // TODO: sort by offset?
             Sort::None => cmp::Ordering::Equal,
-            Sort::Name => Self::cmp_id(hash_a, a, hash_b, b, options),
+            Sort::Name => Unit::cmp_id(hash_a, a, hash_b, b, options),
             Sort::Size => a.size(hash_a).cmp(&b.size(hash_b)),
         }
     }

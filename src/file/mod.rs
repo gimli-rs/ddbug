@@ -14,7 +14,8 @@ use panopticon;
 
 use {Options, Result};
 use function::{Function, FunctionOffset};
-use print::{DiffList, DiffState, Print, PrintState, Printer, ValuePrinter};
+use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
+            ValuePrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
@@ -323,7 +324,54 @@ impl<'input> File<'input> {
         size
     }
 
+    fn assign_ids(&self, options: &Options) {
+        let mut id = 0;
+        for unit in &self.units {
+            id = unit.assign_ids(options, id);
+        }
+    }
+
+    fn assign_merged_ids(
+        hash_a: &FileHash,
+        file_a: &File,
+        hash_b: &FileHash,
+        file_b: &File,
+        options: &Options,
+    ) {
+        let mut id = 0;
+        for unit in Self::merged_units(hash_a, file_a, hash_b, file_b, options) {
+            match unit {
+                MergeResult::Both(a, b) => {
+                    id = Unit::assign_merged_ids(hash_a, a, hash_b, b, options, id);
+                }
+                MergeResult::Left(a) => {
+                    id = a.assign_ids(options, id);
+                }
+                MergeResult::Right(b) => {
+                    id = b.assign_ids(options, id);
+                }
+            }
+        }
+    }
+
+    fn merged_units<'a>(
+        hash_a: &FileHash,
+        file_a: &'a File<'input>,
+        hash_b: &FileHash,
+        file_b: &'a File<'input>,
+        options: &Options,
+    ) -> Vec<MergeResult<&'a Unit<'input>, &'a Unit<'input>>> {
+        let mut units_a = file_a.filter_units(options);
+        units_a.sort_by(|x, y| Unit::cmp_id(hash_a, x, hash_a, y, options));
+        let mut units_b = file_b.filter_units(options);
+        units_b.sort_by(|x, y| Unit::cmp_id(hash_b, x, hash_b, y, options));
+        MergeIterator::new(units_a.into_iter(), units_b.into_iter(), |a, b| {
+            Unit::cmp_id(hash_a, a, hash_b, b, options)
+        }).collect()
+    }
+
     pub fn print(&self, printer: &mut Printer, options: &Options) -> Result<()> {
+        self.assign_ids(options);
         let hash = FileHash::new(self);
         let mut state = PrintState::new(printer, &hash, options);
 
@@ -355,7 +403,7 @@ impl<'input> File<'input> {
             state.line_break()?;
         }
 
-        state.sort_list(&(), &mut *self.filter_units(options))
+        state.sort_list(&(), &mut self.filter_units(options))
     }
 
     pub fn diff(
@@ -366,6 +414,8 @@ impl<'input> File<'input> {
     ) -> Result<()> {
         let hash_a = FileHash::new(file_a);
         let hash_b = FileHash::new(file_b);
+        Self::assign_merged_ids(&hash_a, file_a, &hash_b, file_b, options);
+
         let mut state = DiffState::new(printer, &hash_a, &hash_b, options);
 
         if options.category_file {
@@ -408,13 +458,12 @@ impl<'input> File<'input> {
 
         state.sort_list(
             &(),
-            &mut *file_a.filter_units(options),
             &(),
-            &mut *file_b.filter_units(options),
+            &mut Self::merged_units(&hash_a, file_a, &hash_b, file_b, options),
         )
     }
 
-    fn filter_units(&self, options: &Options) -> Vec<&Unit> {
+    fn filter_units(&self, options: &Options) -> Vec<&Unit<'input>> {
         self.units.iter().filter(|a| a.filter(options)).collect()
     }
 }

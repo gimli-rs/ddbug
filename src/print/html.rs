@@ -6,7 +6,7 @@ use marksman_escape::Escape;
 use {Options, Result};
 use super::{DiffPrefix, Printer, ValuePrinter};
 
-const HEADER: &str = r#"<!DOCTYPE html>
+const HEADER: &str = r##"<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
@@ -36,6 +36,9 @@ ul.collapsible .add {
 }
 ul.collapsible .mod {
     background-color: #ffffa0;
+}
+ul.collapsible a {
+    color: black;
 }
 span.field {
     display: inline-block;
@@ -74,10 +77,40 @@ window.onload = function () {
         }
     }
 }
+
+function link(anchor, id) {
+    node = document.getElementById(id);
+    if (node !== null) {
+        // Find LI
+        while (node && node.nodeName !== "LI") {
+            node = node.parentNode;
+        }
+        // Expand node
+        var uls = node.getElementsByTagName("ul");
+        [].forEach.call(uls, function(ul) {
+            var li = ul;
+            while (li !== null && li.nodeName !== "LI") {
+                li = li.parentNode;
+            }
+            if (li === node) {
+                ul.style.display = "block";
+            }
+        });
+        // Display node and parents
+        while (node && node.nodeName !== "BODY") {
+            if (node.style.display == "none") {
+                node.style.display = "block";
+            }
+            node = node.parentNode;
+        }
+        // So that history works nicer
+        anchor.scrollIntoView();
+    }
+}
 </script>
 </head>
 <body>
-<ul class="collapsible">"#;
+<ul class="collapsible">"##;
 
 const FOOTER: &str = r#"</ul>
 </body>
@@ -153,39 +186,42 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
+    fn line(&mut self, id: usize, label: &str, buf: &[u8]) -> Result<()> {
         if !self.line_started {
             write!(self.w, "<li>")?;
         }
         if buf.is_empty() {
-            if self.prefix == DiffPrefix::Modify {
-                write!(self.w, "<span class=\"field mod\">")?;
-                write!(self.w, "{}:", label)?;
-                write!(self.w, "</span>")?;
-            } else {
-                write!(self.w, "{}:", label)?;
+            write!(self.w, "<span")?;
+            if id != 0 {
+                write!(self.w, " id=\"{}\"", id)?;
             }
+            if self.prefix == DiffPrefix::Modify {
+                write!(self.w, " class=\"field mod\"")?;
+            }
+            write!(self.w, ">{}:</span>", label)?;
         } else {
             if !label.is_empty() {
                 write!(self.w, "<span class=\"field\">{}:</span> ", label)?;
             }
+            write!(self.w, "<span")?;
+            if id != 0 {
+                write!(self.w, " id=\"{}\"", id)?;
+            }
             match self.prefix {
-                DiffPrefix::None | DiffPrefix::Equal => write!(self.w, "<span class=\"field\">")?,
+                DiffPrefix::None | DiffPrefix::Equal => write!(self.w, " class=\"field\"")?,
                 DiffPrefix::Modify => {
-                    write!(self.w, "<span class=\"field mod\">")?;
+                    write!(self.w, " class=\"field mod\"")?;
                 }
                 DiffPrefix::Delete => {
-                    write!(self.w, "<span class=\"field del\">")?;
+                    write!(self.w, " class=\"field del\"")?;
                 }
                 DiffPrefix::Add => {
-                    write!(self.w, "<span class=\"field add\">")?;
+                    write!(self.w, " class=\"field add\"")?;
                 }
             }
+            write!(self.w, ">")?;
             self.w.write_all(buf)?;
             write!(self.w, "</span>")?;
-            if !label.is_empty() {
-                write!(self.w, "</span>")?;
-            }
         }
         if !self.line_started {
             writeln!(self.w, "</li>")?;
@@ -193,21 +229,22 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         if !self.line_started {
             write!(self.w, "<li>")?;
         }
         if !label.is_empty() {
-            write!(self.w, "<span class=\"field\">{}:</span> <span class=\"field\">", label)?;
+            write!(self.w, "<span class=\"field\">{}:</span> ", label)?;
         }
-        write!(self.w, "<span class=\"del\">")?;
+        write!(self.w, "<span class=\"field\"")?;
+        if id != 0 {
+            write!(self.w, " id=\"{}\"", id)?;
+        }
+        write!(self.w, "><span class=\"del\">")?;
         self.w.write_all(a)?;
         write!(self.w, "</span><br>\n<span class=\"add\">")?;
         self.w.write_all(b)?;
-        write!(self.w, "</span>")?;
-        if !label.is_empty() {
-            write!(self.w, "</span>")?;
-        }
+        write!(self.w, "</span></span>")?;
         if !self.line_started {
             writeln!(self.w, "</li>")?;
         }
@@ -293,4 +330,15 @@ impl<'w> Write for HtmlValuePrinter<'w> {
     }
 }
 
-impl<'w> ValuePrinter for HtmlValuePrinter<'w> {}
+impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
+    fn link(&mut self, id: usize, f: &mut FnMut(&mut ValuePrinter) -> Result<()>) -> Result<()> {
+        if id == 0 {
+            f(self)
+        } else {
+            write!(self.w, "<a onclick=\"link(this, \'{}');\" href=\"#{}\">", id, id)?;
+            f(self)?;
+            write!(self.w, "</a>")?;
+            Ok(())
+        }
+    }
+}

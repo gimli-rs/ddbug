@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::rc::Rc;
 use std::mem;
 
@@ -1216,6 +1217,7 @@ where
 {
     let offset = node.entry().offset();
     let mut function = Function {
+        id: Cell::new(0),
         namespace: namespace.clone(),
         name: None,
         symbol_name: None,
