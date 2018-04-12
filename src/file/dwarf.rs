@@ -106,7 +106,7 @@ where
     let abbrev = &unit_header.abbreviations(&dwarf.debug_abbrev)?;
     let mut dwarf_unit = DwarfUnitState {
         header: unit_header,
-        abbrev: abbrev,
+        abbrev,
         line: None,
         subprograms: Vec::new(),
         variables: Vec::new(),

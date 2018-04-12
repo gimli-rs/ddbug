@@ -312,7 +312,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
 }
 
 fn escaped(bytes: &[u8]) -> Vec<u8> {
-    Escape::new(bytes.iter().map(|x| *x)).collect()
+    Escape::new(bytes.iter().cloned()).collect()
 }
 
 struct HtmlValuePrinter<'w> {

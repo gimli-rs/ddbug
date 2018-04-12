@@ -646,13 +646,13 @@ impl<'a> DiffState<'a> {
 
         for item in list {
             match *item {
-                MergeResult::Both(ref a, ref b) => {
+                MergeResult::Both(a, b) => {
                     self.print_if_diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
                 }
-                MergeResult::Left(ref a) => if !self.options.ignore_deleted {
+                MergeResult::Left(a) => if !self.options.ignore_deleted {
                     self.prefix_delete(|state| a.print(state, arg_a))?;
                 },
-                MergeResult::Right(ref b) => if !self.options.ignore_added {
+                MergeResult::Right(b) => if !self.options.ignore_added {
                     self.prefix_add(|state| b.print(state, arg_b))?;
                 },
             }
