@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::mem;
 
@@ -247,6 +248,14 @@ fn fixup_subprogram_specifications<'state, 'input, Endian>(
 where
     Endian: gimli::Endianity,
 {
+    // Convert functions to BTreeMap
+    let mut functions = BTreeMap::new();
+    for function in unit.functions.drain(..) {
+        // All dwarf functions have offsets
+        let offset = function.offset.unwrap();
+        functions.insert(offset, function);
+    }
+
     let mut defer = Vec::new();
 
     while !dwarf_unit.subprograms.is_empty() {
@@ -255,7 +264,7 @@ where
         mem::swap(&mut defer, &mut dwarf_unit.subprograms);
         for mut subprogram in defer.drain(..) {
             if inherit_subprogram(
-                unit,
+                &functions,
                 &mut subprogram.function,
                 subprogram.specification,
                 subprogram.abstract_origin,
@@ -270,7 +279,7 @@ where
                     tree.root()?.children(),
                 )?;
                 let offset = subprogram.offset.to_debug_info_offset(dwarf_unit.header);
-                unit.functions.insert(offset.into(), subprogram.function);
+                functions.insert(offset.into(), subprogram.function);
                 progress = true;
             } else {
                 dwarf_unit.subprograms.push(subprogram);
@@ -291,11 +300,13 @@ where
                     tree.root()?.children(),
                 )?;
                 let offset = subprogram.offset.to_debug_info_offset(dwarf_unit.header);
-                unit.functions.insert(offset.into(), subprogram.function);
+                functions.insert(offset.into(), subprogram.function);
             }
-            return Ok(());
+            break;
         }
     }
+
+    unit.functions = functions.into_iter().map(|(_, x)| x).collect();
     Ok(())
 }
 
@@ -307,12 +318,20 @@ fn fixup_variable_specifications<'state, 'input, Endian>(
 where
     Endian: gimli::Endianity,
 {
+    // Convert variables to BTreeMap
+    let mut variables = BTreeMap::new();
+    for variable in unit.variables.drain(..) {
+        // All dwarf variables have offsets
+        let offset = variable.offset.unwrap();
+        variables.insert(offset, variable);
+    }
+
     loop {
         let mut progress = false;
         let mut defer = Vec::new();
 
         for mut variable in dwarf_unit.variables.drain(..) {
-            match variable.specification.and_then(|v| unit.variables.get(&v)) {
+            match variable.specification.and_then(|v| variables.get(&v)) {
                 Some(specification) => {
                     let variable = &mut variable.variable;
                     variable.namespace = specification.namespace.clone();
@@ -332,23 +351,26 @@ where
                 }
             }
             let offset = variable.offset.to_debug_info_offset(dwarf_unit.header);
-            unit.variables.insert(offset.into(), variable.variable);
+            variables.insert(offset.into(), variable.variable);
             progress = true;
         }
 
         if defer.is_empty() {
-            return Ok(());
+            break;
         }
         if !progress {
             debug!("invalid specification for {} variables", defer.len());
             for variable in dwarf_unit.variables.drain(..) {
                 let offset = variable.offset.to_debug_info_offset(dwarf_unit.header);
-                unit.variables.insert(offset.into(), variable.variable);
+                variables.insert(offset.into(), variable.variable);
             }
-            return Ok(());
+            break;
         }
         dwarf_unit.variables = defer;
     }
+
+    unit.variables = variables.into_iter().map(|(_, x)| x).collect();
+    Ok(())
 }
 
 fn parse_namespace_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
@@ -375,16 +397,13 @@ where
                     // Delay handling specication in case it comes later.
                     dwarf_unit.variables.push(variable);
                 } else {
-                    let offset = variable.offset.to_debug_info_offset(dwarf_unit.header);
-                    unit.variables.insert(offset.into(), variable.variable);
+                    unit.variables.push(variable.variable);
                 }
             }
             gimli::DW_TAG_imported_declaration | gimli::DW_TAG_imported_module => {}
             tag => {
-                let offset = child.entry().offset();
-                let offset = offset.to_debug_info_offset(dwarf_unit.header);
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
-                    unit.types.insert(offset.into(), ty);
+                    unit.types.push(ty);
                 } else {
                     debug!("unknown namespace child tag: {}", tag);
                 }
@@ -701,10 +720,8 @@ where
             | gimli::DW_TAG_template_value_parameter
             | gimli::DW_TAG_GNU_template_parameter_pack => {}
             tag => {
-                let offset = child.entry().offset();
-                let offset = offset.to_debug_info_offset(dwarf_unit.header);
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
-                    unit.types.insert(offset.into(), ty);
+                    unit.types.push(ty);
                 } else {
                     debug!("unknown struct child tag: {}", tag);
                 }
@@ -768,10 +785,8 @@ where
             }
             gimli::DW_TAG_template_type_parameter => {}
             tag => {
-                let offset = child.entry().offset();
-                let offset = offset.to_debug_info_offset(dwarf_unit.header);
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
-                    unit.types.insert(offset.into(), ty);
+                    unit.types.push(ty);
                 } else {
                     debug!("unknown union child tag: {}", tag);
                 }
@@ -867,8 +882,7 @@ where
         if variable.specification.is_some() {
             debug!("specification on variable declaration at offset 0x{:x}", variable.offset.0);
         }
-        let offset = variable.offset.to_debug_info_offset(dwarf_unit.header);
-        unit.variables.insert(offset.into(), variable.variable);
+        unit.variables.push(variable.variable);
         return Ok(());
     }
 
@@ -1218,6 +1232,7 @@ where
     let offset = node.entry().offset();
     let mut function = Function {
         id: Cell::new(0),
+        offset: Some(offset.to_debug_info_offset(dwarf_unit.header).into()),
         namespace: namespace.clone(),
         name: None,
         symbol_name: None,
@@ -1315,30 +1330,27 @@ where
     }
 
     if let Some(specification) = specification {
-        if !inherit_subprogram(unit, &mut function, specification, abstract_origin) {
-            dwarf_unit.subprograms.push(DwarfSubprogram {
-                offset,
-                specification,
-                abstract_origin,
-                function,
-            });
-            return Ok(());
-        }
+        dwarf_unit.subprograms.push(DwarfSubprogram {
+            offset,
+            specification,
+            abstract_origin,
+            function,
+        });
+        return Ok(());
     }
 
     parse_subprogram_children(unit, dwarf, dwarf_unit, &mut function, node.children())?;
-    let offset = offset.to_debug_info_offset(dwarf_unit.header);
-    unit.functions.insert(offset.into(), function);
+    unit.functions.push(function);
     Ok(())
 }
 
 fn inherit_subprogram<'input>(
-    unit: &Unit<'input>,
+    functions: &BTreeMap<FunctionOffset, Function<'input>>,
     function: &mut Function<'input>,
     specification: FunctionOffset,
     abstract_origin: bool,
 ) -> bool {
-    let specification = match unit.functions.get(&specification) {
+    let specification = match functions.get(&specification) {
         Some(val) => val,
         None => return false,
     };
@@ -1421,10 +1433,8 @@ where
             | gimli::DW_TAG_imported_module
             | gimli::DW_TAG_GNU_call_site => {}
             tag => {
-                let offset = child.entry().offset();
-                let offset = offset.to_debug_info_offset(dwarf_unit.header);
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, &namespace, child)? {
-                    unit.types.insert(offset.into(), ty);
+                    unit.types.push(ty);
                 } else {
                     debug!("unknown subprogram child tag: {}", tag);
                 }
@@ -1557,10 +1567,8 @@ where
             | gimli::DW_TAG_imported_module
             | gimli::DW_TAG_GNU_call_site => {}
             tag => {
-                let offset = child.entry().offset();
-                let offset = offset.to_debug_info_offset(dwarf_unit.header);
                 if let Some(ty) = parse_type(unit, dwarf, dwarf_unit, namespace, child)? {
-                    unit.types.insert(offset.into(), ty);
+                    unit.types.push(ty);
                 } else {
                     debug!("unknown lexical_block child tag: {}", tag);
                 }
@@ -1699,8 +1707,11 @@ where
 {
     let offset = node.entry().offset();
     let mut specification = None;
-    let mut variable = Variable::default();
-    variable.namespace = namespace;
+    let mut variable = Variable {
+        offset: Some(offset.to_debug_info_offset(dwarf_unit.header).into()),
+        namespace,
+        ..Default::default()
+    };
 
     {
         let mut attrs = node.entry().attrs();

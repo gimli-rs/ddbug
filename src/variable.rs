@@ -17,6 +17,7 @@ pub(crate) struct VariableOffset(pub usize);
 #[derive(Debug, Default)]
 pub(crate) struct Variable<'input> {
     pub id: Cell<usize>,
+    pub offset: Option<VariableOffset>,
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,

@@ -19,7 +19,7 @@ use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, 
 use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
-use variable::{Variable, VariableOffset};
+use variable::Variable;
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {
@@ -164,7 +164,7 @@ impl<'input> File<'input> {
 
         // Set symbol names on functions/variables.
         for unit in &mut self.units {
-            for function in unit.functions.values_mut() {
+            for function in &mut unit.functions {
                 if let Some(address) = function.address {
                     if let Some(symbol) = Self::get_symbol(
                         &*self.symbols,
@@ -177,7 +177,7 @@ impl<'input> File<'input> {
                 }
             }
 
-            for variable in unit.variables.values_mut() {
+            for variable in &mut unit.variables {
                 if let Some(address) = variable.address {
                     if let Some(symbol) = Self::get_symbol(
                         &*self.symbols,
@@ -194,7 +194,7 @@ impl<'input> File<'input> {
         // Create a unit for symbols that don't have debuginfo.
         let mut unit = Unit::default();
         unit.name = Some(b"<symtab>");
-        for (index, (symbol, used)) in self.symbols.iter().zip(used_symbols.iter()).enumerate() {
+        for (symbol, used) in self.symbols.iter().zip(used_symbols.iter()) {
             if *used {
                 continue;
             }
@@ -204,28 +204,22 @@ impl<'input> File<'input> {
             });
             match symbol.ty {
                 SymbolType::Variable => {
-                    unit.variables.insert(
-                        VariableOffset(index),
-                        Variable {
-                            name: symbol.name,
-                            linkage_name: symbol.name,
-                            address: Some(symbol.address),
-                            size: Some(symbol.size),
-                            ..Default::default()
-                        },
-                    );
+                    unit.variables.push(Variable {
+                        name: symbol.name,
+                        linkage_name: symbol.name,
+                        address: Some(symbol.address),
+                        size: Some(symbol.size),
+                        ..Default::default()
+                    });
                 }
                 SymbolType::Function => {
-                    unit.functions.insert(
-                        FunctionOffset(index),
-                        Function {
-                            name: symbol.name,
-                            linkage_name: symbol.name,
-                            address: Some(symbol.address),
-                            size: Some(symbol.size),
-                            ..Default::default()
-                        },
-                    );
+                    unit.functions.push(Function {
+                        name: symbol.name,
+                        linkage_name: symbol.name,
+                        address: Some(symbol.address),
+                        size: Some(symbol.size),
+                        ..Default::default()
+                    });
                 }
             }
         }
@@ -472,7 +466,9 @@ impl<'input> File<'input> {
 pub(crate) struct FileHash<'input> {
     pub file: &'input File<'input>,
     // All functions by address.
-    pub functions: HashMap<u64, &'input Function<'input>>,
+    pub functions_by_address: HashMap<u64, &'input Function<'input>>,
+    // All functions by offset.
+    pub functions_by_offset: HashMap<FunctionOffset, &'input Function<'input>>,
     // All types by offset.
     pub types: HashMap<TypeOffset, &'input Type<'input>>,
 }
@@ -481,19 +477,35 @@ impl<'input> FileHash<'input> {
     fn new(file: &'input File<'input>) -> Self {
         FileHash {
             file,
-            functions: Self::functions(file),
+            functions_by_address: Self::functions_by_address(file),
+            functions_by_offset: Self::functions_by_offset(file),
             types: Self::types(file),
         }
     }
 
     /// Returns a map from address to function for all functions in the file.
-    fn functions<'a>(file: &'a File<'input>) -> HashMap<u64, &'a Function<'input>> {
+    fn functions_by_address<'a>(file: &'a File<'input>) -> HashMap<u64, &'a Function<'input>> {
         let mut functions = HashMap::new();
         for unit in &file.units {
-            for function in unit.functions.values() {
+            for function in &unit.functions {
                 if let Some(address) = function.address {
                     // TODO: handle duplicate addresses
                     functions.insert(address, function);
+                }
+            }
+        }
+        functions
+    }
+
+    /// Returns a map from offset to function for all functions in the file.
+    fn functions_by_offset<'a>(
+        file: &'a File<'input>,
+    ) -> HashMap<FunctionOffset, &'a Function<'input>> {
+        let mut functions = HashMap::new();
+        for unit in &file.units {
+            for function in &unit.functions {
+                if let Some(offset) = function.offset {
+                    functions.insert(offset, function);
                 }
             }
         }
@@ -504,8 +516,8 @@ impl<'input> FileHash<'input> {
     fn types<'a>(file: &'a File<'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
         let mut types = HashMap::new();
         for unit in &file.units {
-            for (offset, ty) in &unit.types {
-                types.insert(*offset, ty);
+            for ty in &unit.types {
+                types.insert(ty.offset, ty);
             }
         }
         types

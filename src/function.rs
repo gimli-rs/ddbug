@@ -17,12 +17,13 @@ use types::{Type, TypeOffset};
 use variable::LocalVariable;
 use unit::Unit;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct FunctionOffset(pub usize);
 
 #[derive(Debug, Default)]
 pub(crate) struct Function<'input> {
     pub id: Cell<usize>,
+    pub offset: Option<FunctionOffset>,
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input [u8]>,
     pub linkage_name: Option<&'input [u8]>,
@@ -40,10 +41,10 @@ pub(crate) struct Function<'input> {
 
 impl<'input> Function<'input> {
     fn from_offset<'a>(
-        unit: &'a Unit<'input>,
+        hash: &'a FileHash<'input>,
         offset: FunctionOffset,
     ) -> Option<&'a Function<'input>> {
-        unit.functions.get(&offset)
+        hash.functions_by_offset.get(&offset).map(|function| *function)
     }
 
     fn name(&self) -> borrow::Cow<'input, str> {
@@ -468,18 +469,13 @@ pub(crate) struct InlinedFunction<'input> {
 }
 
 impl<'input> InlinedFunction<'input> {
-    fn print_size_and_decl(
-        &self,
-        w: &mut ValuePrinter,
-        _hash: &FileHash,
-        unit: &Unit,
-    ) -> Result<()> {
+    fn print_size_and_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         match self.size {
             Some(size) => write!(w, "[{}]", size)?,
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        match self.abstract_origin.and_then(|v| Function::from_offset(unit, v)) {
+        match self.abstract_origin.and_then(|v| Function::from_offset(hash, v)) {
             Some(function) => function.print_ref(w)?,
             None => write!(w, "<anon>")?,
         }
@@ -499,7 +495,7 @@ impl<'input> Print for InlinedFunction<'input> {
 
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.collapsed(
-            |state| state.line(|w, state| self.print_size_and_decl(w, state, unit)),
+            |state| state.line(|w, state| self.print_size_and_decl(w, state)),
             |state| {
                 // TODO: print parameters and variables?
                 if state.options().print_source {
@@ -514,11 +510,7 @@ impl<'input> Print for InlinedFunction<'input> {
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
         state.collapsed(
-            |state| {
-                state.line((unit_a, a), (unit_b, b), |w, state, (unit, x)| {
-                    x.print_size_and_decl(w, state, unit)
-                })
-            },
+            |state| state.line(a, b, |w, state, x| x.print_size_and_decl(w, state)),
             |state| {
                 // TODO: diff parameters and variables?
                 if state.options().print_source {
@@ -552,8 +544,8 @@ impl<'input> DiffList for InlinedFunction<'input> {
     // - include diff cost of lower levels of inlined functions
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        let function_a = a.abstract_origin.and_then(|v| Function::from_offset(unit_a, v));
-        let function_b = b.abstract_origin.and_then(|v| Function::from_offset(unit_b, v));
+        let function_a = a.abstract_origin.and_then(|v| Function::from_offset(state.hash_a(), v));
+        let function_b = b.abstract_origin.and_then(|v| Function::from_offset(state.hash_b(), v));
         match (function_a, function_b) {
             (Some(function_a), Some(function_b)) => {
                 if Function::cmp_id(
@@ -657,7 +649,7 @@ impl Call {
             // when diffing
             write!(w, "0x{:x} -> 0x{:x} ", self.from, self.to)?;
         }
-        if let Some(function) = hash.functions.get(&self.to) {
+        if let Some(function) = hash.functions_by_address.get(&self.to) {
             function.print_ref(w)?;
         } else if options.ignore_function_address {
             // We haven't displayed an address yet, so we need to display something.
@@ -688,7 +680,10 @@ impl DiffList for Call {
 
     fn diff_cost(state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
         let mut cost = 0;
-        match (state.hash_a().functions.get(&a.to), state.hash_b().functions.get(&b.to)) {
+        match (
+            state.hash_a().functions_by_address.get(&a.to),
+            state.hash_b().functions_by_address.get(&b.to),
+        ) {
             (Some(function_a), Some(function_b)) => {
                 if Function::cmp_id(
                     state.hash_a(),

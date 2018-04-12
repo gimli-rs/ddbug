@@ -61,20 +61,17 @@ pub(crate) fn parse(
                 } else {
                     Some(byte_size)
                 };
-                unit.types.insert(
-                    TypeOffset(index),
-                    Type {
-                        id: Cell::new(0),
-                        offset: TypeOffset(index),
-                        kind: TypeKind::Modifier(TypeModifier {
-                            kind: TypeModifierKind::Pointer,
-                            ty: underlying_type,
-                            name: None,
-                            byte_size,
-                            address_size: None,
-                        }),
-                    },
-                );
+                unit.types.push(Type {
+                    id: Cell::new(0),
+                    offset: TypeOffset(index),
+                    kind: TypeKind::Modifier(TypeModifier {
+                        kind: TypeModifierKind::Pointer,
+                        ty: underlying_type,
+                        name: None,
+                        byte_size,
+                        address_size: None,
+                    }),
+                });
             }
             Ok(pdb::TypeData::Modifier(ref data)) => {
                 let underlying_type = parse_type_index(data.underlying_type);
@@ -84,20 +81,17 @@ pub(crate) fn parse(
                 } else {
                     TypeModifierKind::Other
                 };
-                unit.types.insert(
-                    TypeOffset(index),
-                    Type {
-                        id: Cell::new(0),
-                        offset: TypeOffset(index),
-                        kind: TypeKind::Modifier(TypeModifier {
-                            kind,
-                            ty: underlying_type,
-                            name: None,
-                            byte_size: None,
-                            address_size: None,
-                        }),
-                    },
-                );
+                unit.types.push(Type {
+                    id: Cell::new(0),
+                    offset: TypeOffset(index),
+                    kind: TypeKind::Modifier(TypeModifier {
+                        kind,
+                        ty: underlying_type,
+                        name: None,
+                        byte_size: None,
+                        address_size: None,
+                    }),
+                });
             }
             Ok(pdb::TypeData::Bitfield(data)) => {
                 bitfields.insert(index, data);
@@ -134,25 +128,23 @@ pub(crate) fn parse(
     while let Some(symbol) = symbols.next()? {
         match symbol.parse()? {
             pdb::SymbolData::PublicSymbol(data) => if data.function {
-                unit.functions.insert(
-                    FunctionOffset(symbol_index),
-                    Function {
-                        id: Cell::new(0),
-                        namespace: namespace.clone(),
-                        name: Some(symbol.name()?.as_bytes()),
-                        symbol_name: None,
-                        linkage_name: None,
-                        source: Default::default(),
-                        address: Some(u64::from(data.offset)),
-                        size: None,
-                        inline: false,
-                        declaration: false,
-                        parameters: Vec::new(),
-                        return_type: None,
-                        inlined_functions: Vec::new(),
-                        variables: Vec::new(),
-                    },
-                );
+                unit.functions.push(Function {
+                    id: Cell::new(0),
+                    offset: Some(FunctionOffset(symbol_index)),
+                    namespace: namespace.clone(),
+                    name: Some(symbol.name()?.as_bytes()),
+                    symbol_name: None,
+                    linkage_name: None,
+                    source: Default::default(),
+                    address: Some(u64::from(data.offset)),
+                    size: None,
+                    inline: false,
+                    declaration: false,
+                    parameters: Vec::new(),
+                    return_type: None,
+                    inlined_functions: Vec::new(),
+                    variables: Vec::new(),
+                });
                 symbol_index += 1;
             },
             _ => {}
@@ -176,7 +168,7 @@ pub(crate) fn parse(
     cb(&mut file)
 }
 
-fn add_primitive_types<'input>(types: &mut BTreeMap<TypeOffset, Type<'input>>) {
+fn add_primitive_types<'input>(types: &mut Vec<Type<'input>>) {
     add_primitive_type(types, 0x00, b"NoType", 4);
     add_primitive_type(types, 0x03, b"void", 0);
     add_primitive_type(types, 0x10, b"i8", 1); // signed char
@@ -203,52 +195,43 @@ fn add_primitive_types<'input>(types: &mut BTreeMap<TypeOffset, Type<'input>>) {
 }
 
 fn add_primitive_type<'input>(
-    types: &mut BTreeMap<TypeOffset, Type<'input>>,
+    types: &mut Vec<Type<'input>>,
     index: usize,
     name: &'static [u8],
     size: u64,
 ) {
-    types.insert(
-        TypeOffset(index),
-        Type {
-            id: Cell::new(0),
-            offset: TypeOffset(index),
-            kind: TypeKind::Base(BaseType {
-                name: Some(name),
-                byte_size: Some(size),
-            }),
-        },
-    );
+    types.push(Type {
+        id: Cell::new(0),
+        offset: TypeOffset(index),
+        kind: TypeKind::Base(BaseType {
+            name: Some(name),
+            byte_size: Some(size),
+        }),
+    });
 
-    types.insert(
-        TypeOffset(0x400 + index),
-        Type {
-            id: Cell::new(0),
-            offset: TypeOffset(0x400 + index),
-            kind: TypeKind::Modifier(TypeModifier {
-                kind: TypeModifierKind::Pointer,
-                ty: Some(TypeOffset(index)),
-                name: None,
-                byte_size: Some(4),
-                address_size: None,
-            }),
-        },
-    );
+    types.push(Type {
+        id: Cell::new(0),
+        offset: TypeOffset(0x400 + index),
+        kind: TypeKind::Modifier(TypeModifier {
+            kind: TypeModifierKind::Pointer,
+            ty: Some(TypeOffset(index)),
+            name: None,
+            byte_size: Some(4),
+            address_size: None,
+        }),
+    });
 
-    types.insert(
-        TypeOffset(0x600 + index),
-        Type {
-            id: Cell::new(0),
-            offset: TypeOffset(0x600 + index),
-            kind: TypeKind::Modifier(TypeModifier {
-                kind: TypeModifierKind::Pointer,
-                ty: Some(TypeOffset(index)),
-                name: None,
-                byte_size: Some(8),
-                address_size: None,
-            }),
-        },
-    );
+    types.push(Type {
+        id: Cell::new(0),
+        offset: TypeOffset(0x600 + index),
+        kind: TypeKind::Modifier(TypeModifier {
+            kind: TypeModifierKind::Pointer,
+            ty: Some(TypeOffset(index)),
+            name: None,
+            byte_size: Some(8),
+            address_size: None,
+        }),
+    });
 }
 
 fn parse_class<'input>(
@@ -278,21 +261,18 @@ fn parse_class<'input>(
         member.next_bit_offset = bit_offset;
         bit_offset = Some(member.bit_offset);
     }
-    unit.types.insert(
-        TypeOffset(index),
-        Type {
-            id: Cell::new(0),
-            offset: TypeOffset(index),
-            kind: TypeKind::Struct(StructType {
-                namespace: namespace.clone(),
-                name: Some(data.name.as_bytes()),
-                source: Default::default(),
-                byte_size,
-                declaration,
-                members,
-            }),
-        },
-    );
+    unit.types.push(Type {
+        id: Cell::new(0),
+        offset: TypeOffset(index),
+        kind: TypeKind::Struct(StructType {
+            namespace: namespace.clone(),
+            name: Some(data.name.as_bytes()),
+            source: Default::default(),
+            byte_size,
+            declaration,
+            members,
+        }),
+    });
     Ok(())
 }
 
@@ -322,21 +302,18 @@ fn parse_union<'input>(
         member.next_bit_offset = bit_offset;
         bit_offset = Some(member.bit_offset);
     }
-    unit.types.insert(
-        TypeOffset(index),
-        Type {
-            id: Cell::new(0),
-            offset: TypeOffset(index),
-            kind: TypeKind::Union(UnionType {
-                namespace: namespace.clone(),
-                name: Some(data.name.as_bytes()),
-                source: Default::default(),
-                byte_size,
-                declaration,
-                members,
-            }),
-        },
-    );
+    unit.types.push(Type {
+        id: Cell::new(0),
+        offset: TypeOffset(index),
+        kind: TypeKind::Union(UnionType {
+            namespace: namespace.clone(),
+            name: Some(data.name.as_bytes()),
+            source: Default::default(),
+            byte_size,
+            declaration,
+            members,
+        }),
+    });
     Ok(())
 }
 
@@ -357,22 +334,19 @@ fn parse_enumeration<'input>(
         },
         None => Vec::new(),
     };
-    unit.types.insert(
-        TypeOffset(index),
-        Type {
-            id: Cell::new(0),
-            offset: TypeOffset(index),
-            kind: TypeKind::Enumeration(EnumerationType {
-                namespace: namespace.clone(),
-                name: Some(data.name.as_bytes()),
-                source: Default::default(),
-                declaration,
-                ty: underlying_type,
-                byte_size: None,
-                enumerators,
-            }),
-        },
-    );
+    unit.types.push(Type {
+        id: Cell::new(0),
+        offset: TypeOffset(index),
+        kind: TypeKind::Enumeration(EnumerationType {
+            namespace: namespace.clone(),
+            name: Some(data.name.as_bytes()),
+            source: Default::default(),
+            declaration,
+            ty: underlying_type,
+            byte_size: None,
+            enumerators,
+        }),
+    });
     Ok(())
 }
 
@@ -405,8 +379,7 @@ fn parse_procedure<'input>(
         None => Vec::new(),
     };
 
-    unit.types.insert(
-        TypeOffset(index),
+    unit.types.push(
         // TODO: attributes
         Type {
             id: Cell::new(0),
@@ -461,8 +434,7 @@ fn parse_member_function<'input>(
         }
     };
 
-    unit.types.insert(
-        TypeOffset(index),
+    unit.types.push(
         // TODO: class_type, attributes, this_adjustment
         Type {
             id: Cell::new(0),
@@ -484,8 +456,7 @@ fn parse_array<'input>(unit: &mut Unit<'input>, index: usize, data: &pdb::ArrayT
     let element_type = parse_type_index(data.element_type);
     //let indexing_type = parse_type_index(indexing_type);
     let byte_size = Some(u64::from(data.dimensions[0]));
-    unit.types.insert(
-        TypeOffset(index),
+    unit.types.push(
         // TODO: indexing_type, stride
         Type {
             id: Cell::new(0),

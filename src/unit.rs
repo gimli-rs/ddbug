@@ -1,15 +1,15 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::cmp;
 
 use gimli;
 
 use {Options, Result, Sort};
 use file::FileHash;
-use function::{Function, FunctionOffset};
+use function::Function;
 use print::{DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter};
 use range::{Range, RangeList};
-use types::{Type, TypeKind, TypeOffset};
-use variable::{Variable, VariableOffset};
+use types::{Type, TypeKind};
+use variable::Variable;
 
 #[derive(Debug, Default)]
 pub(crate) struct Unit<'input> {
@@ -19,22 +19,22 @@ pub(crate) struct Unit<'input> {
     pub address_size: Option<u64>,
     pub low_pc: Option<u64>,
     pub ranges: RangeList,
-    pub types: BTreeMap<TypeOffset, Type<'input>>,
-    pub functions: BTreeMap<FunctionOffset, Function<'input>>,
-    pub variables: BTreeMap<VariableOffset, Variable<'input>>,
+    pub types: Vec<Type<'input>>,
+    pub functions: Vec<Function<'input>>,
+    pub variables: Vec<Variable<'input>>,
 }
 
 impl<'input> Unit<'input> {
     pub fn assign_ids(&self, _options: &Options, mut id: usize) -> usize {
-        for ty in self.types.values() {
+        for ty in &self.types {
             id += 1;
             ty.id.set(id);
         }
-        for function in self.functions.values() {
+        for function in &self.functions {
             id += 1;
             function.id.set(id);
         }
-        for variable in self.variables.values() {
+        for variable in &self.variables {
             id += 1;
             variable.id.set(id);
         }
@@ -151,12 +151,12 @@ impl<'input> Unit<'input> {
     // Does not include unknown ranges.
     pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
-        for function in self.functions.values() {
+        for function in &self.functions {
             if let Some(range) = function.address() {
                 ranges.push(range);
             }
         }
-        for variable in self.variables.values() {
+        for variable in &self.variables {
             if let Some(range) = variable.address(hash) {
                 ranges.push(range);
             }
@@ -181,7 +181,7 @@ impl<'input> Unit<'input> {
 
     pub fn function_size(&self) -> u64 {
         let mut ranges = RangeList::default();
-        for function in self.functions.values() {
+        for function in &self.functions {
             if let Some(range) = function.address() {
                 ranges.push(range);
             }
@@ -192,7 +192,7 @@ impl<'input> Unit<'input> {
 
     pub fn variable_size(&self, hash: &FileHash) -> u64 {
         let mut ranges = RangeList::default();
-        for variable in self.variables.values() {
+        for variable in &self.variables {
             if let Some(range) = variable.address(hash) {
                 ranges.push(range);
             }
@@ -204,7 +204,7 @@ impl<'input> Unit<'input> {
     /// The offsets of types that should be printed inline.
     fn inline_types(&self, hash: &FileHash) -> HashSet<usize> {
         let mut inline_types = HashSet::new();
-        for ty in self.types.values() {
+        for ty in &self.types {
             // Assume all anonymous types are inline. We don't actually check
             // that they will be inline, but in future we could (eg for TypeDefs).
             // TODO: is this a valid assumption?
@@ -464,15 +464,15 @@ impl<'input> Unit<'input> {
             // Filter out inline types.
             !inline_types.contains(&t.offset.0)
         };
-        self.types.values().filter(|a| filter_type(a)).collect()
+        self.types.iter().filter(|a| filter_type(a)).collect()
     }
 
     fn filter_functions(&self, options: &Options) -> Vec<&Function<'input>> {
-        self.functions.values().filter(|a| a.filter(options)).collect()
+        self.functions.iter().filter(|a| a.filter(options)).collect()
     }
 
     fn filter_variables(&self, options: &Options) -> Vec<&Variable<'input>> {
-        self.variables.values().filter(|a| a.filter(options)).collect()
+        self.variables.iter().filter(|a| a.filter(options)).collect()
     }
 
     fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {
