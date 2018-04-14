@@ -1888,7 +1888,7 @@ fn evaluate_member_location<'input, Endian>(
 where
     Endian: gimli::Endianity + 'input,
 {
-    let pieces = evaluate(unit, expression);
+    let pieces = evaluate(unit, expression, true);
     if pieces.len() != 1 {
         debug!("unsupported number of evaluation pieces: {:?}", pieces);
         return None;
@@ -1914,7 +1914,7 @@ fn evaluate_variable_location<'input, Endian>(
 where
     Endian: gimli::Endianity + 'input,
 {
-    let pieces = evaluate(unit, expression);
+    let pieces = evaluate(unit, expression, false);
     let mut result = None;
     for piece in &*pieces {
         match piece.location {
@@ -1930,7 +1930,8 @@ where
                     }
                 }
             }
-            gimli::Location::Register {
+            gimli::Location::Empty
+            | gimli::Location::Register {
                 ..
             }
             | gimli::Location::Scalar {
@@ -1948,12 +1949,16 @@ where
 fn evaluate<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<gimli::EndianBuf<'input, Endian>>,
     expression: gimli::Expression<gimli::EndianBuf<'input, Endian>>,
+    object_address: bool,
 ) -> Vec<gimli::Piece<gimli::EndianBuf<'input, Endian>>>
 where
     Endian: gimli::Endianity + 'input,
 {
     let mut evaluation = expression.evaluation(unit.address_size(), unit.format());
-    evaluation.set_initial_value(0);
+    if object_address {
+        evaluation.set_object_address(0);
+        evaluation.set_initial_value(0);
+    }
     let mut result = evaluation.evaluate();
     loop {
         match result {
@@ -1963,8 +1968,8 @@ where
             Ok(gimli::EvaluationResult::RequiresTextBase) => {
                 result = evaluation.resume_with_text_base(0);
             }
-            Ok(_) => {
-                //debug!("incomplete evaluation");
+            Ok(_x) => {
+                //debug!("incomplete evaluation: {:?}", _x);
                 return Vec::new();
             }
             Err(e) => {
