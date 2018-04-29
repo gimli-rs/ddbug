@@ -44,7 +44,9 @@ impl<'input> Function<'input> {
         hash: &'a FileHash<'input>,
         offset: FunctionOffset,
     ) -> Option<&'a Function<'input>> {
-        hash.functions_by_offset.get(&offset).map(|function| *function)
+        hash.functions_by_offset
+            .get(&offset)
+            .map(|function| *function)
     }
 
     fn name(&self) -> borrow::Cow<'input, str> {
@@ -140,9 +142,12 @@ impl<'input> Function<'input> {
                     state.field("symbol name", a, b, |w, _state, x| x.print_symbol_name(w))
                 })?;
                 if state.options().print_source {
-                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_source(w, unit)
-                    })?;
+                    state.field(
+                        "source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_source(w, unit),
+                    )?;
                 }
                 let flag = state.options().ignore_function_address;
                 state.ignore_diff(flag, |state| {
@@ -475,7 +480,9 @@ impl<'input> InlinedFunction<'input> {
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        match self.abstract_origin.and_then(|v| Function::from_offset(hash, v)) {
+        match self.abstract_origin
+            .and_then(|v| Function::from_offset(hash, v))
+        {
             Some(function) => function.print_ref(w)?,
             None => write!(w, "<anon>")?,
         }
@@ -544,8 +551,10 @@ impl<'input> DiffList for InlinedFunction<'input> {
     // - include diff cost of lower levels of inlined functions
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        let function_a = a.abstract_origin.and_then(|v| Function::from_offset(state.hash_a(), v));
-        let function_b = b.abstract_origin.and_then(|v| Function::from_offset(state.hash_b(), v));
+        let function_a = a.abstract_origin
+            .and_then(|v| Function::from_offset(state.hash_a(), v));
+        let function_b = b.abstract_origin
+            .and_then(|v| Function::from_offset(state.hash_b(), v));
         match (function_a, function_b) {
             (Some(function_a), Some(function_b)) => {
                 if Function::cmp_id(
@@ -617,10 +626,7 @@ where
                         op: panopticon::Operation::Call(ref call),
                         ..
                     } => match *call {
-                        panopticon::Rvalue::Constant {
-                            ref value,
-                            ..
-                        } => {
+                        panopticon::Rvalue::Constant { ref value, .. } => {
                             calls.push(Call {
                                 from: mnemonic.area.start,
                                 to: *value,

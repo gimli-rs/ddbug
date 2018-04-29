@@ -28,9 +28,7 @@ impl<'w> Printer for TextPrinter<'w> {
         buf: &mut Vec<u8>,
         f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
     ) -> Result<()> {
-        let mut p = TextValuePrinter {
-            w: buf,
-        };
+        let mut p = TextValuePrinter { w: buf };
         f(&mut p)
     }
 

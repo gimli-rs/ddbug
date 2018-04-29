@@ -566,9 +566,12 @@ impl<'input> TypeDef<'input> {
             |state| state.id(id, a, b, |w, state, x| x.print_def(w, state)),
             |state| {
                 if state.options().print_source {
-                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_source(w, unit)
-                    })?;
+                    state.field(
+                        "source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_source(w, unit),
+                    )?;
                 }
                 state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
                 let ty_a = filter_option(a.ty(state.hash_a()), Type::is_anon);
@@ -599,13 +602,7 @@ where
     T: Copy,
     F: FnOnce(T) -> bool,
 {
-    o.and_then(|v| {
-        if f(v) {
-            Some(v)
-        } else {
-            None
-        }
-    })
+    o.and_then(|v| if f(v) { Some(v) } else { None })
 }
 
 #[derive(Debug, Default)]
@@ -678,11 +675,16 @@ impl<'input> StructType<'input> {
             |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 if state.options().print_source {
-                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_source(w, unit)
-                    })?;
+                    state.field(
+                        "source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_source(w, unit),
+                    )?;
                 }
-                state.field("declaration", a, b, |w, state, x| x.print_declaration(w, state))?;
+                state.field("declaration", a, b, |w, state, x| {
+                    x.print_declaration(w, state)
+                })?;
                 state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
                 state.field_expanded("members", |state| {
                     Self::diff_members(state, unit_a, a, unit_b, b)
@@ -812,11 +814,16 @@ impl<'input> UnionType<'input> {
             |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 if state.options().print_source {
-                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_source(w, unit)
-                    })?;
+                    state.field(
+                        "source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_source(w, unit),
+                    )?;
                 }
-                state.field("declaration", a, b, |w, state, x| x.print_declaration(w, state))?;
+                state.field("declaration", a, b, |w, state, x| {
+                    x.print_declaration(w, state)
+                })?;
                 state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
                 state.field_expanded("members", |state| {
                     Self::diff_members(state, unit_a, a, unit_b, b)
@@ -1001,16 +1008,20 @@ impl<'input> Print for Member<'input> {
         };
         state.expanded(
             |state| {
-                state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
-                    x.print_name(w, state, bit_size)
-                })
+                state.line(
+                    (a, bit_size_a),
+                    (b, bit_size_b),
+                    |w, state, (x, bit_size)| x.print_name(w, state, bit_size),
+                )
             },
             |state| Type::diff_members(state, unit_a, ty_a, unit_b, ty_b),
         )?;
 
-        state.line((a, bit_size_a), (b, bit_size_b), |w, state, (x, bit_size)| {
-            x.print_padding(w, state, bit_size)
-        })
+        state.line(
+            (a, bit_size_a),
+            (b, bit_size_b),
+            |w, state, (x, bit_size)| x.print_padding(w, state, bit_size),
+        )
     }
 }
 
@@ -1048,7 +1059,12 @@ struct Padding {
 
 impl Padding {
     fn print(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        write!(w, "{}[{}]\t<padding>", format_bit(self.bit_offset), format_bit(self.bit_size))?;
+        write!(
+            w,
+            "{}[{}]\t<padding>",
+            format_bit(self.bit_offset),
+            format_bit(self.bit_size)
+        )?;
         Ok(())
     }
 }
@@ -1122,9 +1138,12 @@ impl<'input> EnumerationType<'input> {
             |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
             |state| {
                 if state.options().print_source {
-                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_source(w, unit)
-                    })?;
+                    state.field(
+                        "source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_source(w, unit),
+                    )?;
                 }
                 state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))?;
                 state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;

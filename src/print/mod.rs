@@ -114,11 +114,12 @@ impl<'a> PrintState<'a> {
             Ok(())
         })?;
         if !body_buf.is_empty() {
-            self.printer.indent_header(collapsed, &*body_buf, &mut |printer| {
-                let mut state = PrintState::new(printer, hash, options);
-                header(&mut state)?;
-                Ok(())
-            })?;
+            self.printer
+                .indent_header(collapsed, &*body_buf, &mut |printer| {
+                    let mut state = PrintState::new(printer, hash, options);
+                    header(&mut state)?;
+                    Ok(())
+                })?;
         } else if !optional {
             header(self)?;
         }
@@ -191,7 +192,8 @@ impl<'a> PrintState<'a> {
     {
         let mut buf = Vec::new();
         let hash = self.hash;
-        self.printer.value(&mut buf, &mut |printer| f(printer, hash))?;
+        self.printer
+            .value(&mut buf, &mut |printer| f(printer, hash))?;
         if !buf.is_empty() {
             self.printer.line(id, label, &*buf)?;
         }
@@ -364,19 +366,20 @@ impl<'a> DiffState<'a> {
         })?;
 
         if !body_buf.is_empty() {
-            self.printer.indent_header(collapsed, &*body_buf, &mut |printer| {
-                if diff {
-                    printer.prefix(DiffPrefix::Modify);
-                } else {
-                    printer.prefix(DiffPrefix::Equal);
-                }
-                let mut state = DiffState::new(printer, hash_a, hash_b, options);
-                header(&mut state)?;
-                if state.diff {
-                    diff = true;
-                }
-                Ok(())
-            })?;
+            self.printer
+                .indent_header(collapsed, &*body_buf, &mut |printer| {
+                    if diff {
+                        printer.prefix(DiffPrefix::Modify);
+                    } else {
+                        printer.prefix(DiffPrefix::Equal);
+                    }
+                    let mut state = DiffState::new(printer, hash_a, hash_b, options);
+                    header(&mut state)?;
+                    if state.diff {
+                        diff = true;
+                    }
+                    Ok(())
+                })?;
             if diff {
                 self.diff = diff;
             }
@@ -461,8 +464,12 @@ impl<'a> DiffState<'a> {
         let mut buf = Vec::new();
         self.printer.buffer(&mut buf, &mut |printer| {
             let mut state = DiffState::new(printer, hash_a, hash_b, options);
-            state.a().prefix(DiffPrefix::Delete, &mut |state| f(state, arg_a))?;
-            state.b().prefix(DiffPrefix::Add, &mut |state| f(state, arg_b))?;
+            state
+                .a()
+                .prefix(DiffPrefix::Delete, &mut |state| f(state, arg_a))?;
+            state
+                .b()
+                .prefix(DiffPrefix::Add, &mut |state| f(state, arg_b))?;
             Ok(())
         })?;
         if !buf.is_empty() {
@@ -497,11 +504,13 @@ impl<'a> DiffState<'a> {
     {
         let mut a = Vec::new();
         let hash_a = self.hash_a;
-        self.printer.value(&mut a, &mut |printer| f(printer, hash_a, arg_a))?;
+        self.printer
+            .value(&mut a, &mut |printer| f(printer, hash_a, arg_a))?;
 
         let mut b = Vec::new();
         let hash_b = self.hash_b;
-        self.printer.value(&mut b, &mut |printer| f(printer, hash_b, arg_b))?;
+        self.printer
+            .value(&mut b, &mut |printer| f(printer, hash_b, arg_b))?;
 
         if a == b {
             if !a.is_empty() {
@@ -933,14 +942,16 @@ where
 
     // Start at the end.  This makes indexing and boundary conditions
     // simpler, and also means we can backtrack in order.
-    push(&mut node[len - 1], &mut heap, len1 - 1, len2 - 1, 0, Direction::None);
+    push(
+        &mut node[len - 1],
+        &mut heap,
+        len1 - 1,
+        len2 - 1,
+        0,
+        Direction::None,
+    );
 
-    while let Some(State {
-        index1,
-        index2,
-        ..
-    }) = heap.pop()
-    {
+    while let Some(State { index1, index2, .. }) = heap.pop() {
         if (index1, index2) == (0, 0) {
             let mut result = Vec::new();
             let mut index1 = 0;
@@ -978,7 +989,14 @@ where
             let next = index - len1;
             if !node[next].done {
                 let cost = node[index].cost + step_cost2(&item2[next2]);
-                push(&mut node[next], &mut heap, index1, next2, cost, Direction::Vertical);
+                push(
+                    &mut node[next],
+                    &mut heap,
+                    index1,
+                    next2,
+                    cost,
+                    Direction::Vertical,
+                );
             }
         }
         if index1 > 0 {
@@ -986,7 +1004,14 @@ where
             let next = index - 1;
             if !node[next].done {
                 let cost = node[index].cost + step_cost1(&item1[next1]);
-                push(&mut node[next], &mut heap, next1, index2, cost, Direction::Horizontal);
+                push(
+                    &mut node[next],
+                    &mut heap,
+                    next1,
+                    index2,
+                    cost,
+                    Direction::Horizontal,
+                );
             }
         }
         if index1 > 0 && index2 > 0 {
@@ -998,7 +1023,14 @@ where
                 let diff_cost = diff_cost(&item1[next1], &item2[next2]);
                 if diff_cost < step_cost {
                     let cost = node[index].cost + diff_cost;
-                    push(&mut node[next], &mut heap, next1, next2, cost, Direction::Diagonal);
+                    push(
+                        &mut node[next],
+                        &mut heap,
+                        next1,
+                        next2,
+                        cost,
+                        Direction::Diagonal,
+                    );
                 }
             }
         }

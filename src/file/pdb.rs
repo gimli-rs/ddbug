@@ -363,7 +363,11 @@ fn parse_procedure<'input>(
         Some(ref argument_list) => match argument_lists.get(&argument_list.0) {
             Some(arguments) => {
                 if arguments.len() != parameter_count {
-                    debug!("PDB parameter count mismatch {}, {}", arguments.len(), parameter_count);
+                    debug!(
+                        "PDB parameter count mismatch {}, {}",
+                        arguments.len(),
+                        parameter_count
+                    );
                 }
                 arguments
                     .iter()
@@ -420,7 +424,11 @@ fn parse_member_function<'input>(
         match argument_lists.get(&argument_list.0) {
             Some(arguments) => {
                 if arguments.len() != parameter_count {
-                    debug!("PDB parameter count mismatch {}, {}", arguments.len(), parameter_count);
+                    debug!(
+                        "PDB parameter count mismatch {}, {}",
+                        arguments.len(),
+                        parameter_count
+                    );
                 }
                 for argument in arguments {
                     parameters.push(Parameter {

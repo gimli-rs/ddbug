@@ -175,11 +175,17 @@ where
         // DW_AT_stmt_list, DW_AT_ranges, DW_AT_high_pc, DW_AT_size.
         // TODO: include variables in ranges.
         if let Some(offset) = stmt_list {
-            let comp_name = unit.name.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
+            let comp_name = unit.name
+                .map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
             let comp_dir = unit.dir.map(|buf| gimli::EndianBuf::new(buf, dwarf.endian));
             let mut rows = dwarf
                 .debug_line
-                .program(offset, dwarf_unit.header.address_size(), comp_name, comp_dir)?
+                .program(
+                    offset,
+                    dwarf_unit.header.address_size(),
+                    comp_name,
+                    comp_dir,
+                )?
                 .rows();
             let mut seq_addr = None;
             while let Some((_, row)) = rows.next_row()? {
@@ -204,7 +210,9 @@ where
         } else if let Some(offset) = ranges {
             let low_pc = unit.low_pc.unwrap_or(0);
             let mut ranges =
-                dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
+                dwarf
+                    .debug_ranges
+                    .ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
             while let Some(range) = ranges.next()? {
                 // Ranges starting at 0 are probably invalid.
                 // TODO: is this always desired?
@@ -232,7 +240,13 @@ where
     };
 
     let namespace = None;
-    parse_namespace_children(&mut unit, dwarf, &mut dwarf_unit, &namespace, root.children())?;
+    parse_namespace_children(
+        &mut unit,
+        dwarf,
+        &mut dwarf_unit,
+        &namespace,
+        root.children(),
+    )?;
 
     fixup_subprogram_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
     fixup_variable_specifications(&mut unit, dwarf, &mut dwarf_unit)?;
@@ -269,8 +283,9 @@ where
                 subprogram.specification,
                 subprogram.abstract_origin,
             ) {
-                let mut tree =
-                    dwarf_unit.header.entries_tree(dwarf_unit.abbrev, Some(subprogram.offset))?;
+                let mut tree = dwarf_unit
+                    .header
+                    .entries_tree(dwarf_unit.abbrev, Some(subprogram.offset))?;
                 parse_subprogram_children(
                     unit,
                     dwarf,
@@ -287,11 +302,15 @@ where
         }
 
         if !progress {
-            debug!("invalid specification for {} subprograms", dwarf_unit.subprograms.len());
+            debug!(
+                "invalid specification for {} subprograms",
+                dwarf_unit.subprograms.len()
+            );
             mem::swap(&mut defer, &mut dwarf_unit.subprograms);
             for mut subprogram in defer.drain(..) {
-                let mut tree =
-                    dwarf_unit.header.entries_tree(dwarf_unit.abbrev, Some(subprogram.offset))?;
+                let mut tree = dwarf_unit
+                    .header
+                    .entries_tree(dwarf_unit.abbrev, Some(subprogram.offset))?;
                 parse_subprogram_children(
                     unit,
                     dwarf,
@@ -434,7 +453,11 @@ where
                     name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
                 }
                 gimli::DW_AT_decl_file | gimli::DW_AT_decl_line | gimli::DW_AT_decl_column => {}
-                _ => debug!("unknown namespace attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown namespace attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -464,15 +487,19 @@ where
         }
         gimli::DW_TAG_typedef => TypeKind::Def(parse_typedef(dwarf, dwarf_unit, namespace, node)?),
         // TODO: distinguish between class and structure
-        gimli::DW_TAG_class_type | gimli::DW_TAG_structure_type => {
-            TypeKind::Struct(parse_structure_type(unit, dwarf, dwarf_unit, namespace, node)?)
-        }
+        gimli::DW_TAG_class_type | gimli::DW_TAG_structure_type => TypeKind::Struct(
+            parse_structure_type(unit, dwarf, dwarf_unit, namespace, node)?,
+        ),
         gimli::DW_TAG_union_type => {
             TypeKind::Union(parse_union_type(unit, dwarf, dwarf_unit, namespace, node)?)
         }
-        gimli::DW_TAG_enumeration_type => {
-            TypeKind::Enumeration(parse_enumeration_type(unit, dwarf, dwarf_unit, namespace, node)?)
-        }
+        gimli::DW_TAG_enumeration_type => TypeKind::Enumeration(parse_enumeration_type(
+            unit,
+            dwarf,
+            dwarf_unit,
+            namespace,
+            node,
+        )?),
         gimli::DW_TAG_array_type => {
             TypeKind::Array(parse_array_type(dwarf, dwarf_unit, namespace, node)?)
         }
@@ -574,7 +601,11 @@ where
                 gimli::DW_AT_byte_size => {
                     modifier.byte_size = attr.udata_value();
                 }
-                _ => debug!("unknown type modifier attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown type modifier attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -612,7 +643,11 @@ where
                     ty.byte_size = attr.udata_value();
                 }
                 gimli::DW_AT_encoding => {}
-                _ => debug!("unknown base type attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown base type attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -653,7 +688,11 @@ where
                 gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut typedef.source),
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut typedef.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut typedef.source),
-                _ => debug!("unknown typedef attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown typedef attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -700,7 +739,11 @@ where
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
                 gimli::DW_AT_containing_type | gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown struct attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown struct attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -768,7 +811,11 @@ where
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
                 gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown union attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown union attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -868,7 +915,11 @@ where
                 | gimli::DW_AT_alignment
                 | gimli::DW_AT_sibling => {}
                 _ => {
-                    debug!("unknown member attribute: {} {:?}", attr.name(), attr.value());
+                    debug!(
+                        "unknown member attribute: {} {:?}",
+                        attr.name(),
+                        attr.value()
+                    );
                 }
             }
         }
@@ -880,7 +931,10 @@ where
         // but at least clang 3.7.1 uses DW_TAG_member.
         let variable = parse_variable(unit, dwarf, dwarf_unit, namespace.clone(), node)?;
         if variable.specification.is_some() {
-            debug!("specification on variable declaration at offset 0x{:x}", variable.offset.0);
+            debug!(
+                "specification on variable declaration at offset 0x{:x}",
+                variable.offset.0
+            );
         }
         unit.variables.push(variable.variable);
         return Ok(());
@@ -903,8 +957,9 @@ where
                 // First find the offset of the MSB of the anonymous object.
                 member.bit_offset = member.bit_offset.wrapping_add(byte_size * 8);
                 // Then go backwards to the LSB of the bit field.
-                member.bit_offset =
-                    member.bit_offset.wrapping_sub(bit_offset.wrapping_add(bit_size));
+                member.bit_offset = member
+                    .bit_offset
+                    .wrapping_sub(bit_offset.wrapping_add(bit_size));
             } else {
                 // DWARF version 2/3 says the byte_size can be inferred,
                 // but it is unclear when this would be useful.
@@ -963,7 +1018,11 @@ where
                 | gimli::DW_AT_type
                 | gimli::DW_AT_alignment
                 | gimli::DW_AT_enum_class => {}
-                _ => debug!("unknown enumeration attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown enumeration attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -973,7 +1032,8 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_enumerator => {
-                ty.enumerators.push(parse_enumerator(dwarf, dwarf_unit, &namespace, child)?);
+                ty.enumerators
+                    .push(parse_enumerator(dwarf, dwarf_unit, &namespace, child)?);
             }
             gimli::DW_TAG_subprogram => {
                 parse_subprogram(unit, dwarf, dwarf_unit, &namespace, child)?;
@@ -1009,7 +1069,11 @@ where
                 } else {
                     debug!("unknown enumerator const_value: {:?}", attr.value());
                 },
-                _ => debug!("unknown enumerator attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown enumerator attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1047,7 +1111,11 @@ where
                     array.byte_size = attr.udata_value();
                 }
                 gimli::DW_AT_name | gimli::DW_AT_GNU_vector | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown array attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown array attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1117,7 +1185,11 @@ where
                     function.return_type = Some(offset);
                 },
                 gimli::DW_AT_name | gimli::DW_AT_prototyped | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown subroutine attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown subroutine attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1155,9 +1227,11 @@ where
                 gimli::DW_AT_name => {
                     ty.name = attr.string_value(&dwarf.debug_str).map(|s| s.buf());
                 }
-                _ => {
-                    debug!("unknown unspecified type attribute: {} {:?}", attr.name(), attr.value())
-                }
+                _ => debug!(
+                    "unknown unspecified type attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1318,7 +1392,11 @@ where
                 | gimli::DW_AT_APPLE_optimized
                 | gimli::DW_AT_APPLE_omit_frame_ptr
                 | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown subprogram attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown subprogram attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
 
@@ -1392,8 +1470,11 @@ fn parse_subprogram_children<'state, 'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let namespace =
-        Some(Namespace::new(&function.namespace, function.name, NamespaceKind::Function));
+    let namespace = Some(Namespace::new(
+        &function.namespace,
+        function.name,
+        NamespaceKind::Function,
+    ));
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_formal_parameter => {
@@ -1481,7 +1562,11 @@ where
                 | gimli::DW_AT_artificial
                 | gimli::DW_AT_const_value
                 | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown parameter attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown parameter attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1497,7 +1582,10 @@ where
 
     if let Some(abstract_origin) = abstract_origin {
         // TODO: use a hash?
-        if let Some(index) = parameters.iter().position(|x| x.offset == Some(abstract_origin)) {
+        if let Some(index) = parameters
+            .iter()
+            .position(|x| x.offset == Some(abstract_origin))
+        {
             let p = &mut parameters[index];
             if parameter.name.is_some() {
                 p.name = parameter.name;
@@ -1536,7 +1624,11 @@ where
                 | gimli::DW_AT_high_pc
                 | gimli::DW_AT_ranges
                 | gimli::DW_AT_sibling => {}
-                _ => debug!("unknown lexical_block attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown lexical_block attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1637,7 +1729,9 @@ where
         let mut size = 0;
         let low_pc = low_pc.unwrap_or(0);
         let mut ranges =
-            dwarf.debug_ranges.ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
+            dwarf
+                .debug_ranges
+                .ranges(offset, dwarf_unit.header.address_size(), low_pc)?;
         while let Some(range) = ranges.next()? {
             size += range.end.wrapping_sub(range.begin);
         }
@@ -1764,7 +1858,11 @@ where
                 | gimli::DW_AT_external
                 | gimli::DW_AT_accessibility
                 | gimli::DW_AT_alignment => {}
-                _ => debug!("unknown variable attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown variable attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1843,7 +1941,11 @@ where
                 | gimli::DW_AT_artificial
                 | gimli::DW_AT_const_value
                 | gimli::DW_AT_external => {}
-                _ => debug!("unknown local variable attribute: {} {:?}", attr.name(), attr.value()),
+                _ => debug!(
+                    "unknown local variable attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
             }
         }
     }
@@ -1894,12 +1996,8 @@ where
         return None;
     }
     match pieces[0].location {
-        gimli::Location::Address {
-            address,
-        } => Some(address * 8),
-        gimli::Location::Register {
-            ..
-        } => None,
+        gimli::Location::Address { address } => Some(address * 8),
+        gimli::Location::Register { .. } => None,
         _ => {
             debug!("unknown DW_AT_data_member_location result: {:?}", pieces);
             None
@@ -1918,11 +2016,12 @@ where
     let mut result = None;
     for piece in &*pieces {
         match piece.location {
-            gimli::Location::Address {
-                address,
-            } => {
+            gimli::Location::Address { address } => {
                 if result.is_some() {
-                    debug!("unsupported DW_AT_location with multiple addresses: {:?}", pieces);
+                    debug!(
+                        "unsupported DW_AT_location with multiple addresses: {:?}",
+                        pieces
+                    );
                 } else {
                     // TODO: is address 0 ever valid?
                     if address != 0 {
@@ -1931,15 +2030,9 @@ where
                 }
             }
             gimli::Location::Empty
-            | gimli::Location::Register {
-                ..
-            }
-            | gimli::Location::Scalar {
-                ..
-            }
-            | gimli::Location::ImplicitPointer {
-                ..
-            } => {}
+            | gimli::Location::Register { .. }
+            | gimli::Location::Scalar { .. }
+            | gimli::Location::ImplicitPointer { .. } => {}
             _ => debug!("unknown DW_AT_location piece: {:?}", piece),
         }
     }

@@ -468,11 +468,17 @@ impl<'input> Unit<'input> {
     }
 
     fn filter_functions(&self, options: &Options) -> Vec<&Function<'input>> {
-        self.functions.iter().filter(|a| a.filter(options)).collect()
+        self.functions
+            .iter()
+            .filter(|a| a.filter(options))
+            .collect()
     }
 
     fn filter_variables(&self, options: &Options) -> Vec<&Variable<'input>> {
-        self.variables.iter().filter(|a| a.filter(options)).collect()
+        self.variables
+            .iter()
+            .filter(|a| a.filter(options))
+            .collect()
     }
 
     fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {

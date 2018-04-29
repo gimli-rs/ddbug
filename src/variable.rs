@@ -87,9 +87,12 @@ impl<'input> Variable<'input> {
                     state.field("symbol name", a, b, |w, _state, x| x.print_symbol_name(w))
                 })?;
                 if state.options().print_source {
-                    state.field("source", (unit_a, a), (unit_b, b), |w, _state, (unit, x)| {
-                        x.print_source(w, unit)
-                    })?;
+                    state.field(
+                        "source",
+                        (unit_a, a),
+                        (unit_b, b),
+                        |w, _state, (unit, x)| x.print_source(w, unit),
+                    )?;
                 }
                 let flag = state.options().ignore_variable_address;
                 state.ignore_diff(flag, |state| {

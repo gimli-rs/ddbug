@@ -153,9 +153,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
         buf: &mut Vec<u8>,
         f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
     ) -> Result<()> {
-        let mut p = HtmlValuePrinter {
-            w: buf,
-        };
+        let mut p = HtmlValuePrinter { w: buf };
         f(&mut p)
     }
 
@@ -335,7 +333,11 @@ impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
         if id == 0 {
             f(self)
         } else {
-            write!(self.w, "<a onclick=\"link(this, \'{}');\" href=\"#{}\">", id, id)?;
+            write!(
+                self.w,
+                "<a onclick=\"link(this, \'{}');\" href=\"#{}\">",
+                id, id
+            )?;
             f(self)?;
             write!(self.w, "</a>")?;
             Ok(())

@@ -25,7 +25,13 @@ impl Range {
 
     pub fn print_address_and_size(&self, w: &mut ValuePrinter) -> Result<()> {
         if self.end > self.begin {
-            write!(w, "0x{:x}-0x{:x} ({})", self.begin, self.end - 1, self.end - self.begin)?;
+            write!(
+                w,
+                "0x{:x}-0x{:x} ({})",
+                self.begin,
+                self.end - 1,
+                self.end - self.begin
+            )?;
         } else {
             write!(w, "0x{:x}", self.begin)?;
         }

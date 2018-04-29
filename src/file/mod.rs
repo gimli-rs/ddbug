@@ -85,16 +85,17 @@ impl<'input> File<'input> {
                 let layer = panopticon::Layer::wrap(data.to_vec());
                 region.cover(bound, layer);
             }
-            code = Some(CodeRegion {
-                machine,
-                region,
-            });
+            code = Some(CodeRegion { machine, region });
         }
 
         let mut sections = Vec::new();
         for section in object.sections() {
-            let name = section.name().map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
-            let segment = section.segment_name().map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
+            let name = section
+                .name()
+                .map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
+            let segment = section
+                .segment_name()
+                .map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
             let address = if section.address() != 0 {
                 Some(section.address())
             } else {
@@ -247,8 +248,9 @@ impl<'input> File<'input> {
                 index -= 1;
             }
             let mut found = false;
-            for (symbol, used_symbol) in
-                (&symbols[index..]).iter().zip((&mut used_symbols[index..]).iter_mut())
+            for (symbol, used_symbol) in (&symbols[index..])
+                .iter()
+                .zip((&mut used_symbols[index..]).iter_mut())
             {
                 if symbol.address != address {
                     break;
