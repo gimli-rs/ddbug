@@ -65,7 +65,9 @@ impl<'input> Unit<'input> {
             }
         }
 
-        for function in Self::merged_functions(hash_a, unit_a, hash_b, unit_b, options) {
+        let (functions, inlined_functions) =
+            Self::merged_functions(hash_a, unit_a, hash_b, unit_b, options);
+        for function in functions.into_iter().chain(inlined_functions.into_iter()) {
             id += 1;
             match function {
                 MergeResult::Both(a, b) => {
@@ -122,14 +124,32 @@ impl<'input> Unit<'input> {
         hash_b: &FileHash,
         unit_b: &'a Unit<'input>,
         options: &Options,
-    ) -> Vec<MergeResult<&'a Function<'input>, &'a Function<'input>>> {
+    ) -> (
+        Vec<MergeResult<&'a Function<'input>, &'a Function<'input>>>,
+        Vec<MergeResult<&'a Function<'input>, &'a Function<'input>>>,
+    ) {
         let mut functions_a = unit_a.filter_functions(options);
         functions_a.sort_by(|x, y| Function::cmp_id_for_sort(hash_a, x, hash_a, y, options));
         let mut functions_b = unit_b.filter_functions(options);
         functions_b.sort_by(|x, y| Function::cmp_id_for_sort(hash_b, x, hash_b, y, options));
-        MergeIterator::new(functions_a.into_iter(), functions_b.into_iter(), |a, b| {
-            Function::cmp_id(hash_a, a, hash_b, b, options)
-        }).collect()
+        let mut functions = Vec::new();
+        let mut inlined_functions = Vec::new();
+        for function in
+            MergeIterator::new(functions_a.into_iter(), functions_b.into_iter(), |a, b| {
+                Function::cmp_id(hash_a, a, hash_b, b, options)
+            }) {
+            let inline = match function {
+                MergeResult::Both(a, b) => a.size.is_none() || b.size.is_none(),
+                MergeResult::Left(a) => a.size.is_none(),
+                MergeResult::Right(b) => b.size.is_none(),
+            };
+            if inline {
+                inlined_functions.push(function);
+            } else {
+                functions.push(function);
+            }
+        }
+        (functions, inlined_functions)
     }
 
     fn merged_variables<'a>(
@@ -388,13 +408,8 @@ impl<'input> Unit<'input> {
             }
             Ok(())
         };
-        let diff_functions = |state: &mut DiffState| -> Result<()> {
-            if options.category_function {
-                let mut functions =
-                    Self::merged_functions(state.hash_a(), unit_a, state.hash_b(), unit_b, options);
-                state.sort_list(unit_a, unit_b, &mut functions)?;
-            }
-            Ok(())
+        let merged_functions = |state: &mut DiffState| {
+            Self::merged_functions(state.hash_a(), unit_a, state.hash_b(), unit_b, options)
         };
         let diff_variables = |state: &mut DiffState| -> Result<()> {
             if options.category_variable {
@@ -411,7 +426,15 @@ impl<'input> Unit<'input> {
                     diff_unit(state)?;
                 }
                 state.field_collapsed("types", &diff_types)?;
-                state.field_collapsed("functions", &diff_functions)?;
+                if options.category_function {
+                    let (mut functions, mut inlined_functions) = merged_functions(state);
+                    state.field_collapsed("functions", |state| {
+                        state.sort_list(unit_a, unit_b, &mut functions)
+                    })?;
+                    state.field_collapsed("inlined functions", |state| {
+                        state.sort_list(unit_a, unit_b, &mut inlined_functions)
+                    })?;
+                }
                 state.field_collapsed("variables", &diff_variables)?;
                 Ok(())
             })?;
@@ -420,7 +443,11 @@ impl<'input> Unit<'input> {
                 state.collapsed(diff_header, diff_unit)?;
             }
             diff_types(state)?;
-            diff_functions(state)?;
+            if options.category_function {
+                let (mut functions, mut inlined_functions) = merged_functions(state);
+                state.sort_list(unit_a, unit_b, &mut functions)?;
+                state.sort_list(unit_a, unit_b, &mut inlined_functions)?;
+            }
             diff_variables(state)?;
         }
         Ok(())
