@@ -1,15 +1,15 @@
 use std::cell::Cell;
 use std::cmp;
-use std::rc::Rc;
 use std::marker;
+use std::rc::Rc;
 
-use {Options, Result, Sort};
 use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use source::Source;
 use unit::Unit;
+use {Options, Result, Sort};
 
 #[derive(Debug)]
 pub(crate) enum TypeKind<'input> {

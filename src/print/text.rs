@@ -1,8 +1,8 @@
 use std;
 use std::io::Write;
 
-use {Options, Result};
 use super::{DiffPrefix, Printer, ValuePrinter};
+use {Options, Result};
 
 pub struct TextPrinter<'w> {
     w: &'w mut Write,

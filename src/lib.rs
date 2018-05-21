@@ -14,16 +14,16 @@ mod print;
 mod range;
 mod source;
 mod types;
-mod variable;
 mod unit;
+mod variable;
 
 use std::borrow::Borrow;
 use std::borrow::Cow;
 use std::error;
 use std::fmt;
 use std::io;
-use std::result;
 use std::rc::Rc;
+use std::result;
 
 use namespace::Namespace;
 

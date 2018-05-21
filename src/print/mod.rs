@@ -3,8 +3,8 @@ use std::collections::BinaryHeap;
 use std::io::Write;
 use std::usize;
 
-use {Options, Result};
 use file::FileHash;
+use {Options, Result};
 
 mod text;
 pub use self::text::TextPrinter;

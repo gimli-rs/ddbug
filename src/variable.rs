@@ -2,7 +2,6 @@ use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 
-use {Options, Result, Sort};
 use file::FileHash;
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
@@ -10,6 +9,7 @@ use range::Range;
 use source::Source;
 use types::{Type, TypeOffset};
 use unit::Unit;
+use {Options, Result, Sort};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct VariableOffset(pub usize);

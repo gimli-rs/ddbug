@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 use std::cell::Cell;
 use std::collections::BTreeMap;
-use std::rc::Rc;
 use std::mem;
+use std::rc::Rc;
 
 use gimli;
 use object;
@@ -73,7 +73,9 @@ where
     Cb: FnOnce(Vec<Unit>) -> Result<()>,
 {
     let get_section = |name| {
-        object.section_data_by_name(name).unwrap_or(Cow::Borrowed(&[]))
+        object
+            .section_data_by_name(name)
+            .unwrap_or(Cow::Borrowed(&[]))
     };
     let debug_abbrev = get_section(".debug_abbrev");
     let debug_abbrev = gimli::DebugAbbrev::new(&*debug_abbrev, endian);
@@ -187,7 +189,8 @@ where
         if let Some(offset) = stmt_list {
             let comp_name = unit.name
                 .map(|buf| gimli::EndianSlice::new(buf, dwarf.endian));
-            let comp_dir = unit.dir.map(|buf| gimli::EndianSlice::new(buf, dwarf.endian));
+            let comp_dir = unit.dir
+                .map(|buf| gimli::EndianSlice::new(buf, dwarf.endian));
             let mut rows = dwarf
                 .debug_line
                 .program(
@@ -219,10 +222,12 @@ where
             dwarf_unit.line = Some(rows);
         } else if let Some(offset) = ranges {
             let low_pc = unit.low_pc.unwrap_or(0);
-            let mut ranges =
-                dwarf
-                    .range_lists
-                    .ranges(offset, dwarf_unit.header.version(), dwarf_unit.header.address_size(), low_pc)?;
+            let mut ranges = dwarf.range_lists.ranges(
+                offset,
+                dwarf_unit.header.version(),
+                dwarf_unit.header.address_size(),
+                low_pc,
+            )?;
             while let Some(range) = ranges.next()? {
                 // Ranges starting at 0 are probably invalid.
                 // TODO: is this always desired?
@@ -1738,10 +1743,12 @@ where
     if let Some(offset) = ranges {
         let mut size = 0;
         let low_pc = low_pc.unwrap_or(0);
-        let mut ranges =
-            dwarf
-                .range_lists
-                .ranges(offset, dwarf_unit.header.version(), dwarf_unit.header.address_size(), low_pc)?;
+        let mut ranges = dwarf.range_lists.ranges(
+            offset,
+            dwarf_unit.header.version(),
+            dwarf_unit.header.address_size(),
+            low_pc,
+        )?;
         while let Some(range) = ranges.next()? {
             size += range.end.wrapping_sub(range.begin);
         }
@@ -2208,10 +2215,8 @@ where
     }
 }
 
-fn parse_source_column<Endian>(
-    attr: &gimli::Attribute<Reader<Endian>>,
-    source: &mut Source,
-) where
+fn parse_source_column<Endian>(attr: &gimli::Attribute<Reader<Endian>>, source: &mut Source)
+where
     Endian: gimli::Endianity,
 {
     match attr.value() {

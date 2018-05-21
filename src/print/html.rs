@@ -3,8 +3,8 @@ use std::io::Write;
 
 use marksman_escape::Escape;
 
-use {Options, Result};
 use super::{DiffPrefix, Printer, ValuePrinter};
+use {Options, Result};
 
 const HEADER: &str = r##"<!DOCTYPE html>
 <html>

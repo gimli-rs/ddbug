@@ -7,15 +7,15 @@ use std::rc::Rc;
 use amd64;
 use panopticon;
 
-use {Options, Result, Sort};
 use file::{CodeRegion, File, FileHash};
 use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use range::Range;
 use source::Source;
 use types::{Type, TypeOffset};
-use variable::LocalVariable;
 use unit::Unit;
+use variable::LocalVariable;
+use {Options, Result, Sort};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct FunctionOffset(pub usize);

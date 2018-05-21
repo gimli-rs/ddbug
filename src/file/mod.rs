@@ -11,7 +11,6 @@ use memmap;
 use object::{self, Object, ObjectSection, ObjectSegment};
 use panopticon;
 
-use {Options, Result};
 use function::{Function, FunctionOffset};
 use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
             ValuePrinter};
@@ -19,6 +18,7 @@ use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
 use variable::Variable;
+use {Options, Result};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {

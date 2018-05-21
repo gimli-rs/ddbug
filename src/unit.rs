@@ -1,15 +1,15 @@
-use std::collections::HashSet;
 use std::cmp;
+use std::collections::HashSet;
 
 use gimli;
 
-use {Options, Result, Sort};
 use file::FileHash;
 use function::Function;
 use print::{DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeKind};
 use variable::Variable;
+use {Options, Result, Sort};
 
 #[derive(Debug, Default)]
 pub(crate) struct Unit<'input> {
