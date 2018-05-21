@@ -1,5 +1,7 @@
+use std::borrow::Cow;
 use std::cmp;
 use std::collections::HashSet;
+use std::ops::Deref;
 
 use gimli;
 
@@ -13,8 +15,8 @@ use {Options, Result, Sort};
 
 #[derive(Debug, Default)]
 pub(crate) struct Unit<'input> {
-    pub dir: Option<&'input [u8]>,
-    pub name: Option<&'input [u8]>,
+    pub dir: Option<Cow<'input, str>>,
+    pub name: Option<Cow<'input, str>>,
     pub language: Option<gimli::DwLang>,
     pub address_size: Option<u64>,
     pub low_pc: Option<u64>,
@@ -25,6 +27,14 @@ pub(crate) struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
+    pub fn dir(&self) -> Option<&str> {
+        self.dir.as_ref().map(Cow::deref)
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     pub fn assign_ids(&self, _options: &Options, mut id: usize) -> usize {
         for ty in &self.types {
             id += 1;
@@ -245,10 +255,7 @@ impl<'input> Unit<'input> {
     }
 
     fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         Ok(())
     }
 
@@ -476,7 +483,7 @@ impl<'input> Unit<'input> {
                     // Hack for rust closures
                     // TODO: is there better way of identifying these, or a
                     // a way to match pairs for diffing?
-                    if diff && t.name == Some(b"closure") {
+                    if diff && t.name() == Some("closure") {
                         return false;
                     }
                 }
@@ -508,22 +515,22 @@ impl<'input> Unit<'input> {
             .collect()
     }
 
-    fn prefix_map(&self, options: &Options<'input>) -> (&'input [u8], &'input [u8]) {
-        let name = self.name.unwrap_or(&[]);
+    fn prefix_map(&self, options: &Options<'input>) -> (&'input str, &str) {
+        let name = self.name().unwrap_or("");
         for &(old, new) in &options.prefix_map {
-            if name.starts_with(old.as_bytes()) {
-                return (new.as_bytes(), &name[old.len()..]);
+            if name.starts_with(old) {
+                return (new, &name[old.len()..]);
             }
         }
-        (&[], name)
+        ("", name)
     }
 
     /// Return true if this unit matches the filter options.
     pub fn filter(&self, options: &Options) -> bool {
         if let Some(filter) = options.filter_unit {
             let (prefix, suffix) = self.prefix_map(options);
-            let iter = prefix.iter().chain(suffix);
-            iter.cmp(filter.as_bytes()) == cmp::Ordering::Equal
+            let iter = prefix.bytes().chain(suffix.bytes());
+            iter.cmp(filter.bytes()) == cmp::Ordering::Equal
         } else {
             true
         }
@@ -552,8 +559,8 @@ impl<'input> SortList for Unit<'input> {
     ) -> cmp::Ordering {
         let (prefix_a, suffix_a) = a.prefix_map(options);
         let (prefix_b, suffix_b) = b.prefix_map(options);
-        let iter_a = prefix_a.iter().chain(suffix_a);
-        let iter_b = prefix_b.iter().chain(suffix_b);
+        let iter_a = prefix_a.bytes().chain(suffix_a.bytes());
+        let iter_b = prefix_b.bytes().chain(suffix_b.bytes());
         iter_a.cmp(iter_b)
     }
 

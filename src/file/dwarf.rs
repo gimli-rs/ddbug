@@ -128,6 +128,8 @@ where
     let root = tree.root()?;
 
     let mut unit = Unit::default();
+    let mut comp_name = None;
+    let mut comp_dir = None;
     unit.address_size = Some(u64::from(unit_header.address_size()));
     {
         let entry = root.entry();
@@ -142,10 +144,12 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    unit.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice())
+                    comp_name = attr.string_value(&dwarf.debug_str);
+                    unit.name = comp_name.map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_comp_dir => {
-                    unit.dir = attr.string_value(&dwarf.debug_str).map(|s| s.slice())
+                    comp_dir = attr.string_value(&dwarf.debug_str);
+                    unit.dir = comp_dir.map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_language => {
                     if let gimli::AttributeValue::Language(language) = attr.value() {
@@ -187,10 +191,6 @@ where
         // DW_AT_stmt_list, DW_AT_ranges, DW_AT_high_pc, DW_AT_size.
         // TODO: include variables in ranges.
         if let Some(offset) = stmt_list {
-            let comp_name = unit.name
-                .map(|buf| gimli::EndianSlice::new(buf, dwarf.endian));
-            let comp_dir = unit.dir
-                .map(|buf| gimli::EndianSlice::new(buf, dwarf.endian));
             let mut rows = dwarf
                 .debug_line
                 .program(
@@ -370,10 +370,10 @@ where
                     let variable = &mut variable.variable;
                     variable.namespace = specification.namespace.clone();
                     if variable.name.is_none() {
-                        variable.name = specification.name;
+                        variable.name = specification.name.clone();
                     }
                     if variable.linkage_name.is_none() {
-                        variable.linkage_name = specification.linkage_name;
+                        variable.linkage_name = specification.linkage_name.clone();
                     }
                     if variable.ty.is_none() {
                         variable.ty = specification.ty;
@@ -465,7 +465,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_decl_file | gimli::DW_AT_decl_line | gimli::DW_AT_decl_column => {}
                 _ => debug!(
@@ -608,7 +609,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    modifier.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    modifier.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     modifier.ty = Some(offset);
@@ -652,7 +654,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    ty.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -695,7 +698,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    typedef.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    typedef.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     typedef.ty = Some(offset);
@@ -741,7 +745,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    ty.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -763,7 +768,11 @@ where
         }
     }
 
-    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
+    let namespace = Some(Namespace::new(
+        &ty.namespace,
+        ty.name.clone(),
+        NamespaceKind::Type,
+    ));
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -813,7 +822,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    ty.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -835,7 +845,11 @@ where
         }
     }
 
-    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
+    let namespace = Some(Namespace::new(
+        &ty.namespace,
+        ty.name.clone(),
+        NamespaceKind::Type,
+    ));
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -879,7 +893,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    member.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    member.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     member.ty = Some(offset);
@@ -1017,7 +1032,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    ty.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
                     ty.byte_size = attr.udata_value();
@@ -1042,7 +1058,11 @@ where
         }
     }
 
-    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
+    let namespace = Some(Namespace::new(
+        &ty.namespace,
+        ty.name.clone(),
+        NamespaceKind::Type,
+    ));
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -1077,7 +1097,8 @@ where
         while let Some(ref attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    enumerator.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    enumerator.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_const_value => if let Some(value) = attr.sdata_value() {
                     enumerator.value = Some(value);
@@ -1240,7 +1261,8 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    ty.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    ty.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 _ => debug!(
                     "unknown unspecified type attribute: {} {:?}",
@@ -1347,10 +1369,12 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    function.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    function.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_linkage_name | gimli::DW_AT_MIPS_linkage_name => {
-                    function.linkage_name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    function.linkage_name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf_unit, &attr, &mut function.source)
@@ -1450,13 +1474,13 @@ fn inherit_subprogram<'input>(
 
     function.namespace = specification.namespace.clone();
     if function.name.is_none() {
-        function.name = specification.name;
+        function.name = specification.name.clone();
     }
     if function.linkage_name.is_none() {
-        function.linkage_name = specification.linkage_name;
+        function.linkage_name = specification.linkage_name.clone();
     }
     if function.source.is_none() {
-        function.source = specification.source;
+        function.source = specification.source.clone();
     }
     if function.return_type.is_none() {
         function.return_type = specification.return_type;
@@ -1487,7 +1511,7 @@ where
 {
     let namespace = Some(Namespace::new(
         &function.namespace,
-        function.name,
+        function.name.clone(),
         NamespaceKind::Function,
     ));
     while let Some(child) = iter.next()? {
@@ -1565,7 +1589,8 @@ where
                     }
                 }
                 gimli::DW_AT_name => {
-                    parameter.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    parameter.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     parameter.ty = Some(offset);
@@ -1829,10 +1854,12 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_name => {
-                    variable.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    variable.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_linkage_name | gimli::DW_AT_MIPS_linkage_name => {
-                    variable.linkage_name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    variable.linkage_name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     variable.ty = Some(offset);
@@ -1926,7 +1953,8 @@ where
                     }
                 }
                 gimli::DW_AT_name => {
-                    variable.name = attr.string_value(&dwarf.debug_str).map(|s| s.slice());
+                    variable.name = attr.string_value(&dwarf.debug_str)
+                        .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     variable.ty = Some(offset);
@@ -2184,9 +2212,9 @@ fn parse_source_file<'state, 'input, Endian>(
         gimli::AttributeValue::FileIndex(val) => if val != 0 {
             if let Some(ref line) = dwarf_unit.line {
                 if let Some(entry) = line.header().file(val) {
-                    source.file = Some(entry.path_name().slice());
+                    source.file = Some(entry.path_name().to_string_lossy());
                     if let Some(directory) = entry.directory(line.header()) {
-                        source.directory = Some(directory.slice());
+                        source.directory = Some(directory.to_string_lossy());
                     } else {
                         debug!("invalid directory index {}", entry.directory_index());
                     }

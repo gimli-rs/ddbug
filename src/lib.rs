@@ -141,8 +141,8 @@ impl<'a> Options<'a> {
         self.filter_function_inline.is_none() || self.filter_function_inline == Some(inline)
     }
 
-    fn filter_name(&self, name: Option<&[u8]>) -> bool {
-        self.filter_name.is_none() || self.filter_name.map(str::as_bytes) == name
+    fn filter_name(&self, name: Option<&str>) -> bool {
+        self.filter_name.is_none() || self.filter_name == name
     }
 
     fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {

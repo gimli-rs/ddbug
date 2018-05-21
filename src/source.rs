@@ -1,16 +1,27 @@
+use std::borrow::Cow;
+use std::ops::Deref;
+
 use Result;
 use print::ValuePrinter;
 use unit::Unit;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Source<'input> {
-    pub directory: Option<&'input [u8]>,
-    pub file: Option<&'input [u8]>,
+    pub directory: Option<Cow<'input, str>>,
+    pub file: Option<Cow<'input, str>>,
     pub line: u64,
     pub column: u64,
 }
 
 impl<'input> Source<'input> {
+    pub fn directory(&self) -> Option<&str> {
+        self.directory.as_ref().map(Cow::deref)
+    }
+
+    pub fn file(&self) -> Option<&str> {
+        self.file.as_ref().map(Cow::deref)
+    }
+
     pub fn is_none(&self) -> bool {
         self.file.is_none()
     }
@@ -19,29 +30,29 @@ impl<'input> Source<'input> {
         self.file.is_some()
     }
 
-    pub fn path(&self, unit: &Unit) -> Option<Vec<u8>> {
-        fn is_absolute(directory: &[u8]) -> bool {
-            directory.get(0) == Some(&b'/') || directory.get(1) == Some(&b':')
+    pub fn path(&self, unit: &Unit) -> Option<String> {
+        fn is_absolute(directory: &str) -> bool {
+            directory.get(0..1) == Some("/") || directory.get(1..2) == Some(":")
         }
 
-        self.file.map(|file| {
-            let mut path = Vec::new();
-            if let Some(directory) = self.directory {
-                if let (false, Some(unit_dir)) = (is_absolute(directory), unit.dir) {
-                    path.extend_from_slice(unit_dir);
-                    path.push(b'/');
+        self.file().map(|file| {
+            let mut path = String::new();
+            if let Some(directory) = self.directory() {
+                if let (false, Some(unit_dir)) = (is_absolute(directory), unit.dir()) {
+                    path.push_str(unit_dir);
+                    path.push('/');
                 }
-                path.extend_from_slice(directory);
-                path.push(b'/');
+                path.push_str(directory);
+                path.push('/');
             }
-            path.extend_from_slice(file);
+            path.push_str(file);
             path
         })
     }
 
     pub fn print(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
         if let Some(path) = self.path(unit) {
-            write!(w, "{}", String::from_utf8_lossy(&*path))?;
+            write!(w, "{}", path)?;
             if self.line != 0 {
                 write!(w, ":{}", self.line)?;
                 if self.column != 0 {

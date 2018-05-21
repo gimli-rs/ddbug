@@ -1,5 +1,7 @@
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cmp;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use file::FileHash;
@@ -19,9 +21,9 @@ pub(crate) struct Variable<'input> {
     pub id: Cell<usize>,
     pub offset: Option<VariableOffset>,
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
-    pub linkage_name: Option<&'input [u8]>,
-    pub symbol_name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
+    pub linkage_name: Option<Cow<'input, str>>,
+    pub symbol_name: Option<Cow<'input, str>>,
     pub ty: Option<TypeOffset>,
     pub source: Source<'input>,
     pub address: Option<u64>,
@@ -32,6 +34,18 @@ pub(crate) struct Variable<'input> {
 impl<'input> Variable<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
+    }
+
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
+    pub fn linkage_name(&self) -> Option<&str> {
+        self.linkage_name.as_ref().map(Cow::deref)
+    }
+
+    pub fn symbol_name(&self) -> Option<&str> {
+        self.symbol_name.as_ref().map(Cow::deref)
     }
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -111,25 +125,21 @@ impl<'input> Variable<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
-        write!(w, ": ")?;
+        write!(w, "{}: ", self.name().unwrap_or("<anon>"))?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
     fn print_linkage_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(linkage_name) = self.linkage_name {
-            write!(w, "{}", String::from_utf8_lossy(linkage_name))?;
+        if let Some(linkage_name) = self.linkage_name() {
+            write!(w, "{}", linkage_name)?;
         }
         Ok(())
     }
 
     fn print_symbol_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(symbol_name) = self.symbol_name {
-            write!(w, "{}", String::from_utf8_lossy(symbol_name))?;
+        if let Some(symbol_name) = self.symbol_name() {
+            write!(w, "{}", symbol_name)?;
         }
         Ok(())
     }
@@ -169,7 +179,7 @@ impl<'input> Variable<'input> {
             // TODO: make this configurable?
             return false;
         }
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 }
 
@@ -193,7 +203,7 @@ impl<'input> SortList for Variable<'input> {
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 
     fn cmp_by(
@@ -215,7 +225,7 @@ impl<'input> SortList for Variable<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct LocalVariable<'input> {
     pub offset: VariableOffset,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub ty: Option<TypeOffset>,
     pub source: Source<'input>,
     pub address: Option<u64>,
@@ -223,6 +233,10 @@ pub(crate) struct LocalVariable<'input> {
 }
 
 impl<'input> LocalVariable<'input> {
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -236,11 +250,7 @@ impl<'input> LocalVariable<'input> {
     }
 
     fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
-        write!(w, ": ")?;
+        write!(w, "{}: ", self.name().unwrap_or("<anon>"))?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }

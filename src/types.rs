@@ -1,6 +1,8 @@
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cmp;
 use std::marker;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use file::FileHash;
@@ -338,7 +340,7 @@ impl<'input> SortList for Type<'input> {
 pub(crate) struct TypeModifier<'input> {
     pub kind: TypeModifierKind,
     pub ty: Option<TypeOffset>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub byte_size: Option<u64>,
     // TODO: hack
     pub address_size: Option<u64>,
@@ -380,6 +382,10 @@ impl TypeModifierKind {
 }
 
 impl<'input> TypeModifier<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -403,8 +409,8 @@ impl<'input> TypeModifier<'input> {
     }
 
     fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        if let Some(name) = self.name {
-            write!(w, "{}", String::from_utf8_lossy(name))?;
+        if let Some(name) = self.name() {
+            write!(w, "{}", name)?;
         } else {
             match self.kind {
                 TypeModifierKind::Pointer => write!(w, "* ")?,
@@ -454,20 +460,21 @@ impl<'input> TypeModifier<'input> {
 
 #[derive(Debug, Default)]
 pub(crate) struct BaseType<'input> {
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub byte_size: Option<u64>,
 }
 
 impl<'input> BaseType<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
 
     fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon-base-type>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon-base-type>"))?;
         Ok(())
     }
 
@@ -482,12 +489,16 @@ impl<'input> BaseType<'input> {
 #[derive(Debug, Default)]
 pub(crate) struct TypeDef<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub ty: Option<TypeOffset>,
     pub source: Source<'input>,
 }
 
 impl<'input> TypeDef<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
@@ -500,10 +511,7 @@ impl<'input> TypeDef<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon-typedef>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon-typedef>"))?;
         Ok(())
     }
 
@@ -588,14 +596,14 @@ impl<'input> TypeDef<'input> {
     }
 
     fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
 
@@ -610,7 +618,7 @@ where
 #[derive(Debug, Default)]
 pub(crate) struct StructType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
     pub byte_size: Option<u64>,
     pub declaration: bool,
@@ -618,6 +626,10 @@ pub(crate) struct StructType<'input> {
 }
 
 impl<'input> StructType<'input> {
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
@@ -637,10 +649,7 @@ impl<'input> StructType<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         Ok(())
     }
 
@@ -735,21 +744,21 @@ impl<'input> StructType<'input> {
     }
 
     fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &StructType, b: &StructType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct UnionType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
     pub byte_size: Option<u64>,
     pub declaration: bool,
@@ -757,6 +766,10 @@ pub(crate) struct UnionType<'input> {
 }
 
 impl<'input> UnionType<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn byte_size(&self) -> Option<u64> {
         self.byte_size
     }
@@ -776,10 +789,7 @@ impl<'input> UnionType<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         Ok(())
     }
 
@@ -875,20 +885,20 @@ impl<'input> UnionType<'input> {
     }
 
     fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &UnionType, b: &UnionType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Member<'input> {
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub ty: Option<TypeOffset>,
     // Defaults to 0, so always present.
     pub bit_offset: u64,
@@ -898,6 +908,10 @@ pub(crate) struct Member<'input> {
 }
 
 impl<'input> Member<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
@@ -911,8 +925,8 @@ impl<'input> Member<'input> {
     }
 
     pub fn is_inline(&self, hash: &FileHash) -> bool {
-        match self.name {
-            Some(s) => if s.starts_with(b"RUST$ENCODED$ENUM$") {
+        match self.name() {
+            Some(s) => if s.starts_with("RUST$ENCODED$ENUM$") {
                 return true;
             },
             None => return true,
@@ -955,11 +969,7 @@ impl<'input> Member<'input> {
                 write!(w, "[??]")?;
             }
         }
-        match self.name {
-            Some(name) => write!(w, "\t{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "\t<anon>")?,
-        }
-        write!(w, ": ")?;
+        write!(w, "\t{}: ", self.name().unwrap_or("<anon>"))?;
         Type::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
@@ -1074,7 +1084,7 @@ impl Padding {
 #[derive(Debug, Default)]
 pub(crate) struct EnumerationType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
     pub declaration: bool,
     pub ty: Option<TypeOffset>,
@@ -1083,6 +1093,10 @@ pub(crate) struct EnumerationType<'input> {
 }
 
 impl<'input> EnumerationType<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
@@ -1100,10 +1114,7 @@ impl<'input> EnumerationType<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         Ok(())
     }
 
@@ -1183,29 +1194,30 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Enumerator<'input> {
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub value: Option<i64>,
 }
 
 impl<'input> Enumerator<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn print_name_value(&self, w: &mut ValuePrinter) -> Result<()> {
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         if let Some(value) = self.value {
             write!(w, "({})", value)?;
         }
@@ -1255,7 +1267,7 @@ pub(crate) struct ArrayType<'input> {
     pub ty: Option<TypeOffset>,
     pub count: Option<u64>,
     pub byte_size: Option<u64>,
-    pub phantom: marker::PhantomData<&'input [u8]>,
+    pub phantom: marker::PhantomData<Cow<'input, str>>,
 }
 
 impl<'input> ArrayType<'input> {
@@ -1396,22 +1408,23 @@ impl<'input> FunctionType<'input> {
 #[derive(Debug, Default)]
 pub(crate) struct UnspecifiedType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
 }
 
 impl<'input> UnspecifiedType<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 
     fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<void>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<void>"))?;
         Ok(())
     }
 
@@ -1419,7 +1432,7 @@ impl<'input> UnspecifiedType<'input> {
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
 

@@ -1,7 +1,8 @@
-use std::borrow;
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::cmp;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use amd64;
@@ -25,9 +26,9 @@ pub(crate) struct Function<'input> {
     pub id: Cell<usize>,
     pub offset: Option<FunctionOffset>,
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
-    pub linkage_name: Option<&'input [u8]>,
-    pub symbol_name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
+    pub linkage_name: Option<Cow<'input, str>>,
+    pub symbol_name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
     pub address: Option<u64>,
     pub size: Option<u64>,
@@ -49,11 +50,16 @@ impl<'input> Function<'input> {
             .map(|function| *function)
     }
 
-    fn name(&self) -> borrow::Cow<'input, str> {
-        match self.name {
-            Some(name) => String::from_utf8_lossy(name),
-            None => borrow::Cow::Borrowed("<anon>"),
-        }
+    pub fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
+    pub fn linkage_name(&self) -> Option<&str> {
+        self.linkage_name.as_ref().map(Cow::deref)
+    }
+
+    pub fn symbol_name(&self) -> Option<&str> {
+        self.symbol_name.as_ref().map(Cow::deref)
     }
 
     pub fn address(&self) -> Option<Range> {
@@ -85,7 +91,7 @@ impl<'input> Function<'input> {
             if let Some(ref namespace) = self.namespace {
                 namespace.print(w)?;
             }
-            write!(w, "{}", self.name())?;
+            write!(w, "{}", self.name().unwrap_or("<anon>"))?;
             Ok(())
         })
     }
@@ -205,20 +211,20 @@ impl<'input> Function<'input> {
         if let Some(ref namespace) = self.namespace {
             namespace.print(w)?;
         }
-        write!(w, "{}", self.name())?;
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         Ok(())
     }
 
     fn print_linkage_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(linkage_name) = self.linkage_name {
-            write!(w, "{}", String::from_utf8_lossy(linkage_name))?;
+        if let Some(linkage_name) = self.linkage_name() {
+            write!(w, "{}", linkage_name)?;
         }
         Ok(())
     }
 
     fn print_symbol_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(symbol_name) = self.symbol_name {
-            write!(w, "{}", String::from_utf8_lossy(symbol_name))?;
+        if let Some(symbol_name) = self.symbol_name() {
+            write!(w, "{}", symbol_name)?;
         }
         Ok(())
     }
@@ -277,7 +283,7 @@ impl<'input> Function<'input> {
             // TODO: make this configurable?
             return false;
         }
-        options.filter_name(self.name) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
             && options.filter_function_inline(self.inline)
     }
 }
@@ -308,7 +314,7 @@ impl<'input> SortList for Function<'input> {
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name, &b.namespace, b.name)
+        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 
     // This function is a bit of a hack. We use it for sorting, but not for
@@ -359,11 +365,15 @@ pub(crate) struct ParameterOffset(pub usize);
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Parameter<'input> {
     pub offset: Option<ParameterOffset>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub ty: Option<TypeOffset>,
 }
 
 impl<'input> Parameter<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
@@ -373,8 +383,8 @@ impl<'input> Parameter<'input> {
     }
 
     pub fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        if let Some(name) = self.name {
-            write!(w, "{}: ", String::from_utf8_lossy(name))?;
+        if let Some(name) = self.name() {
+            write!(w, "{}: ", name)?;
         }
         match self.ty(hash) {
             Some(ty) => ty.print_ref(w, hash)?,

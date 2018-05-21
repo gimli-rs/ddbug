@@ -1,8 +1,9 @@
-use std::borrow;
+use std::borrow::Cow;
 use std::cmp;
 use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
+use std::ops::Deref;
 
 mod dwarf;
 
@@ -92,12 +93,8 @@ impl<'input> File<'input> {
 
         let mut sections = Vec::new();
         for section in object.sections() {
-            let name = section
-                .name()
-                .map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
-            let segment = section
-                .segment_name()
-                .map(|x| borrow::Cow::Owned(x.as_bytes().to_vec()));
+            let name = section.name().map(|x| Cow::Owned(x.to_string()));
+            let segment = section.segment_name().map(|x| Cow::Owned(x.to_string()));
             let address = if section.address() != 0 {
                 Some(section.address())
             } else {
@@ -134,7 +131,7 @@ impl<'input> File<'input> {
                 _ => continue,
             };
 
-            let name = symbol.name().map(str::as_bytes);
+            let name = symbol.name().map(Cow::Borrowed);
 
             symbols.push(Symbol {
                 name,
@@ -175,9 +172,9 @@ impl<'input> File<'input> {
                         &*self.symbols,
                         &mut used_symbols,
                         address,
-                        function.linkage_name.or(function.name),
+                        function.linkage_name().or(function.name()),
                     ) {
-                        function.symbol_name = symbol.name;
+                        function.symbol_name = symbol.name.clone();
                     }
                 }
             }
@@ -188,9 +185,9 @@ impl<'input> File<'input> {
                         &*self.symbols,
                         &mut used_symbols,
                         address,
-                        variable.linkage_name.or(variable.name),
+                        variable.linkage_name().or(variable.name()),
                     ) {
-                        variable.symbol_name = symbol.name;
+                        variable.symbol_name = symbol.name.clone();
                     }
                 }
             }
@@ -198,7 +195,7 @@ impl<'input> File<'input> {
 
         // Create a unit for symbols that don't have debuginfo.
         let mut unit = Unit::default();
-        unit.name = Some(b"<symtab>");
+        unit.name = Some(Cow::Borrowed("<symtab>"));
         for (symbol, used) in self.symbols.iter().zip(used_symbols.iter()) {
             if *used {
                 continue;
@@ -210,8 +207,8 @@ impl<'input> File<'input> {
             match symbol.ty {
                 SymbolType::Variable => {
                     unit.variables.push(Variable {
-                        name: symbol.name,
-                        linkage_name: symbol.name,
+                        name: symbol.name.clone(),
+                        linkage_name: symbol.name.clone(),
                         address: Some(symbol.address),
                         size: Some(symbol.size),
                         ..Default::default()
@@ -219,8 +216,8 @@ impl<'input> File<'input> {
                 }
                 SymbolType::Function => {
                     unit.functions.push(Function {
-                        name: symbol.name,
-                        linkage_name: symbol.name,
+                        name: symbol.name.clone(),
+                        linkage_name: symbol.name.clone(),
                         address: Some(symbol.address),
                         size: Some(symbol.size),
                         ..Default::default()
@@ -233,7 +230,7 @@ impl<'input> File<'input> {
 
         // Create a unit for all remaining address ranges.
         let mut unit = Unit::default();
-        unit.name = Some(b"<unknown>");
+        unit.name = Some(Cow::Borrowed("<unknown>"));
         unit.ranges = self.unknown_ranges();
         self.units.push(unit);
     }
@@ -245,7 +242,7 @@ impl<'input> File<'input> {
         symbols: &'sym [Symbol<'input>],
         used_symbols: &mut [bool],
         address: u64,
-        name: Option<&[u8]>,
+        name: Option<&str>,
     ) -> Option<&'sym Symbol<'input>> {
         if let Ok(mut index) = symbols.binary_search_by(|x| x.address.cmp(&address)) {
             while index > 0 && symbols[index - 1].address == address {
@@ -260,7 +257,7 @@ impl<'input> File<'input> {
                     break;
                 }
                 *used_symbol = true;
-                if symbol.name == name {
+                if symbol.name() == name {
                     found = true;
                 }
             }
@@ -532,13 +529,21 @@ impl<'input> FileHash<'input> {
 
 #[derive(Debug)]
 pub(crate) struct Section<'input> {
-    name: Option<borrow::Cow<'input, [u8]>>,
-    segment: Option<borrow::Cow<'input, [u8]>>,
+    name: Option<Cow<'input, str>>,
+    segment: Option<Cow<'input, str>>,
     address: Option<u64>,
     size: u64,
 }
 
 impl<'input> Section<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
+    fn segment(&self) -> Option<&str> {
+        self.segment.as_ref().map(Cow::deref)
+    }
+
     fn address(&self) -> Option<Range> {
         self.address.map(|address| Range {
             begin: address,
@@ -547,11 +552,11 @@ impl<'input> Section<'input> {
     }
 
     fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref segment) = self.segment {
-            write!(w, "{},", String::from_utf8_lossy(&*segment))?;
+        if let Some(ref segment) = self.segment() {
+            write!(w, "{},", segment)?;
         }
-        match self.name {
-            Some(ref name) => write!(w, "{}", String::from_utf8_lossy(&*name))?,
+        match self.name() {
+            Some(name) => write!(w, "{}", name)?,
             None => write!(w, "<anon-section>")?,
         }
         Ok(())
@@ -613,13 +618,17 @@ pub(crate) enum SymbolType {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Symbol<'input> {
-    name: Option<&'input [u8]>,
+    name: Option<Cow<'input, str>>,
     ty: SymbolType,
     address: u64,
     size: u64,
 }
 
 impl<'input> Symbol<'input> {
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
+    }
+
     fn address(&self) -> Range {
         Range {
             begin: self.address,
@@ -632,8 +641,8 @@ impl<'input> Symbol<'input> {
             SymbolType::Variable => write!(w, "var ")?,
             SymbolType::Function => write!(w, "fn ")?,
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
+        match self.name() {
+            Some(name) => write!(w, "{}", name)?,
             None => write!(w, "<anon>")?,
         }
         Ok(())

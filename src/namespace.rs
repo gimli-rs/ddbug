@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use std::cmp;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use Result;
@@ -14,14 +16,14 @@ pub(crate) enum NamespaceKind {
 #[derive(Debug)]
 pub(crate) struct Namespace<'input> {
     pub parent: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input [u8]>,
+    pub name: Option<Cow<'input, str>>,
     pub kind: NamespaceKind,
 }
 
 impl<'input> Namespace<'input> {
     pub fn new(
         parent: &Option<Rc<Namespace<'input>>>,
-        name: Option<&'input [u8]>,
+        name: Option<Cow<'input, str>>,
         kind: NamespaceKind,
     ) -> Rc<Namespace<'input>> {
         Rc::new(Namespace {
@@ -29,6 +31,10 @@ impl<'input> Namespace<'input> {
             name,
             kind,
         })
+    }
+
+    fn name(&self) -> Option<&str> {
+        self.name.as_ref().map(Cow::deref)
     }
 
     fn len(&self) -> usize {
@@ -63,10 +69,7 @@ impl<'input> Namespace<'input> {
         if let Some(ref parent) = self.parent {
             parent.print(w)?;
         }
-        match self.name {
-            Some(name) => write!(w, "{}", String::from_utf8_lossy(name))?,
-            None => write!(w, "<anon>")?,
-        }
+        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
         if self.kind == NamespaceKind::Function {
             write!(w, "()")?;
         }
@@ -82,8 +85,8 @@ impl<'input> Namespace<'input> {
 
         if ret {
             if offset < namespace.len() {
-                match self.name {
-                    Some(name) => (name == namespace[offset].as_bytes(), offset + 1),
+                match self.name() {
+                    Some(name) => (name == namespace[offset], offset + 1),
                     None => (false, offset + 1),
                 }
             } else {
@@ -136,9 +139,9 @@ impl<'input> Namespace<'input> {
 
     pub fn cmp_ns_and_name(
         ns1: &Option<Rc<Namespace>>,
-        name1: Option<&[u8]>,
+        name1: Option<&str>,
         ns2: &Option<Rc<Namespace>>,
-        name2: Option<&[u8]>,
+        name2: Option<&str>,
     ) -> cmp::Ordering {
         match (ns1, ns2) {
             (&Some(ref ns1), &Some(ref ns2)) => match Namespace::cmp(ns1, ns2) {
@@ -158,8 +161,8 @@ mod test {
 
     #[test]
     fn cmp() {
-        let ns1 = Namespace::new(&None, Some(b"a"), NamespaceKind::Namespace);
-        let ns2 = Namespace::new(&None, Some(b"b"), NamespaceKind::Namespace);
+        let ns1 = Namespace::new(&None, Some("a".into()), NamespaceKind::Namespace);
+        let ns2 = Namespace::new(&None, Some("b".into()), NamespaceKind::Namespace);
         assert_eq!(Namespace::cmp(&ns1, &ns2), cmp::Ordering::Less);
     }
 }
