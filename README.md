@@ -2,19 +2,16 @@
 
 [![](https://img.shields.io/crates/v/ddbug.svg)](https://crates.io/crates/ddbug) [![](https://docs.rs/ddbug/badge.svg)](https://docs.rs/ddbug/)
 
-`ddbug` is a utility that can extract useful information from DWARF
-debugging data. Its goal is to use the debugging information to provide
-insights into the code generation. This can be used to guide improvements
-to the code. Examples of questions it hopes to answer (but not all are
-implemented yet):
+`ddbug` is a utility for using DWARF debugging information to explore aspects
+code generation, and in particular to see how the code generation changes due
+to things such as source code changes or compiler option changes.
 
-* What is the memory layout of a struct?
-* Which small functions aren't inlined?
-* Which large functions are inlined many times?
-* Which functions have bounds checks after optimization, or more generally,
-which functions can panic?
-* What difference does a source code change make to code generation?
-* What difference does a compiler version change make to code generation?
+Features:
+* Type size and layout
+* Function size, inlined functions, and functions calls
+* Display the differences between two files
+* Plain text or HTML output
+* Options to filter/sort the plain text output
 
 **This is alpha software. It is likely to contain many bugs and
 incomplete features.** Neverthless, it is in a state where it can still
@@ -26,10 +23,6 @@ Supports:
 
 ## Installing
 After installing [Rust](https://www.rust-lang.org/), run:
-```
-cargo install ddbug
-```
-or
 ```
 cargo install --git https://github.com/gimli-rs/ddbug
 ```
