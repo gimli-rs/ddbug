@@ -65,7 +65,7 @@ const OPT_IGNORE_VARIABLE_SYMBOL_NAME: &str = "variable-symbol-name";
 const OPT_PREFIX_MAP: &str = "prefix-map";
 
 fn main() {
-    env_logger::init().ok();
+    env_logger::init();
 
     let matches = clap::App::new("ddbug")
         .version(crate_version!())
