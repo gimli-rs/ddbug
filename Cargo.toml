@@ -19,4 +19,3 @@ memmap = "0.6"
 object = "0.8"
 panopticon-core = { git = "https://github.com/das-labor/panopticon" }
 panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
-pdb = "0.2"

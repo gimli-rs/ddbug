@@ -5,7 +5,6 @@ use std::default::Default;
 use std::fs;
 
 mod dwarf;
-mod pdb;
 
 use gimli;
 use memmap;
@@ -53,11 +52,14 @@ impl<'input> File<'input> {
         };
 
         let input = &*map;
+        /*
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
             pdb::parse(input, path, cb)
         } else {
             Self::parse_object(input, path, cb)
         }
+        */
+        Self::parse_object(input, path, cb)
     }
 
     fn parse_object(

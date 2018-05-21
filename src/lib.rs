@@ -6,7 +6,6 @@ extern crate memmap;
 extern crate object;
 extern crate panopticon_amd64 as amd64;
 extern crate panopticon_core as panopticon;
-extern crate pdb as crate_pdb;
 
 mod file;
 mod function;
@@ -70,11 +69,13 @@ impl From<gimli::Error> for Error {
     }
 }
 
+/*
 impl From<crate_pdb::Error> for Error {
     fn from(e: crate_pdb::Error) -> Error {
         Error(Cow::Owned(format!("PDB error: {}", e)))
     }
 }
+*/
 
 pub type Result<T> = result::Result<T, Error>;
 

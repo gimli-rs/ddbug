@@ -357,6 +357,8 @@ pub(crate) enum TypeModifierKind {
     Atomic,
     // TODO:
     // Immutable,
+    // PDB is disabled
+    #[allow(dead_code)]
     Other,
 }
 

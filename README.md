@@ -2,7 +2,7 @@
 
 [![](https://img.shields.io/crates/v/ddbug.svg)](https://crates.io/crates/ddbug) [![](https://docs.rs/ddbug/badge.svg)](https://docs.rs/ddbug/)
 
-`ddbug` is a utility that can extract useful information from DWARF/PDB
+`ddbug` is a utility that can extract useful information from DWARF
 debugging data. Its goal is to use the debugging information to provide
 insights into the code generation. This can be used to guide improvements
 to the code. Examples of questions it hopes to answer (but not all are
@@ -23,7 +23,6 @@ provide some use. Bug reports and feature requests are welcome.
 Supports:
 * ELF files with DWARF
 * Mach-O files with DWARF
-* Windows PDB files (mimimal support so far)
 
 ## Installing
 After installing [Rust](https://www.rust-lang.org/), run:
