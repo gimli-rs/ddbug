@@ -142,21 +142,23 @@ impl<'input> File<'input> {
             });
         }
 
-        let units = if object.is_little_endian() {
-            dwarf::parse(gimli::LittleEndian, &object)?
+        let endian = if object.is_little_endian() {
+            gimli::RunTimeEndian::Little
         } else {
-            dwarf::parse(gimli::BigEndian, &object)?
+            gimli::RunTimeEndian::Big
         };
 
-        let mut file = File {
-            path,
-            code,
-            sections,
-            symbols,
-            units,
-        };
-        file.normalize();
-        cb(&mut file)
+        dwarf::parse(endian, &object, |units| {
+            let mut file = File {
+                path,
+                code,
+                sections,
+                symbols,
+                units,
+            };
+            file.normalize();
+            cb(&mut file)
+        })
     }
 
     fn normalize(&mut self) {

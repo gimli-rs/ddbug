@@ -12,11 +12,11 @@ license = "Apache-2.0/MIT"
 [dependencies]
 clap = "2.26"
 env_logger = "0.3"
-gimli = "0.14"
+gimli = { git = "https://github.com/gimli-rs/gimli", rev = "9a772217407651154c3063be03c1337bf0b04cc6" }
 log = "0.3"
 marksman_escape = "0.1"
 memmap = "0.6"
-object = "0.6"
+object = "0.8"
 panopticon-core = { git = "https://github.com/das-labor/panopticon" }
 panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
 pdb = "0.2"
