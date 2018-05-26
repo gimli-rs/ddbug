@@ -73,7 +73,7 @@ impl<'input> Function<'input> {
         }
     }
 
-    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -374,7 +374,7 @@ impl<'input> Parameter<'input> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -421,7 +421,7 @@ impl<'input> Parameter<'input> {
         b: &Parameter,
     ) -> cmp::Ordering {
         match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
+            (Some(ref ty_a), Some(ref ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
             (Some(_), None) => cmp::Ordering::Less,
             (None, Some(_)) => cmp::Ordering::Greater,
             (None, None) => cmp::Ordering::Equal,
@@ -458,7 +458,7 @@ impl<'input> DiffList for Parameter<'input> {
             cost += 1;
         }
         match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
                 {
                     cost += 1;

@@ -32,7 +32,7 @@ pub(crate) struct Variable<'input> {
 }
 
 impl<'input> Variable<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -237,7 +237,7 @@ impl<'input> LocalVariable<'input> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -304,7 +304,7 @@ impl<'a, 'input> DiffList for &'a LocalVariable<'input> {
             cost += 1;
         }
         match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
                 {
                     cost += 1;

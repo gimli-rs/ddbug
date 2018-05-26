@@ -357,9 +357,8 @@ fn main() {
         let path_a = paths.next().unwrap();
         let path_b = paths.next().unwrap();
 
-        if let Err(e) = ddbug::File::parse(path_a, &mut |file_a| {
-            if let Err(e) =
-                ddbug::File::parse(path_b, &mut |file_b| diff_file(file_a, file_b, &options))
+        if let Err(e) = ddbug::File::parse(path_a, |file_a| {
+            if let Err(e) = ddbug::File::parse(path_b, |file_b| diff_file(file_a, file_b, &options))
             {
                 error!("{}: {}", path_b, e);
             }
@@ -370,15 +369,15 @@ fn main() {
     } else {
         let path = matches.value_of(OPT_FILE).unwrap();
 
-        if let Err(e) = ddbug::File::parse(path, &mut |file| print_file(file, &options)) {
+        if let Err(e) = ddbug::File::parse(path, |file| print_file(file, &options)) {
             error!("{}: {}", path, e);
         }
     }
 }
 
 fn diff_file(
-    file_a: &mut ddbug::File,
-    file_b: &mut ddbug::File,
+    file_a: &ddbug::File,
+    file_b: &ddbug::File,
     options: &ddbug::Options,
 ) -> ddbug::Result<()> {
     format(options, |printer| {
@@ -389,7 +388,7 @@ fn diff_file(
     })
 }
 
-fn print_file(file: &mut ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
+fn print_file(file: &ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
     format(options, |printer| file.print(printer, options))
 }
 

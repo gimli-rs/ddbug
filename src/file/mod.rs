@@ -27,17 +27,28 @@ pub(crate) struct CodeRegion {
     pub region: panopticon::Region,
 }
 
-#[derive(Debug, Default)]
+pub(crate) trait DebugInfo {
+    fn type_from_offset(&self, offset: TypeOffset) -> Option<Type>;
+}
+
 pub struct File<'input> {
     path: &'input str,
     code: Option<CodeRegion>,
     sections: Vec<Section<'input>>,
     symbols: Vec<Symbol<'input>>,
     units: Vec<Unit<'input>>,
+    debug_info: &'input DebugInfo,
 }
 
 impl<'input> File<'input> {
-    pub fn parse(path: &str, cb: &mut FnMut(&mut File) -> Result<()>) -> Result<()> {
+    pub(crate) fn type_from_offset(&self, offset: TypeOffset) -> Option<Type<'input>> {
+        self.debug_info.type_from_offset(offset)
+    }
+
+    pub fn parse<Cb>(path: &str, cb: Cb) -> Result<()>
+    where
+        Cb: FnOnce(&File) -> Result<()>,
+    {
         let handle = match fs::File::open(path) {
             Ok(handle) => handle,
             Err(e) => {
@@ -57,17 +68,16 @@ impl<'input> File<'input> {
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
             pdb::parse(input, path, cb)
         } else {
-            Self::parse_object(input, path, cb)
+            File::parse_object(input, path, cb)
         }
         */
-        Self::parse_object(input, path, cb)
+        File::parse_object(input, path, cb)
     }
 
-    fn parse_object(
-        input: &[u8],
-        path: &str,
-        cb: &mut FnMut(&mut File) -> Result<()>,
-    ) -> Result<()> {
+    fn parse_object<Cb>(input: &[u8], path: &str, cb: Cb) -> Result<()>
+    where
+        Cb: FnOnce(&File) -> Result<()>,
+    {
         let object = object::File::parse(input)?;
 
         let machine = match object.machine() {
@@ -147,16 +157,17 @@ impl<'input> File<'input> {
             gimli::RunTimeEndian::Big
         };
 
-        dwarf::parse(endian, &object, |units| {
+        dwarf::parse(endian, &object, |units, debug_info| {
             let mut file = File {
                 path,
                 code,
                 sections,
                 symbols,
                 units,
+                debug_info,
             };
             file.normalize();
-            cb(&mut file)
+            cb(&file)
         })
     }
 
@@ -336,7 +347,7 @@ impl<'input> File<'input> {
         options: &Options,
     ) {
         let mut id = 0;
-        for unit in Self::merged_units(hash_a, file_a, hash_b, file_b, options) {
+        for unit in File::merged_units(hash_a, file_a, hash_b, file_b, options) {
             match unit {
                 MergeResult::Both(a, b) => {
                     id = Unit::assign_merged_ids(hash_a, a, hash_b, b, options, id);
@@ -411,7 +422,7 @@ impl<'input> File<'input> {
     ) -> Result<()> {
         let hash_a = FileHash::new(file_a);
         let hash_b = FileHash::new(file_b);
-        Self::assign_merged_ids(&hash_a, file_a, &hash_b, file_b, options);
+        File::assign_merged_ids(&hash_a, file_a, &hash_b, file_b, options);
 
         let mut state = DiffState::new(printer, &hash_a, &hash_b, options);
 
@@ -456,7 +467,7 @@ impl<'input> File<'input> {
         state.sort_list(
             &(),
             &(),
-            &mut Self::merged_units(&hash_a, file_a, &hash_b, file_b, options),
+            &mut File::merged_units(&hash_a, file_a, &hash_b, file_b, options),
         )
     }
 
@@ -465,7 +476,6 @@ impl<'input> File<'input> {
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct FileHash<'input> {
     pub file: &'input File<'input>,
     // All functions by address.
@@ -480,9 +490,9 @@ impl<'input> FileHash<'input> {
     fn new(file: &'input File<'input>) -> Self {
         FileHash {
             file,
-            functions_by_address: Self::functions_by_address(file),
-            functions_by_offset: Self::functions_by_offset(file),
-            types: Self::types(file),
+            functions_by_address: FileHash::functions_by_address(file),
+            functions_by_offset: FileHash::functions_by_offset(file),
+            types: FileHash::types(file),
         }
     }
 

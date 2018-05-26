@@ -13,7 +13,7 @@ use source::Source;
 use unit::Unit;
 use {Options, Result, Sort};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) enum TypeKind<'input> {
     Base(BaseType<'input>),
     Def(TypeDef<'input>),
@@ -47,7 +47,7 @@ impl<'input> TypeKind<'input> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct TypeOffset(pub usize);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Type<'input> {
     pub id: Cell<usize>,
     pub offset: TypeOffset,
@@ -68,8 +68,11 @@ impl<'input> Type<'input> {
     pub fn from_offset<'a>(
         hash: &'a FileHash<'input>,
         offset: TypeOffset,
-    ) -> Option<&'a Type<'input>> {
-        hash.types.get(&offset).map(|ty| *ty)
+    ) -> Option<Cow<'a, Type<'input>>> {
+        hash.types
+            .get(&offset)
+            .map(|ty| Cow::Borrowed(*ty))
+            .or_else(|| hash.file.type_from_offset(offset).map(Cow::Owned))
     }
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -336,7 +339,7 @@ impl<'input> SortList for Type<'input> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct TypeModifier<'input> {
     pub kind: TypeModifierKind,
     pub ty: Option<TypeOffset>,
@@ -386,7 +389,7 @@ impl<'input> TypeModifier<'input> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -438,7 +441,7 @@ impl<'input> TypeModifier<'input> {
         b: &TypeModifier,
     ) -> cmp::Ordering {
         match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -458,7 +461,7 @@ impl<'input> TypeModifier<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct BaseType<'input> {
     pub name: Option<Cow<'input, str>>,
     pub byte_size: Option<u64>,
@@ -486,7 +489,7 @@ impl<'input> BaseType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct TypeDef<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
@@ -499,7 +502,7 @@ impl<'input> TypeDef<'input> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
@@ -550,7 +553,7 @@ impl<'input> TypeDef<'input> {
                     state.field("source", |w, _state| self.print_source(w, unit))?;
                 }
                 state.field("size", |w, state| self.print_byte_size(w, state))?;
-                if let Some(ty) = ty {
+                if let Some(ref ty) = ty {
                     if ty.is_anon() {
                         state.field_expanded("members", |state| {
                             Type::print_members(state, unit, Some(ty))
@@ -584,8 +587,10 @@ impl<'input> TypeDef<'input> {
                     )?;
                 }
                 state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
-                let ty_a = filter_option(a.ty(state.hash_a()), Type::is_anon);
-                let ty_b = filter_option(b.ty(state.hash_b()), Type::is_anon);
+                let ty_a = filter_option(a.ty(state.hash_a()), |ty| ty.is_anon());
+                let ty_a = ty_a.as_ref().map(Cow::deref);
+                let ty_b = filter_option(b.ty(state.hash_b()), |ty| ty.is_anon());
+                let ty_b = ty_b.as_ref().map(Cow::deref);
                 state.field_expanded("members", |state| {
                     Type::diff_members(state, unit_a, ty_a, unit_b, ty_b)
                 })
@@ -609,13 +614,12 @@ impl<'input> TypeDef<'input> {
 
 fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
 where
-    T: Copy,
-    F: FnOnce(T) -> bool,
+    F: FnOnce(&T) -> bool,
 {
-    o.and_then(|v| if f(v) { Some(v) } else { None })
+    o.and_then(|v| if f(&v) { Some(v) } else { None })
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct StructType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
@@ -755,7 +759,7 @@ impl<'input> StructType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct UnionType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
@@ -912,7 +916,7 @@ impl<'input> Member<'input> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
@@ -998,6 +1002,7 @@ impl<'input> Print for Member<'input> {
         } else {
             None
         };
+        let ty = ty.as_ref().map(Cow::deref);
         state.expanded(
             |state| state.line(|w, state| self.print_name(w, state, bit_size)),
             |state| Type::print_members(state, unit, ty),
@@ -1013,11 +1018,13 @@ impl<'input> Print for Member<'input> {
         } else {
             None
         };
+        let ty_a = ty_a.as_ref().map(Cow::deref);
         let ty_b = if b.is_inline(state.hash_b()) {
             b.ty(state.hash_b())
         } else {
             None
         };
+        let ty_b = ty_b.as_ref().map(Cow::deref);
         state.expanded(
             |state| {
                 state.line(
@@ -1048,7 +1055,7 @@ impl<'input> DiffList for Member<'input> {
             cost += 1;
         }
         match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
                 {
                     cost += 1;
@@ -1081,7 +1088,7 @@ impl Padding {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct EnumerationType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
@@ -1097,7 +1104,7 @@ impl<'input> EnumerationType<'input> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|t| Type::from_offset(hash, t))
     }
 
@@ -1262,7 +1269,7 @@ impl<'input> DiffList for Enumerator<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct ArrayType<'input> {
     pub ty: Option<TypeOffset>,
     pub count: Option<u64>,
@@ -1271,7 +1278,7 @@ pub(crate) struct ArrayType<'input> {
 }
 
 impl<'input> ArrayType<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -1310,7 +1317,7 @@ impl<'input> ArrayType<'input> {
     /// (even if there are differences in the definitions).
     fn cmp_id(hash_a: &FileHash, a: &ArrayType, hash_b: &FileHash, b: &ArrayType) -> cmp::Ordering {
         match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1328,7 +1335,7 @@ impl<'input> ArrayType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct FunctionType<'input> {
     pub parameters: Vec<Parameter<'input>>,
     pub return_type: Option<TypeOffset>,
@@ -1340,7 +1347,7 @@ impl<'input> FunctionType<'input> {
         self.byte_size
     }
 
-    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.return_type.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -1386,7 +1393,7 @@ impl<'input> FunctionType<'input> {
         }
 
         match (a.return_type(hash_a), b.return_type(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1405,7 +1412,7 @@ impl<'input> FunctionType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct UnspecifiedType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
@@ -1436,7 +1443,7 @@ impl<'input> UnspecifiedType<'input> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct PointerToMemberType {
     pub ty: Option<TypeOffset>,
     pub containing_ty: Option<TypeOffset>,
@@ -1446,11 +1453,14 @@ pub(crate) struct PointerToMemberType {
 }
 
 impl PointerToMemberType {
-    fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         self.ty.and_then(|v| Type::from_offset(hash, v))
     }
 
-    fn containing_ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<&'a Type<'input>> {
+    fn containing_ty<'a, 'input>(
+        &self,
+        hash: &'a FileHash<'input>,
+    ) -> Option<Cow<'a, Type<'input>>> {
         self.containing_ty.and_then(|v| Type::from_offset(hash, v))
     }
 
@@ -1485,7 +1495,7 @@ impl PointerToMemberType {
         b: &PointerToMemberType,
     ) -> cmp::Ordering {
         match (a.containing_ty(hash_a), b.containing_ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1500,7 +1510,7 @@ impl PointerToMemberType {
             (None, None) => {}
         }
         match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ty_a), Some(ty_b)) => {
+            (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
