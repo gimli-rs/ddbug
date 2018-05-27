@@ -4,6 +4,7 @@ use std::cmp;
 use std::marker;
 use std::ops::Deref;
 use std::rc::Rc;
+use std::usize;
 
 use file::FileHash;
 use function::Parameter;
@@ -45,7 +46,44 @@ impl<'input> TypeKind<'input> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct TypeOffset(pub usize);
+pub(crate) struct TypeOffset(usize);
+
+impl TypeOffset {
+    #[inline]
+    pub(crate) fn new(offset: usize) -> TypeOffset {
+        TypeOffset(offset)
+    }
+
+    #[inline]
+    pub(crate) fn none() -> TypeOffset {
+        TypeOffset(usize::MAX)
+    }
+
+    #[inline]
+    pub(crate) fn is_none(self) -> bool {
+        self == Self::none()
+    }
+
+    #[inline]
+    pub(crate) fn is_some(self) -> bool {
+        self != Self::none()
+    }
+
+    #[inline]
+    pub(crate) fn get(self) -> Option<usize> {
+        if self.is_none() {
+            None
+        } else {
+            Some(self.0)
+        }
+    }
+}
+
+impl Default for TypeOffset {
+    fn default() -> Self {
+        TypeOffset::none()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub(crate) struct Type<'input> {
@@ -58,7 +96,7 @@ impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
             id: Cell::new(0),
-            offset: TypeOffset(0),
+            offset: TypeOffset::none(),
             kind: TypeKind::Base(BaseType::default()),
         }
     }
@@ -69,6 +107,9 @@ impl<'input> Type<'input> {
         hash: &'a FileHash<'input>,
         offset: TypeOffset,
     ) -> Option<Cow<'a, Type<'input>>> {
+        if offset.is_none() {
+            return None;
+        }
         hash.types
             .get(&offset)
             .map(|ty| Cow::Borrowed(*ty))
@@ -176,14 +217,15 @@ impl<'input> Type<'input> {
     pub fn print_ref_from_offset(
         w: &mut ValuePrinter,
         hash: &FileHash,
-        offset: Option<TypeOffset>,
+        offset: TypeOffset,
     ) -> Result<()> {
-        match offset {
-            Some(offset) => match Type::from_offset(hash, offset) {
+        if offset.is_none() {
+            write!(w, "void")?;
+        } else {
+            match Type::from_offset(hash, offset) {
                 Some(ty) => ty.print_ref(w, hash)?,
                 None => write!(w, "<invalid-type {}>", offset.0)?,
-            },
-            None => write!(w, "void")?,
+            }
         }
         Ok(())
     }
@@ -342,7 +384,7 @@ impl<'input> SortList for Type<'input> {
 #[derive(Debug, Clone)]
 pub(crate) struct TypeModifier<'input> {
     pub kind: TypeModifierKind,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     pub name: Option<Cow<'input, str>>,
     pub byte_size: Option<u64>,
     // TODO: hack
@@ -390,7 +432,7 @@ impl<'input> TypeModifier<'input> {
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.ty)
     }
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -493,7 +535,7 @@ impl<'input> BaseType<'input> {
 pub(crate) struct TypeDef<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     pub source: Source<'input>,
 }
 
@@ -503,7 +545,7 @@ impl<'input> TypeDef<'input> {
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|t| Type::from_offset(hash, t))
+        Type::from_offset(hash, self.ty)
     }
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -903,7 +945,7 @@ impl<'input> UnionType<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Member<'input> {
     pub name: Option<Cow<'input, str>>,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     // Defaults to 0, so always present.
     pub bit_offset: u64,
     pub bit_size: Option<u64>,
@@ -917,7 +959,7 @@ impl<'input> Member<'input> {
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|t| Type::from_offset(hash, t))
+        Type::from_offset(hash, self.ty)
     }
 
     fn bit_size(&self, hash: &FileHash) -> Option<u64> {
@@ -1094,7 +1136,7 @@ pub(crate) struct EnumerationType<'input> {
     pub name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
     pub declaration: bool,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     pub byte_size: Option<u64>,
     pub enumerators: Vec<Enumerator<'input>>,
 }
@@ -1105,7 +1147,7 @@ impl<'input> EnumerationType<'input> {
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|t| Type::from_offset(hash, t))
+        Type::from_offset(hash, self.ty)
     }
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -1271,7 +1313,7 @@ impl<'input> DiffList for Enumerator<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct ArrayType<'input> {
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     pub count: Option<u64>,
     pub byte_size: Option<u64>,
     pub phantom: marker::PhantomData<Cow<'input, str>>,
@@ -1279,7 +1321,7 @@ pub(crate) struct ArrayType<'input> {
 
 impl<'input> ArrayType<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.ty)
     }
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -1338,7 +1380,7 @@ impl<'input> ArrayType<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct FunctionType<'input> {
     pub parameters: Vec<Parameter<'input>>,
-    pub return_type: Option<TypeOffset>,
+    pub return_type: TypeOffset,
     pub byte_size: Option<u64>,
 }
 
@@ -1348,7 +1390,7 @@ impl<'input> FunctionType<'input> {
     }
 
     fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.return_type.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.return_type)
     }
 
     fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
@@ -1445,8 +1487,8 @@ impl<'input> UnspecifiedType<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct PointerToMemberType {
-    pub ty: Option<TypeOffset>,
-    pub containing_ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
+    pub containing_ty: TypeOffset,
     pub byte_size: Option<u64>,
     // TODO: hack
     pub address_size: Option<u64>,
@@ -1454,14 +1496,14 @@ pub(crate) struct PointerToMemberType {
 
 impl PointerToMemberType {
     fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.ty)
     }
 
     fn containing_ty<'a, 'input>(
         &self,
         hash: &'a FileHash<'input>,
     ) -> Option<Cow<'a, Type<'input>>> {
-        self.containing_ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.containing_ty)
     }
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {

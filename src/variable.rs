@@ -24,7 +24,7 @@ pub(crate) struct Variable<'input> {
     pub name: Option<Cow<'input, str>>,
     pub linkage_name: Option<Cow<'input, str>>,
     pub symbol_name: Option<Cow<'input, str>>,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     pub source: Source<'input>,
     pub address: Option<u64>,
     pub size: Option<u64>,
@@ -33,7 +33,7 @@ pub(crate) struct Variable<'input> {
 
 impl<'input> Variable<'input> {
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.ty)
     }
 
     pub fn name(&self) -> Option<&str> {
@@ -226,7 +226,7 @@ impl<'input> SortList for Variable<'input> {
 pub(crate) struct LocalVariable<'input> {
     pub offset: VariableOffset,
     pub name: Option<Cow<'input, str>>,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
     pub source: Source<'input>,
     pub address: Option<u64>,
     pub size: Option<u64>,
@@ -238,7 +238,7 @@ impl<'input> LocalVariable<'input> {
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.ty)
     }
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {

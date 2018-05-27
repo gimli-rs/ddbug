@@ -35,7 +35,7 @@ pub(crate) struct Function<'input> {
     pub inline: bool,
     pub declaration: bool,
     pub parameters: Vec<Parameter<'input>>,
-    pub return_type: Option<TypeOffset>,
+    pub return_type: TypeOffset,
     pub variables: Vec<LocalVariable<'input>>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
 }
@@ -74,7 +74,7 @@ impl<'input> Function<'input> {
     }
 
     fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.return_type.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.return_type)
     }
 
     fn calls(&self, file: &File) -> Vec<Call> {
@@ -366,7 +366,7 @@ pub(crate) struct ParameterOffset(pub usize);
 pub(crate) struct Parameter<'input> {
     pub offset: Option<ParameterOffset>,
     pub name: Option<Cow<'input, str>>,
-    pub ty: Option<TypeOffset>,
+    pub ty: TypeOffset,
 }
 
 impl<'input> Parameter<'input> {
@@ -375,7 +375,7 @@ impl<'input> Parameter<'input> {
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
-        self.ty.and_then(|v| Type::from_offset(hash, v))
+        Type::from_offset(hash, self.ty)
     }
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {

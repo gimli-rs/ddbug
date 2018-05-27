@@ -39,7 +39,10 @@ where
     Endian: gimli::Endianity,
 {
     fn type_from_offset(&self, offset: TypeOffset) -> Option<Type> {
-        let offset = gimli::DebugInfoOffset::from(offset);
+        let offset = match offset.get() {
+            None => return None,
+            Some(offset) => gimli::DebugInfoOffset(offset),
+        };
         // FIXME: make this more efficient for large numbers of units
         // FIXME: cache lookups
         for unit in &self.units {
@@ -709,7 +712,7 @@ where
 {
     let mut modifier = TypeModifier {
         kind,
-        ty: None,
+        ty: TypeOffset::none(),
         name: None,
         byte_size: None,
         address_size: Some(u64::from(dwarf_unit.header.address_size())),
@@ -724,7 +727,7 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    modifier.ty = Some(offset);
+                    modifier.ty = offset;
                 },
                 gimli::DW_AT_byte_size => {
                     modifier.byte_size = attr.udata_value();
@@ -812,7 +815,7 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    typedef.ty = Some(offset);
+                    typedef.ty = offset;
                 },
                 gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut typedef.source),
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut typedef.source),
@@ -1039,7 +1042,7 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    member.ty = Some(offset);
+                    member.ty = offset;
                 },
                 gimli::DW_AT_data_member_location => {
                     match attr.value() {
@@ -1292,7 +1295,7 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    array.ty = Some(offset);
+                    array.ty = offset;
                 },
                 gimli::DW_AT_byte_size => {
                     array.byte_size = attr.udata_value();
@@ -1368,7 +1371,7 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    function.return_type = Some(offset);
+                    function.return_type = offset;
                 },
                 gimli::DW_AT_name | gimli::DW_AT_prototyped | gimli::DW_AT_sibling => {}
                 _ => debug!(
@@ -1449,11 +1452,11 @@ where
         while let Some(attr) = attrs.next()? {
             match attr.name() {
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    ty.ty = Some(offset);
+                    ty.ty = offset;
                 },
                 gimli::DW_AT_containing_type => {
                     if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                        ty.containing_ty = Some(offset);
+                        ty.containing_ty = offset;
                     }
                 }
                 gimli::DW_AT_byte_size => {
@@ -1505,7 +1508,7 @@ where
         inline: false,
         declaration: false,
         parameters: Vec::new(),
-        return_type: None,
+        return_type: TypeOffset::none(),
         inlined_functions: Vec::new(),
         variables: Vec::new(),
     };
@@ -1554,7 +1557,7 @@ where
                     _ => {}
                 },
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    function.return_type = Some(offset);
+                    function.return_type = offset;
                 },
                 gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
                     if let Some(offset) = parse_function_offset(dwarf_unit, &attr) {
@@ -1772,7 +1775,7 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    parameter.ty = Some(offset);
+                    parameter.ty = offset;
                 },
                 gimli::DW_AT_decl_file
                 | gimli::DW_AT_decl_line
@@ -2064,7 +2067,7 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    variable.ty = Some(offset);
+                    variable.ty = offset;
                 },
                 gimli::DW_AT_specification => {
                     if let Some(offset) = parse_variable_offset(dwarf_unit, &attr) {
@@ -2159,7 +2162,7 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    variable.ty = Some(offset);
+                    variable.ty = offset;
                 },
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf_unit, &attr, &mut variable.source)
@@ -2334,13 +2337,7 @@ impl From<gimli::DebugInfoOffset> for ParameterOffset {
 
 impl From<gimli::DebugInfoOffset> for TypeOffset {
     fn from(o: gimli::DebugInfoOffset) -> TypeOffset {
-        TypeOffset(o.0)
-    }
-}
-
-impl From<TypeOffset> for gimli::DebugInfoOffset {
-    fn from(o: TypeOffset) -> gimli::DebugInfoOffset {
-        gimli::DebugInfoOffset(o.0)
+        TypeOffset::new(o.0)
     }
 }
 

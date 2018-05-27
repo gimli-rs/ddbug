@@ -239,14 +239,16 @@ impl<'input> Unit<'input> {
             // that they will be inline, but in future we could (eg for TypeDefs).
             // TODO: is this a valid assumption?
             if ty.is_anon() {
-                inline_types.insert(ty.offset.0);
+                if let Some(offset) = ty.offset.get() {
+                    inline_types.insert(offset);
+                }
             }
 
             // Find all inline members.
             ty.visit_members(&mut |t| {
                 if t.is_inline(hash) {
-                    if let Some(offset) = t.ty {
-                        inline_types.insert(offset.0);
+                    if let Some(offset) = t.ty.get() {
+                        inline_types.insert(offset);
                     }
                 }
             });
@@ -496,7 +498,7 @@ impl<'input> Unit<'input> {
                 | TypeKind::Modifier(..) => return false,
             }
             // Filter out inline types.
-            !inline_types.contains(&t.offset.0)
+            t.offset.get().map(|offset| inline_types.contains(&offset)) != Some(true)
         };
         self.types.iter().filter(|a| filter_type(a)).collect()
     }
