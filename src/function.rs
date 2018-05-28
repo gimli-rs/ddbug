@@ -4,6 +4,7 @@ use std::cmp;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::rc::Rc;
+use std::usize;
 
 use amd64;
 use panopticon;
@@ -18,13 +19,37 @@ use unit::Unit;
 use variable::LocalVariable;
 use {Options, Result, Sort};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct FunctionOffset(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct FunctionOffset(usize);
+
+impl FunctionOffset {
+    #[inline]
+    pub(crate) fn new(offset: usize) -> FunctionOffset {
+        FunctionOffset(offset)
+    }
+
+    #[inline]
+    pub(crate) fn none() -> FunctionOffset {
+        FunctionOffset(usize::MAX)
+    }
+
+    #[inline]
+    pub(crate) fn is_none(self) -> bool {
+        self == Self::none()
+    }
+}
+
+impl Default for FunctionOffset {
+    #[inline]
+    fn default() -> Self {
+        FunctionOffset::none()
+    }
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct Function<'input> {
     pub id: Cell<usize>,
-    pub offset: Option<FunctionOffset>,
+    pub offset: FunctionOffset,
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
     pub linkage_name: Option<Cow<'input, str>>,
@@ -45,6 +70,9 @@ impl<'input> Function<'input> {
         hash: &'a FileHash<'input>,
         offset: FunctionOffset,
     ) -> Option<&'a Function<'input>> {
+        if offset.is_none() {
+            return None;
+        }
         hash.functions_by_offset
             .get(&offset)
             .map(|function| *function)
@@ -359,12 +387,31 @@ impl<'input> SortList for Function<'input> {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ParameterOffset(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct ParameterOffset(usize);
+
+impl ParameterOffset {
+    #[inline]
+    pub(crate) fn new(offset: usize) -> ParameterOffset {
+        ParameterOffset(offset)
+    }
+
+    #[inline]
+    pub(crate) fn none() -> ParameterOffset {
+        ParameterOffset(usize::MAX)
+    }
+}
+
+impl Default for ParameterOffset {
+    #[inline]
+    fn default() -> Self {
+        ParameterOffset::none()
+    }
+}
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Parameter<'input> {
-    pub offset: Option<ParameterOffset>,
+    pub offset: ParameterOffset,
     pub name: Option<Cow<'input, str>>,
     pub ty: TypeOffset,
 }
@@ -475,7 +522,7 @@ impl<'input> DiffList for Parameter<'input> {
 
 #[derive(Debug, Default)]
 pub(crate) struct InlinedFunction<'input> {
-    pub abstract_origin: Option<FunctionOffset>,
+    pub abstract_origin: FunctionOffset,
     pub size: Option<u64>,
     pub parameters: Vec<Parameter<'input>>,
     pub variables: Vec<LocalVariable<'input>>,
@@ -490,9 +537,7 @@ impl<'input> InlinedFunction<'input> {
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        match self.abstract_origin
-            .and_then(|v| Function::from_offset(hash, v))
-        {
+        match Function::from_offset(hash, self.abstract_origin) {
             Some(function) => function.print_ref(w)?,
             None => write!(w, "<anon>")?,
         }
@@ -561,10 +606,8 @@ impl<'input> DiffList for InlinedFunction<'input> {
     // - include diff cost of lower levels of inlined functions
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        let function_a = a.abstract_origin
-            .and_then(|v| Function::from_offset(state.hash_a(), v));
-        let function_b = b.abstract_origin
-            .and_then(|v| Function::from_offset(state.hash_b(), v));
+        let function_a = Function::from_offset(state.hash_a(), a.abstract_origin);
+        let function_b = Function::from_offset(state.hash_b(), b.abstract_origin);
         match (function_a, function_b) {
             (Some(function_a), Some(function_b)) => {
                 if Function::cmp_id(

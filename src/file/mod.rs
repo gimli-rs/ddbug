@@ -517,9 +517,7 @@ impl<'input> FileHash<'input> {
         let mut functions = HashMap::new();
         for unit in &file.units {
             for function in &unit.functions {
-                if let Some(offset) = function.offset {
-                    functions.insert(offset, function);
-                }
+                functions.insert(function.offset, function);
             }
         }
         functions

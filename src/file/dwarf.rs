@@ -319,9 +319,7 @@ where
     // Convert functions to BTreeMap
     let mut functions = BTreeMap::new();
     for function in unit.functions.drain(..) {
-        // All dwarf functions have offsets
-        let offset = function.offset.unwrap();
-        functions.insert(offset, function);
+        functions.insert(function.offset, function);
     }
 
     let mut defer = Vec::new();
@@ -399,9 +397,7 @@ where
     // Convert variables to BTreeMap
     let mut variable_map = BTreeMap::new();
     for variable in unit.variables.drain(..) {
-        // All dwarf variables have offsets
-        let offset = variable.offset.unwrap();
-        variable_map.insert(offset, variable);
+        variable_map.insert(variable.offset, variable);
     }
 
     loop {
@@ -1497,7 +1493,7 @@ where
     let offset = node.entry().offset();
     let mut function = Function {
         id: Cell::new(0),
-        offset: Some(offset.to_debug_info_offset(&dwarf_unit.header).into()),
+        offset: offset.to_debug_info_offset(&dwarf_unit.header).into(),
         namespace: namespace.clone(),
         name: None,
         symbol_name: None,
@@ -1758,7 +1754,7 @@ where
     let mut parameter = Parameter::default();
     let offset = node.entry().offset();
     let offset = offset.to_debug_info_offset(&dwarf_unit.header);
-    parameter.offset = Some(offset.into());
+    parameter.offset = offset.into();
     let mut abstract_origin = None;
 
     {
@@ -1804,10 +1800,7 @@ where
 
     if let Some(abstract_origin) = abstract_origin {
         // TODO: use a hash?
-        if let Some(index) = parameters
-            .iter()
-            .position(|x| x.offset == Some(abstract_origin))
-        {
+        if let Some(index) = parameters.iter().position(|x| x.offset == abstract_origin) {
             let p = &mut parameters[index];
             if parameter.name.is_some() {
                 p.name = parameter.name;
@@ -1931,7 +1924,7 @@ where
             match attr.name() {
                 gimli::DW_AT_abstract_origin => {
                     if let Some(offset) = parse_function_offset(dwarf_unit, &attr) {
-                        function.abstract_origin = Some(offset);
+                        function.abstract_origin = offset;
                     }
                 }
                 gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
@@ -2049,7 +2042,7 @@ where
     let offset = node.entry().offset();
     let mut specification = None;
     let mut variable = Variable {
-        offset: Some(offset.to_debug_info_offset(&dwarf_unit.header).into()),
+        offset: offset.to_debug_info_offset(&dwarf_unit.header).into(),
         namespace,
         ..Default::default()
     };
@@ -2325,13 +2318,13 @@ where
 
 impl From<gimli::DebugInfoOffset> for FunctionOffset {
     fn from(o: gimli::DebugInfoOffset) -> FunctionOffset {
-        FunctionOffset(o.0)
+        FunctionOffset::new(o.0)
     }
 }
 
 impl From<gimli::DebugInfoOffset> for ParameterOffset {
     fn from(o: gimli::DebugInfoOffset) -> ParameterOffset {
-        ParameterOffset(o.0)
+        ParameterOffset::new(o.0)
     }
 }
 
@@ -2343,7 +2336,7 @@ impl From<gimli::DebugInfoOffset> for TypeOffset {
 
 impl From<gimli::DebugInfoOffset> for VariableOffset {
     fn from(o: gimli::DebugInfoOffset) -> VariableOffset {
-        VariableOffset(o.0)
+        VariableOffset::new(o.0)
     }
 }
 

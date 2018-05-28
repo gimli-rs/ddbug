@@ -80,6 +80,7 @@ impl TypeOffset {
 }
 
 impl Default for TypeOffset {
+    #[inline]
     fn default() -> Self {
         TypeOffset::none()
     }

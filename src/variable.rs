@@ -3,6 +3,7 @@ use std::cell::Cell;
 use std::cmp;
 use std::ops::Deref;
 use std::rc::Rc;
+use std::usize;
 
 use file::FileHash;
 use namespace::Namespace;
@@ -13,13 +14,32 @@ use types::{Type, TypeOffset};
 use unit::Unit;
 use {Options, Result, Sort};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct VariableOffset(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct VariableOffset(usize);
+
+impl VariableOffset {
+    #[inline]
+    pub(crate) fn new(offset: usize) -> VariableOffset {
+        VariableOffset(offset)
+    }
+
+    #[inline]
+    pub(crate) fn none() -> VariableOffset {
+        VariableOffset(usize::MAX)
+    }
+}
+
+impl Default for VariableOffset {
+    #[inline]
+    fn default() -> Self {
+        VariableOffset::none()
+    }
+}
 
 #[derive(Debug, Default)]
 pub(crate) struct Variable<'input> {
     pub id: Cell<usize>,
-    pub offset: Option<VariableOffset>,
+    pub offset: VariableOffset,
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
     pub linkage_name: Option<Cow<'input, str>>,
