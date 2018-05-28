@@ -1,3 +1,4 @@
+extern crate fnv;
 extern crate gimli;
 #[macro_use]
 extern crate log;

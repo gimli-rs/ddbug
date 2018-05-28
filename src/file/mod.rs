@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 use std::cmp;
-use std::collections::HashMap;
 use std::default::Default;
 use std::fs;
 use std::ops::Deref;
 
 mod dwarf;
 
+use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
 use object::{self, Object, ObjectSection, ObjectSegment};
@@ -498,7 +498,7 @@ impl<'input> FileHash<'input> {
 
     /// Returns a map from address to function for all functions in the file.
     fn functions_by_address<'a>(file: &'a File<'input>) -> HashMap<u64, &'a Function<'input>> {
-        let mut functions = HashMap::new();
+        let mut functions = HashMap::default();
         for unit in &file.units {
             for function in &unit.functions {
                 if let Some(address) = function.address() {
@@ -514,7 +514,7 @@ impl<'input> FileHash<'input> {
     fn functions_by_offset<'a>(
         file: &'a File<'input>,
     ) -> HashMap<FunctionOffset, &'a Function<'input>> {
-        let mut functions = HashMap::new();
+        let mut functions = HashMap::default();
         for unit in &file.units {
             for function in &unit.functions {
                 functions.insert(function.offset, function);
@@ -525,7 +525,7 @@ impl<'input> FileHash<'input> {
 
     /// Returns a map from offset to type for all types in the file.
     fn types<'a>(file: &'a File<'input>) -> HashMap<TypeOffset, &'a Type<'input>> {
-        let mut types = HashMap::new();
+        let mut types = HashMap::default();
         for unit in &file.units {
             for ty in &unit.types {
                 types.insert(ty.offset, ty);
