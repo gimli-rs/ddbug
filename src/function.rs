@@ -17,7 +17,7 @@ use source::Source;
 use types::{Type, TypeOffset};
 use unit::Unit;
 use variable::LocalVariable;
-use {Options, Result, Sort};
+use {Address, Options, Result, Size, Sort};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct FunctionOffset(usize);
@@ -25,6 +25,7 @@ pub(crate) struct FunctionOffset(usize);
 impl FunctionOffset {
     #[inline]
     pub(crate) fn new(offset: usize) -> FunctionOffset {
+        debug_assert!(FunctionOffset(offset) != FunctionOffset::none());
         FunctionOffset(offset)
     }
 
@@ -55,8 +56,8 @@ pub(crate) struct Function<'input> {
     pub linkage_name: Option<Cow<'input, str>>,
     pub symbol_name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
-    pub address: Option<u64>,
-    pub size: Option<u64>,
+    pub address: Address,
+    pub size: Size,
     pub inline: bool,
     pub declaration: bool,
     pub parameters: Vec<Parameter<'input>>,
@@ -90,8 +91,16 @@ impl<'input> Function<'input> {
         self.symbol_name.as_ref().map(Cow::deref)
     }
 
-    pub fn address(&self) -> Option<Range> {
-        if let (Some(address), Some(size)) = (self.address, self.size) {
+    pub fn address(&self) -> Option<u64> {
+        self.address.get()
+    }
+
+    pub fn size(&self) -> Option<u64> {
+        self.size.get()
+    }
+
+    pub fn range(&self) -> Option<Range> {
+        if let (Some(address), Some(size)) = (self.address(), self.size()) {
             Some(Range {
                 begin: address,
                 end: address + size,
@@ -106,9 +115,9 @@ impl<'input> Function<'input> {
     }
 
     fn calls(&self, file: &File) -> Vec<Call> {
-        if let Some(address) = self.address() {
+        if let Some(range) = self.range() {
             if let Some(code) = file.code() {
-                return disassemble(code, address);
+                return disassemble(code, range);
             }
         }
         Vec::new()
@@ -265,14 +274,14 @@ impl<'input> Function<'input> {
     }
 
     fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(range) = self.address() {
+        if let Some(range) = self.range() {
             range.print_address(w)?;
         }
         Ok(())
     }
 
     fn print_size(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(size) = self.size {
+        if let Some(size) = self.size() {
             write!(w, "{}", size)?;
         }
         Ok(())
@@ -393,6 +402,7 @@ pub(crate) struct ParameterOffset(usize);
 impl ParameterOffset {
     #[inline]
     pub(crate) fn new(offset: usize) -> ParameterOffset {
+        debug_assert!(ParameterOffset(offset) != ParameterOffset::none());
         ParameterOffset(offset)
     }
 
@@ -523,7 +533,7 @@ impl<'input> DiffList for Parameter<'input> {
 #[derive(Debug, Default)]
 pub(crate) struct InlinedFunction<'input> {
     pub abstract_origin: FunctionOffset,
-    pub size: Option<u64>,
+    pub size: Size,
     pub parameters: Vec<Parameter<'input>>,
     pub variables: Vec<LocalVariable<'input>>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
@@ -531,8 +541,12 @@ pub(crate) struct InlinedFunction<'input> {
 }
 
 impl<'input> InlinedFunction<'input> {
+    fn size(&self) -> Option<u64> {
+        self.size.get()
+    }
+
     fn print_size_and_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        match self.size {
+        match self.size() {
             Some(size) => write!(w, "[{}]", size)?,
             None => write!(w, "[??]")?,
         }
@@ -599,7 +613,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
     // functions. Probably not ideal, but seemed to help for one test case.
     fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         // Ensure cost is at least 1.
-        1 + 4 * self.size.unwrap_or(0) as usize
+        1 + 4 * self.size().unwrap_or(0) as usize
     }
 
     // TODO: other options to consider:
@@ -638,7 +652,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
 
         // max diff_cost needs be a.step_cost + b.step_cost = 2 + 4 * a.size + 4 * b.size
         // max cost so far is 4
-        cost *= 1 + (a.size.unwrap_or(0) + b.size.unwrap_or(0)) as usize;
+        cost *= 1 + (a.size().unwrap_or(0) + b.size().unwrap_or(0)) as usize;
         cost
     }
 }

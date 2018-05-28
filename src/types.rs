@@ -12,7 +12,7 @@ use namespace::Namespace;
 use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use source::Source;
 use unit::Unit;
-use {Options, Result, Sort};
+use {Options, Result, Size, Sort};
 
 #[derive(Debug, Clone)]
 pub(crate) enum TypeKind<'input> {
@@ -51,6 +51,7 @@ pub(crate) struct TypeOffset(usize);
 impl TypeOffset {
     #[inline]
     pub(crate) fn new(offset: usize) -> TypeOffset {
+        debug_assert!(TypeOffset(offset) != TypeOffset::none());
         TypeOffset(offset)
     }
 
@@ -387,7 +388,7 @@ pub(crate) struct TypeModifier<'input> {
     pub kind: TypeModifierKind,
     pub ty: TypeOffset,
     pub name: Option<Cow<'input, str>>,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
     // TODO: hack
     pub address_size: Option<u64>,
 }
@@ -438,7 +439,7 @@ impl<'input> TypeModifier<'input> {
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
-            return self.byte_size;
+            return self.byte_size.get();
         }
         match self.kind {
             TypeModifierKind::Const
@@ -507,7 +508,7 @@ impl<'input> TypeModifier<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct BaseType<'input> {
     pub name: Option<Cow<'input, str>>,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
 }
 
 impl<'input> BaseType<'input> {
@@ -516,7 +517,7 @@ impl<'input> BaseType<'input> {
     }
 
     fn byte_size(&self) -> Option<u64> {
-        self.byte_size
+        self.byte_size.get()
     }
 
     fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
@@ -667,7 +668,7 @@ pub(crate) struct StructType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
     pub declaration: bool,
     pub members: Vec<Member<'input>>,
 }
@@ -678,7 +679,7 @@ impl<'input> StructType<'input> {
     }
 
     fn byte_size(&self) -> Option<u64> {
-        self.byte_size
+        self.byte_size.get()
     }
 
     fn is_anon(&self) -> bool {
@@ -761,7 +762,7 @@ impl<'input> StructType<'input> {
     }
 
     fn print_byte_size(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.byte_size {
+        if let Some(size) = self.byte_size() {
             write!(w, "{}", size)?;
         } else if !self.declaration {
             debug!("struct with no size");
@@ -807,7 +808,7 @@ pub(crate) struct UnionType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<Cow<'input, str>>,
     pub source: Source<'input>,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
     pub declaration: bool,
     pub members: Vec<Member<'input>>,
 }
@@ -818,7 +819,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn byte_size(&self) -> Option<u64> {
-        self.byte_size
+        self.byte_size.get()
     }
 
     fn is_anon(&self) -> bool {
@@ -901,7 +902,7 @@ impl<'input> UnionType<'input> {
     }
 
     fn print_byte_size(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.byte_size {
+        if let Some(size) = self.byte_size() {
             write!(w, "{}", size)?;
         } else if !self.declaration {
             debug!("struct with no size");
@@ -949,9 +950,9 @@ pub(crate) struct Member<'input> {
     pub ty: TypeOffset,
     // Defaults to 0, so always present.
     pub bit_offset: u64,
-    pub bit_size: Option<u64>,
+    pub bit_size: Size,
     // Redundant, but simplifies code.
-    pub next_bit_offset: Option<u64>,
+    pub next_bit_offset: Size,
 }
 
 impl<'input> Member<'input> {
@@ -965,7 +966,7 @@ impl<'input> Member<'input> {
 
     fn bit_size(&self, hash: &FileHash) -> Option<u64> {
         if self.bit_size.is_some() {
-            self.bit_size
+            self.bit_size.get()
         } else {
             self.ty(hash).and_then(|v| v.byte_size(hash).map(|v| v * 8))
         }
@@ -986,7 +987,7 @@ impl<'input> Member<'input> {
     }
 
     fn padding(&self, bit_size: Option<u64>) -> Option<Padding> {
-        if let (Some(bit_size), Some(next_bit_offset)) = (bit_size, self.next_bit_offset) {
+        if let (Some(bit_size), Some(next_bit_offset)) = (bit_size, self.next_bit_offset.get()) {
             let bit_offset = self.bit_offset + bit_size;
             if next_bit_offset > bit_offset {
                 let bit_size = next_bit_offset - bit_offset;
@@ -1138,7 +1139,7 @@ pub(crate) struct EnumerationType<'input> {
     pub source: Source<'input>,
     pub declaration: bool,
     pub ty: TypeOffset,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
     pub enumerators: Vec<Enumerator<'input>>,
 }
 
@@ -1153,7 +1154,7 @@ impl<'input> EnumerationType<'input> {
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
-            self.byte_size
+            self.byte_size.get()
         } else {
             self.ty(hash).and_then(|v| v.byte_size(hash))
         }
@@ -1315,8 +1316,8 @@ impl<'input> DiffList for Enumerator<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct ArrayType<'input> {
     pub ty: TypeOffset,
-    pub count: Option<u64>,
-    pub byte_size: Option<u64>,
+    pub count: Size,
+    pub byte_size: Size,
     pub phantom: marker::PhantomData<Cow<'input, str>>,
 }
 
@@ -1327,8 +1328,8 @@ impl<'input> ArrayType<'input> {
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
-            self.byte_size
-        } else if let (Some(ty), Some(count)) = (self.ty(hash), self.count) {
+            self.byte_size.get()
+        } else if let (Some(ty), Some(count)) = (self.ty(hash), self.count.get()) {
             ty.byte_size(hash).map(|v| v * count)
         } else {
             None
@@ -1337,8 +1338,8 @@ impl<'input> ArrayType<'input> {
 
     fn count(&self, hash: &FileHash) -> Option<u64> {
         if self.count.is_some() {
-            self.count
-        } else if let (Some(ty), Some(byte_size)) = (self.ty(hash), self.byte_size) {
+            self.count.get()
+        } else if let (Some(ty), Some(byte_size)) = (self.ty(hash), self.byte_size.get()) {
             ty.byte_size(hash).map(|v| byte_size / v)
         } else {
             None
@@ -1382,12 +1383,12 @@ impl<'input> ArrayType<'input> {
 pub(crate) struct FunctionType<'input> {
     pub parameters: Vec<Parameter<'input>>,
     pub return_type: TypeOffset,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
 }
 
 impl<'input> FunctionType<'input> {
     fn byte_size(&self) -> Option<u64> {
-        self.byte_size
+        self.byte_size.get()
     }
 
     fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
@@ -1490,7 +1491,7 @@ impl<'input> UnspecifiedType<'input> {
 pub(crate) struct PointerToMemberType {
     pub ty: TypeOffset,
     pub containing_ty: TypeOffset,
-    pub byte_size: Option<u64>,
+    pub byte_size: Size,
     // TODO: hack
     pub address_size: Option<u64>,
 }
@@ -1509,7 +1510,7 @@ impl PointerToMemberType {
 
     fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
-            return self.byte_size;
+            return self.byte_size.get();
         }
         // TODO: this probably depends on the ABI
         self.ty(hash).and_then(|ty| {

@@ -154,3 +154,99 @@ impl<'a> Options<'a> {
         }
     }
 }
+
+mod address {
+    use std::u64;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub(crate) struct Address(u64);
+
+    impl Address {
+        #[inline]
+        pub(crate) fn new(address: u64) -> Address {
+            debug_assert!(Address(address) != Address::none());
+            Address(address)
+        }
+
+        #[inline]
+        pub(crate) fn none() -> Address {
+            Address(0)
+        }
+
+        #[inline]
+        pub(crate) fn is_none(self) -> bool {
+            self == Self::none()
+        }
+
+        #[inline]
+        pub(crate) fn is_some(self) -> bool {
+            self != Self::none()
+        }
+
+        #[inline]
+        pub(crate) fn get(self) -> Option<u64> {
+            if self.is_none() {
+                None
+            } else {
+                Some(self.0)
+            }
+        }
+    }
+
+    impl Default for Address {
+        #[inline]
+        fn default() -> Self {
+            Address::none()
+        }
+    }
+}
+
+pub(crate) use address::Address;
+
+mod size {
+    use std::u64;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub(crate) struct Size(u64);
+
+    impl Size {
+        #[inline]
+        pub(crate) fn new(size: u64) -> Size {
+            debug_assert!(Size(size) != Size::none());
+            Size(size)
+        }
+
+        #[inline]
+        pub(crate) fn none() -> Size {
+            Size(u64::MAX)
+        }
+
+        #[inline]
+        pub(crate) fn is_none(self) -> bool {
+            self == Self::none()
+        }
+
+        #[inline]
+        pub(crate) fn is_some(self) -> bool {
+            self != Self::none()
+        }
+
+        #[inline]
+        pub(crate) fn get(self) -> Option<u64> {
+            if self.is_none() {
+                None
+            } else {
+                Some(self.0)
+            }
+        }
+    }
+
+    impl Default for Size {
+        #[inline]
+        fn default() -> Self {
+            Size::none()
+        }
+    }
+}
+
+pub(crate) use size::Size;

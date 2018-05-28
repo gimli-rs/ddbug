@@ -7,7 +7,6 @@ use std::rc::Rc;
 use gimli;
 use object;
 
-use Result;
 use file::DebugInfo;
 use function::{Function, FunctionOffset, InlinedFunction, Parameter, ParameterOffset};
 use namespace::{Namespace, NamespaceKind};
@@ -18,6 +17,7 @@ use types::{ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Memb
             TypeModifierKind, TypeOffset, UnionType, UnspecifiedType};
 use unit::Unit;
 use variable::{LocalVariable, Variable, VariableOffset};
+use {Address, Result, Size};
 
 type Reader<'input, Endian> = gimli::EndianSlice<'input, Endian>;
 
@@ -710,7 +710,7 @@ where
         kind,
         ty: TypeOffset::none(),
         name: None,
-        byte_size: None,
+        byte_size: Size::none(),
         address_size: Some(u64::from(dwarf_unit.header.address_size())),
     };
 
@@ -726,7 +726,9 @@ where
                     modifier.ty = offset;
                 },
                 gimli::DW_AT_byte_size => {
-                    modifier.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        modifier.byte_size = Size::new(byte_size);
+                    }
                 }
                 _ => debug!(
                     "unknown type modifier attribute: {} {:?}",
@@ -767,7 +769,9 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
-                    ty.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        ty.byte_size = Size::new(byte_size);
+                    }
                 }
                 gimli::DW_AT_encoding => {}
                 _ => debug!(
@@ -860,7 +864,9 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
-                    ty.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        ty.byte_size = Size::new(byte_size);
+                    }
                 }
                 gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
                 {
@@ -921,10 +927,13 @@ where
         }
     }
     ty.members.sort_by_key(|v| v.bit_offset);
-    let mut bit_offset = ty.byte_size.map(|v| v * 8);
+    let mut bit_offset = match ty.byte_size.get() {
+        Some(v) => Size::new(v * 8),
+        None => Size::none(),
+    };
     for member in ty.members.iter_mut().rev() {
         member.next_bit_offset = bit_offset;
-        bit_offset = Some(member.bit_offset);
+        bit_offset = Size::new(member.bit_offset);
     }
     Ok(ty)
 }
@@ -953,7 +962,9 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
-                    ty.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        ty.byte_size = Size::new(byte_size);
+                    }
                 }
                 gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
                 {
@@ -1071,7 +1082,9 @@ where
                     byte_size = attr.udata_value();
                 }
                 gimli::DW_AT_bit_size => {
-                    member.bit_size = attr.udata_value();
+                    if let Some(bit_size) = attr.udata_value() {
+                        member.bit_size = Size::new(bit_size);
+                    }
                 }
                 gimli::DW_AT_declaration => {
                     declaration = true;
@@ -1111,7 +1124,7 @@ where
         return Ok(());
     }
 
-    if let (Some(bit_offset), Some(bit_size)) = (bit_offset, member.bit_size) {
+    if let (Some(bit_offset), Some(bit_size)) = (bit_offset, member.bit_size.get()) {
         // DWARF version 2/3, but allowed in later versions for compatibility.
         // The data member is a bit field contained in an anonymous object.
         // member.bit_offset starts as the offset of the anonymous object.
@@ -1179,7 +1192,9 @@ where
                         .map(|s| s.to_string_lossy());
                 }
                 gimli::DW_AT_byte_size => {
-                    ty.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        ty.byte_size = Size::new(byte_size);
+                    }
                 }
                 gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
                 {
@@ -1294,7 +1309,9 @@ where
                     array.ty = offset;
                 },
                 gimli::DW_AT_byte_size => {
-                    array.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        array.byte_size = Size::new(byte_size);
+                    }
                 }
                 gimli::DW_AT_name | gimli::DW_AT_GNU_vector | gimli::DW_AT_sibling => {}
                 _ => debug!(
@@ -1314,7 +1331,9 @@ where
                 while let Some(attr) = attrs.next()? {
                     match attr.name() {
                         gimli::DW_AT_count => {
-                            array.count = attr.udata_value();
+                            if let Some(count) = attr.udata_value() {
+                                array.count = Size::new(count);
+                            }
                         }
                         gimli::DW_AT_upper_bound => {
                             // byte_size takes precedence over upper_bound when
@@ -1323,7 +1342,7 @@ where
                                 if let Some(upper_bound) = attr.udata_value() {
                                     // TODO: use AT_lower_bound too (and default lower bound)
                                     if let Some(count) = u64::checked_add(upper_bound, 1) {
-                                        array.count = Some(count);
+                                        array.count = Size::new(count);
                                     } else {
                                         debug!("overflow for array upper bound: {}", upper_bound);
                                     }
@@ -1358,7 +1377,7 @@ where
     let mut function = FunctionType {
         // Go treats subroutine types as pointers.
         // Not sure if this is valid for all languages.
-        byte_size: Some(u64::from(dwarf_unit.header.address_size())),
+        byte_size: Size::new(u64::from(dwarf_unit.header.address_size())),
         ..Default::default()
     };
 
@@ -1456,7 +1475,9 @@ where
                     }
                 }
                 gimli::DW_AT_byte_size => {
-                    ty.byte_size = attr.udata_value();
+                    if let Some(byte_size) = attr.udata_value() {
+                        ty.byte_size = Size::new(byte_size);
+                    }
                 }
                 _ => debug!(
                     "unknown ptr_to_member type attribute: {} {:?}",
@@ -1499,8 +1520,8 @@ where
         symbol_name: None,
         linkage_name: None,
         source: Source::default(),
-        address: None,
-        size: None,
+        address: Address::none(),
+        size: Size::none(),
         inline: false,
         declaration: false,
         parameters: Vec::new(),
@@ -1542,13 +1563,13 @@ where
                 gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
                     // TODO: is address 0 ever valid?
                     if addr != 0 {
-                        function.address = Some(addr);
+                        function.address = Address::new(addr);
                     }
                 },
                 gimli::DW_AT_high_pc => match attr.value() {
                     gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
                     gimli::AttributeValue::Udata(val) => if val != 0 {
-                        function.size = Some(val);
+                        function.size = Size::new(val);
                     },
                     _ => {}
                 },
@@ -1589,9 +1610,9 @@ where
             }
         }
 
-        if let (Some(address), Some(high_pc)) = (function.address, high_pc) {
+        if let (Some(address), Some(high_pc)) = (function.address(), high_pc) {
             if high_pc > address {
-                function.size = Some(high_pc - address);
+                function.size = Size::new(high_pc - address);
             }
         }
     }
@@ -1971,11 +1992,11 @@ where
         while let Some(range) = ranges.next()? {
             size += range.end.wrapping_sub(range.begin);
         }
-        function.size = Some(size);
+        function.size = Size::new(size);
     } else if let Some(size) = size {
-        function.size = Some(size);
+        function.size = Size::new(size);
     } else if let (Some(low_pc), Some(high_pc)) = (low_pc, high_pc) {
-        function.size = Some(high_pc.wrapping_sub(low_pc));
+        function.size = Size::new(high_pc.wrapping_sub(low_pc));
     } else {
         debug!("unknown inlined_subroutine size");
     }
@@ -2081,7 +2102,7 @@ where
                         gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
                             evaluate_variable_location(&dwarf_unit.header, expr)
                         {
-                            variable.address = Some(address);
+                            variable.address = address;
                             if size.is_some() {
                                 variable.size = size;
                             }
@@ -2167,7 +2188,7 @@ where
                         gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
                             evaluate_variable_location(&dwarf_unit.header, expr)
                         {
-                            variable.address = Some(address);
+                            variable.address = address;
                             if size.is_some() {
                                 variable.size = size;
                             }
@@ -2251,7 +2272,7 @@ where
 fn evaluate_variable_location<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<Reader<'input, Endian>>,
     expression: gimli::Expression<Reader<'input, Endian>>,
-) -> Option<(u64, Option<u64>)>
+) -> Option<(Address, Size)>
 where
     Endian: gimli::Endianity + 'input,
 {
@@ -2268,7 +2289,12 @@ where
                 } else {
                     // TODO: is address 0 ever valid?
                     if address != 0 {
-                        result = Some((address, piece.size_in_bits.map(|x| (x + 7) / 8)));
+                        let address = Address::new(address);
+                        let size = match piece.size_in_bits.map(|x| (x + 7) / 8) {
+                            Some(size) => Size::new(size),
+                            None => Size::none(),
+                        };
+                        result = Some((address, size));
                     }
                 }
             }

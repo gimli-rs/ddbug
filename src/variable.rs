@@ -12,7 +12,7 @@ use range::Range;
 use source::Source;
 use types::{Type, TypeOffset};
 use unit::Unit;
-use {Options, Result, Sort};
+use {Address, Options, Result, Size, Sort};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct VariableOffset(usize);
@@ -20,6 +20,7 @@ pub(crate) struct VariableOffset(usize);
 impl VariableOffset {
     #[inline]
     pub(crate) fn new(offset: usize) -> VariableOffset {
+        debug_assert!(VariableOffset(offset) != VariableOffset::none());
         VariableOffset(offset)
     }
 
@@ -46,8 +47,8 @@ pub(crate) struct Variable<'input> {
     pub symbol_name: Option<Cow<'input, str>>,
     pub ty: TypeOffset,
     pub source: Source<'input>,
-    pub address: Option<u64>,
-    pub size: Option<u64>,
+    pub address: Address,
+    pub size: Size,
     pub declaration: bool,
 }
 
@@ -68,16 +69,20 @@ impl<'input> Variable<'input> {
         self.symbol_name.as_ref().map(Cow::deref)
     }
 
+    pub fn address(&self) -> Option<u64> {
+        self.address.get()
+    }
+
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.size.is_some() {
-            self.size
+            self.size.get()
         } else {
             self.ty(hash).and_then(|t| t.byte_size(hash))
         }
     }
 
-    pub fn address(&self, hash: &FileHash) -> Option<Range> {
-        match (self.address, self.byte_size(hash)) {
+    pub fn range(&self, hash: &FileHash) -> Option<Range> {
+        match (self.address(), self.byte_size(hash)) {
             (Some(begin), Some(size)) => Some(Range {
                 begin,
                 end: begin + size,
@@ -172,7 +177,7 @@ impl<'input> Variable<'input> {
     }
 
     fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(address) = self.address {
+        if let Some(address) = self.address() {
             write!(w, "0x{:x}", address)?;
         }
         Ok(())
@@ -248,8 +253,8 @@ pub(crate) struct LocalVariable<'input> {
     pub name: Option<Cow<'input, str>>,
     pub ty: TypeOffset,
     pub source: Source<'input>,
-    pub address: Option<u64>,
-    pub size: Option<u64>,
+    pub address: Address,
+    pub size: Size,
 }
 
 impl<'input> LocalVariable<'input> {
@@ -263,7 +268,7 @@ impl<'input> LocalVariable<'input> {
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.size.is_some() {
-            self.size
+            self.size.get()
         } else {
             self.ty(hash).and_then(|t| t.byte_size(hash))
         }
@@ -276,6 +281,7 @@ impl<'input> LocalVariable<'input> {
     }
 
     fn print_size_and_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+        // TODO: print address?
         match self.byte_size(hash) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,

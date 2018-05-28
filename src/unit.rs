@@ -182,12 +182,12 @@ impl<'input> Unit<'input> {
     pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
         for function in &self.functions {
-            if let Some(range) = function.address() {
+            if let Some(range) = function.range() {
                 ranges.push(range);
             }
         }
         for variable in &self.variables {
-            if let Some(range) = variable.address(hash) {
+            if let Some(range) = variable.range(hash) {
                 ranges.push(range);
             }
         }
@@ -212,7 +212,7 @@ impl<'input> Unit<'input> {
     pub fn function_size(&self) -> u64 {
         let mut ranges = RangeList::default();
         for function in &self.functions {
-            if let Some(range) = function.address() {
+            if let Some(range) = function.range() {
                 ranges.push(range);
             }
         }
@@ -223,7 +223,7 @@ impl<'input> Unit<'input> {
     pub fn variable_size(&self, hash: &FileHash) -> u64 {
         let mut ranges = RangeList::default();
         for variable in &self.variables {
-            if let Some(range) = variable.address(hash) {
+            if let Some(range) = variable.range(hash) {
                 ranges.push(range);
             }
         }

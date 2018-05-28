@@ -19,7 +19,7 @@ use range::{Range, RangeList};
 use types::{Type, TypeOffset};
 use unit::Unit;
 use variable::Variable;
-use {Options, Result};
+use {Address, Options, Result, Size};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {
@@ -178,7 +178,7 @@ impl<'input> File<'input> {
         // Set symbol names on functions/variables.
         for unit in &mut self.units {
             for function in &mut unit.functions {
-                if let Some(address) = function.address {
+                if let Some(address) = function.address() {
                     if let Some(symbol) = Self::get_symbol(
                         &*self.symbols,
                         &mut used_symbols,
@@ -191,7 +191,7 @@ impl<'input> File<'input> {
             }
 
             for variable in &mut unit.variables {
-                if let Some(address) = variable.address {
+                if let Some(address) = variable.address() {
                     if let Some(symbol) = Self::get_symbol(
                         &*self.symbols,
                         &mut used_symbols,
@@ -220,8 +220,8 @@ impl<'input> File<'input> {
                     unit.variables.push(Variable {
                         name: symbol.name.clone(),
                         linkage_name: symbol.name.clone(),
-                        address: Some(symbol.address),
-                        size: Some(symbol.size),
+                        address: Address::new(symbol.address),
+                        size: Size::new(symbol.size),
                         ..Default::default()
                     });
                 }
@@ -229,8 +229,8 @@ impl<'input> File<'input> {
                     unit.functions.push(Function {
                         name: symbol.name.clone(),
                         linkage_name: symbol.name.clone(),
-                        address: Some(symbol.address),
-                        size: Some(symbol.size),
+                        address: Address::new(symbol.address),
+                        size: Size::new(symbol.size),
                         ..Default::default()
                     });
                 }
@@ -501,7 +501,7 @@ impl<'input> FileHash<'input> {
         let mut functions = HashMap::new();
         for unit in &file.units {
             for function in &unit.functions {
-                if let Some(address) = function.address {
+                if let Some(address) = function.address() {
                     // TODO: handle duplicate addresses
                     functions.insert(address, function);
                 }
