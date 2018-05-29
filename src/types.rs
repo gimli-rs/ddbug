@@ -115,7 +115,7 @@ impl<'input> Type<'input> {
         hash.types
             .get(&offset)
             .map(|ty| Cow::Borrowed(*ty))
-            .or_else(|| hash.file.type_from_offset(offset).map(Cow::Owned))
+            .or_else(|| hash.file.get_type(offset).map(Cow::Owned))
     }
 
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
@@ -190,7 +190,7 @@ impl<'input> Type<'input> {
             TypeKind::Def(ref val) => val.print(state, unit, id),
             TypeKind::Struct(ref val) => val.print(state, unit, id),
             TypeKind::Union(ref val) => val.print(state, unit, id),
-            TypeKind::Enumeration(ref val) => val.print(state, unit, id),
+            TypeKind::Enumeration(ref val) => val.print(state, unit, id, self.offset),
             TypeKind::Base(..)
             | TypeKind::Array(..)
             | TypeKind::Function(..)
@@ -245,9 +245,16 @@ impl<'input> Type<'input> {
             (&Def(ref a), &Def(ref b)) => TypeDef::diff(state, id, unit_a, a, unit_b, b),
             (&Struct(ref a), &Struct(ref b)) => StructType::diff(state, id, unit_a, a, unit_b, b),
             (&Union(ref a), &Union(ref b)) => UnionType::diff(state, id, unit_a, a, unit_b, b),
-            (&Enumeration(ref a), &Enumeration(ref b)) => {
-                EnumerationType::diff(state, id, unit_a, a, unit_b, b)
-            }
+            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::diff(
+                state,
+                id,
+                unit_a,
+                a,
+                type_a.offset,
+                unit_b,
+                b,
+                type_b.offset,
+            ),
             _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
         }?;
         Ok(())
@@ -1140,7 +1147,6 @@ pub(crate) struct EnumerationType<'input> {
     pub declaration: bool,
     pub ty: TypeOffset,
     pub byte_size: Size,
-    pub enumerators: Vec<Enumerator<'input>>,
 }
 
 impl<'input> EnumerationType<'input> {
@@ -1173,7 +1179,13 @@ impl<'input> EnumerationType<'input> {
         w.link(id, &mut |w| self.print_name(w))
     }
 
-    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
+    fn print(
+        &self,
+        state: &mut PrintState,
+        unit: &Unit,
+        id: usize,
+        offset: TypeOffset,
+    ) -> Result<()> {
         state.collapsed(
             |state| state.id(id, |w, _state| self.print_name(w)),
             |state| {
@@ -1182,7 +1194,8 @@ impl<'input> EnumerationType<'input> {
                 }
                 state.field("declaration", |w, _state| self.print_declaration(w))?;
                 state.field("size", |w, state| self.print_byte_size(w, state))?;
-                state.field_expanded("enumerators", |state| state.list(unit, &self.enumerators))
+                let enumerators = state.hash().file.get_enumerators(offset);
+                state.field_expanded("enumerators", |state| state.list(unit, &enumerators))
             },
         )?;
         state.line_break()?;
@@ -1194,8 +1207,10 @@ impl<'input> EnumerationType<'input> {
         id: usize,
         unit_a: &Unit,
         a: &EnumerationType,
+        offset_a: TypeOffset,
         unit_b: &Unit,
         b: &EnumerationType,
+        offset_b: TypeOffset,
     ) -> Result<()> {
         // The names should be the same, but we can't be sure.
         state.collapsed(
@@ -1212,8 +1227,10 @@ impl<'input> EnumerationType<'input> {
                 state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))?;
                 state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
                 // TODO: handle reordering better
+                let enumerators_a = state.hash_a().file.get_enumerators(offset_a);
+                let enumerators_b = state.hash_b().file.get_enumerators(offset_b);
                 state.field_expanded("enumerators", |state| {
-                    state.list(unit_a, &a.enumerators, unit_b, &b.enumerators)
+                    state.list(unit_a, &enumerators_a, unit_b, &enumerators_b)
                 })
             },
         )?;

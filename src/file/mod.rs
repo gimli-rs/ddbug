@@ -17,7 +17,7 @@ use function::{Function, FunctionOffset};
 use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
             ValuePrinter};
 use range::{Range, RangeList};
-use types::{Type, TypeOffset};
+use types::{Enumerator, Type, TypeOffset};
 use unit::Unit;
 use variable::Variable;
 use {Address, Options, Result, Size};
@@ -29,7 +29,8 @@ pub(crate) struct CodeRegion {
 }
 
 pub(crate) trait DebugInfo {
-    fn type_from_offset(&self, offset: TypeOffset) -> Option<Type>;
+    fn get_type(&self, offset: TypeOffset) -> Option<Type>;
+    fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator>;
 }
 
 pub(crate) struct StringCache {
@@ -63,8 +64,12 @@ pub struct File<'input> {
 }
 
 impl<'input> File<'input> {
-    pub(crate) fn type_from_offset(&self, offset: TypeOffset) -> Option<Type<'input>> {
-        self.debug_info.type_from_offset(offset)
+    pub(crate) fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
+        self.debug_info.get_type(offset)
+    }
+
+    pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
+        self.debug_info.get_enumerators(offset)
     }
 
     pub fn parse<Cb>(path: &str, cb: Cb) -> Result<()>

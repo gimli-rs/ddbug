@@ -35,25 +35,59 @@ where
     units: Vec<DwarfUnit<'input, Endian>>,
 }
 
-impl<'input, Endian> DebugInfo for DwarfDebugInfo<'input, Endian>
+impl<'input, Endian> DwarfDebugInfo<'input, Endian>
 where
     Endian: gimli::Endianity,
 {
-    fn type_from_offset(&self, offset: TypeOffset) -> Option<Type> {
-        let offset = match offset.get() {
-            None => return None,
-            Some(offset) => gimli::DebugInfoOffset(offset),
-        };
+    fn tree(
+        &self,
+        offset: gimli::DebugInfoOffset,
+    ) -> Option<(
+        &DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<Reader<'input, Endian>>,
+    )> {
         // FIXME: make this more efficient for large numbers of units
         // FIXME: cache lookups
         for unit in &self.units {
             if let Some(offset) = offset.to_unit_offset(&unit.header) {
                 let mut tree = unit.header.entries_tree(&unit.abbrev, Some(offset)).ok()?;
-                let node = tree.root().ok()?;
-                return parse_unnamed_type(self, unit, node).ok()?;
+                return Some((unit, tree));
             }
         }
         None
+    }
+
+    fn type_tree(
+        &self,
+        offset: TypeOffset,
+    ) -> Option<(
+        &DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<Reader<'input, Endian>>,
+    )> {
+        offset
+            .get()
+            .and_then(|offset| self.tree(gimli::DebugInfoOffset(offset)))
+    }
+}
+
+impl<'input, Endian> DebugInfo for DwarfDebugInfo<'input, Endian>
+where
+    Endian: gimli::Endianity,
+{
+    fn get_type(&self, offset: TypeOffset) -> Option<Type> {
+        self.type_tree(offset).and_then(|(unit, mut tree)| {
+            let node = tree.root().ok()?;
+            parse_unnamed_type(self, unit, node).ok()?
+        })
+    }
+
+    fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator> {
+        self.type_tree(offset)
+            .and_then(|(_unit, mut tree)| {
+                let node = tree.root().ok()?;
+                parse_enumerators(self, node).ok()
+            })
+            .unwrap_or(Vec::new())
     }
 }
 
@@ -1227,10 +1261,6 @@ where
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
-            gimli::DW_TAG_enumerator => {
-                ty.enumerators
-                    .push(parse_enumerator(dwarf, dwarf_unit, &namespace, child)?);
-            }
             gimli::DW_TAG_subprogram => {
                 parse_subprogram(
                     unit,
@@ -1242,6 +1272,7 @@ where
                     child,
                 )?;
             }
+            gimli::DW_TAG_enumerator => {}
             tag => {
                 debug!("unknown enumeration child tag: {}", tag);
             }
@@ -1250,10 +1281,28 @@ where
     Ok(ty)
 }
 
+fn parse_enumerators<'input, 'abbrev, 'unit, 'tree, Endian>(
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<Vec<Enumerator<'input>>>
+where
+    Endian: gimli::Endianity,
+{
+    let mut enumerators = Vec::new();
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_enumerator => {
+                enumerators.push(parse_enumerator(dwarf, child)?);
+            }
+            _ => {}
+        }
+    }
+    Ok(enumerators)
+}
+
 fn parse_enumerator<'input, 'abbrev, 'unit, 'tree, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
-    _dwarf_unit: &DwarfUnit<'input, Endian>,
-    _namespace: &Option<Rc<Namespace<'input>>>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
 ) -> Result<Enumerator<'input>>
 where
