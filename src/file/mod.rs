@@ -11,6 +11,7 @@ use gimli;
 use memmap;
 use object::{self, Object, ObjectSection, ObjectSegment};
 use panopticon;
+use typed_arena::Arena;
 
 use function::{Function, FunctionOffset};
 use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
@@ -29,6 +30,27 @@ pub(crate) struct CodeRegion {
 
 pub(crate) trait DebugInfo {
     fn type_from_offset(&self, offset: TypeOffset) -> Option<Type>;
+}
+
+pub(crate) struct StringCache {
+    strings: Arena<String>,
+}
+
+impl StringCache {
+    fn new() -> Self {
+        StringCache {
+            strings: Arena::new(),
+        }
+    }
+
+    fn get<'input>(&'input self, bytes: &'input [u8]) -> &'input str {
+        // FIXME: this is effectively leaking strings that require lossy conversion,
+        // fix by avoiding duplicates
+        match String::from_utf8_lossy(bytes) {
+            Cow::Borrowed(s) => s,
+            Cow::Owned(s) => &*self.strings.alloc(s),
+        }
+    }
 }
 
 pub struct File<'input> {
@@ -141,7 +163,7 @@ impl<'input> File<'input> {
                 _ => continue,
             };
 
-            let name = symbol.name().map(Cow::Borrowed);
+            let name = symbol.name();
 
             symbols.push(Symbol {
                 name,
@@ -157,7 +179,8 @@ impl<'input> File<'input> {
             gimli::RunTimeEndian::Big
         };
 
-        dwarf::parse(endian, &object, |units, debug_info| {
+        let strings = &StringCache::new();
+        dwarf::parse(endian, &object, strings, |units, debug_info| {
             let mut file = File {
                 path,
                 code,
@@ -626,7 +649,7 @@ pub(crate) enum SymbolType {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Symbol<'input> {
-    name: Option<Cow<'input, str>>,
+    name: Option<&'input str>,
     ty: SymbolType,
     address: u64,
     size: u64,
@@ -634,7 +657,7 @@ pub(crate) struct Symbol<'input> {
 
 impl<'input> Symbol<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn address(&self) -> Range {

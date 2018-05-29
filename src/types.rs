@@ -387,7 +387,7 @@ impl<'input> SortList for Type<'input> {
 pub(crate) struct TypeModifier<'input> {
     pub kind: TypeModifierKind,
     pub ty: TypeOffset,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub byte_size: Size,
     // TODO: hack
     pub address_size: Option<u64>,
@@ -430,7 +430,7 @@ impl TypeModifierKind {
 
 impl<'input> TypeModifier<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
@@ -507,13 +507,13 @@ impl<'input> TypeModifier<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct BaseType<'input> {
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub byte_size: Size,
 }
 
 impl<'input> BaseType<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn byte_size(&self) -> Option<u64> {
@@ -536,14 +536,14 @@ impl<'input> BaseType<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct TypeDef<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub ty: TypeOffset,
     pub source: Source<'input>,
 }
 
 impl<'input> TypeDef<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
@@ -666,7 +666,7 @@ where
 #[derive(Debug, Default, Clone)]
 pub(crate) struct StructType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub source: Source<'input>,
     pub byte_size: Size,
     pub declaration: bool,
@@ -675,7 +675,7 @@ pub(crate) struct StructType<'input> {
 
 impl<'input> StructType<'input> {
     pub fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn byte_size(&self) -> Option<u64> {
@@ -806,7 +806,7 @@ impl<'input> StructType<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct UnionType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub source: Source<'input>,
     pub byte_size: Size,
     pub declaration: bool,
@@ -815,7 +815,7 @@ pub(crate) struct UnionType<'input> {
 
 impl<'input> UnionType<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn byte_size(&self) -> Option<u64> {
@@ -946,7 +946,7 @@ impl<'input> UnionType<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Member<'input> {
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub ty: TypeOffset,
     // Defaults to 0, so always present.
     pub bit_offset: u64,
@@ -957,7 +957,7 @@ pub(crate) struct Member<'input> {
 
 impl<'input> Member<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
@@ -1135,7 +1135,7 @@ impl Padding {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct EnumerationType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub source: Source<'input>,
     pub declaration: bool,
     pub ty: TypeOffset,
@@ -1145,7 +1145,7 @@ pub(crate) struct EnumerationType<'input> {
 
 impl<'input> EnumerationType<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
@@ -1258,13 +1258,13 @@ impl<'input> EnumerationType<'input> {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Enumerator<'input> {
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub value: Option<i64>,
 }
 
 impl<'input> Enumerator<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn print_name_value(&self, w: &mut ValuePrinter) -> Result<()> {
@@ -1318,7 +1318,7 @@ pub(crate) struct ArrayType<'input> {
     pub ty: TypeOffset,
     pub count: Size,
     pub byte_size: Size,
-    pub phantom: marker::PhantomData<Cow<'input, str>>,
+    pub phantom: marker::PhantomData<&'input str>,
 }
 
 impl<'input> ArrayType<'input> {
@@ -1459,12 +1459,12 @@ impl<'input> FunctionType<'input> {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct UnspecifiedType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
 }
 
 impl<'input> UnspecifiedType<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn filter(&self, options: &Options) -> bool {

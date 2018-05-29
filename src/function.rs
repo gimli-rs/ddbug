@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::cmp;
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::usize;
 
@@ -52,9 +51,9 @@ pub(crate) struct Function<'input> {
     pub id: Cell<usize>,
     pub offset: FunctionOffset,
     pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
-    pub linkage_name: Option<Cow<'input, str>>,
-    pub symbol_name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
+    pub linkage_name: Option<&'input str>,
+    pub symbol_name: Option<&'input str>,
     pub source: Source<'input>,
     pub address: Address,
     pub size: Size,
@@ -80,15 +79,15 @@ impl<'input> Function<'input> {
     }
 
     pub fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     pub fn linkage_name(&self) -> Option<&str> {
-        self.linkage_name.as_ref().map(Cow::deref)
+        self.linkage_name
     }
 
     pub fn symbol_name(&self) -> Option<&str> {
-        self.symbol_name.as_ref().map(Cow::deref)
+        self.symbol_name
     }
 
     pub fn address(&self) -> Option<u64> {
@@ -422,13 +421,13 @@ impl Default for ParameterOffset {
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Parameter<'input> {
     pub offset: ParameterOffset,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub ty: TypeOffset,
 }
 
 impl<'input> Parameter<'input> {
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {

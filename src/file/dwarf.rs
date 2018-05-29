@@ -7,7 +7,7 @@ use std::rc::Rc;
 use gimli;
 use object;
 
-use file::DebugInfo;
+use file::{DebugInfo, StringCache};
 use function::{Function, FunctionOffset, InlinedFunction, Parameter, ParameterOffset};
 use namespace::{Namespace, NamespaceKind};
 use range::Range;
@@ -26,6 +26,7 @@ where
     Endian: gimli::Endianity,
 {
     endian: Endian,
+    strings: &'input StringCache,
     debug_abbrev: gimli::DebugAbbrev<Reader<'input, Endian>>,
     debug_info: gimli::DebugInfo<Reader<'input, Endian>>,
     debug_line: gimli::DebugLine<Reader<'input, Endian>>,
@@ -86,6 +87,7 @@ struct DwarfVariable<'input> {
 pub(crate) fn parse<'input, 'file, Endian, Object, Cb>(
     endian: Endian,
     object: &Object,
+    strings: &'input StringCache,
     cb: Cb,
 ) -> Result<()>
 where
@@ -114,6 +116,7 @@ where
 
     let mut dwarf = DwarfDebugInfo {
         endian,
+        strings,
         debug_abbrev,
         debug_info,
         debug_line,
@@ -532,7 +535,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_decl_file | gimli::DW_AT_decl_line | gimli::DW_AT_decl_column => {}
                 _ => debug!(
@@ -720,7 +723,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     modifier.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     modifier.ty = offset;
@@ -766,7 +769,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     ty.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_byte_size => {
                     if let Some(byte_size) = attr.udata_value() {
@@ -812,7 +815,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     typedef.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     typedef.ty = offset;
@@ -861,7 +864,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     ty.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_byte_size => {
                     if let Some(byte_size) = attr.udata_value() {
@@ -959,7 +962,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     ty.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_byte_size => {
                     if let Some(byte_size) = attr.udata_value() {
@@ -1046,7 +1049,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     member.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     member.ty = offset;
@@ -1189,7 +1192,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     ty.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_byte_size => {
                     if let Some(byte_size) = attr.udata_value() {
@@ -1264,7 +1267,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     enumerator.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_const_value => if let Some(value) = attr.sdata_value() {
                     enumerator.value = Some(value);
@@ -1430,7 +1433,7 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     ty.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 _ => debug!(
                     "unknown unspecified type attribute: {} {:?}",
@@ -1541,11 +1544,11 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     function.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_linkage_name | gimli::DW_AT_MIPS_linkage_name => {
                     function.linkage_name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf_unit, &attr, &mut function.source)
@@ -1789,7 +1792,7 @@ where
                 }
                 gimli::DW_AT_name => {
                     parameter.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     parameter.ty = offset;
@@ -2074,11 +2077,11 @@ where
             match attr.name() {
                 gimli::DW_AT_name => {
                     variable.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_linkage_name | gimli::DW_AT_MIPS_linkage_name => {
                     variable.linkage_name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     variable.ty = offset;
@@ -2173,7 +2176,7 @@ where
                 }
                 gimli::DW_AT_name => {
                     variable.name = attr.string_value(&dwarf.debug_str)
-                        .map(|s| s.to_string_lossy());
+                        .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     variable.ty = offset;

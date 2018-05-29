@@ -1,6 +1,4 @@
-use std::borrow::Cow;
 use std::cmp;
-use std::ops::Deref;
 use std::rc::Rc;
 
 use Result;
@@ -16,14 +14,14 @@ pub(crate) enum NamespaceKind {
 #[derive(Debug)]
 pub(crate) struct Namespace<'input> {
     pub parent: Option<Rc<Namespace<'input>>>,
-    pub name: Option<Cow<'input, str>>,
+    pub name: Option<&'input str>,
     pub kind: NamespaceKind,
 }
 
 impl<'input> Namespace<'input> {
     pub fn new(
         parent: &Option<Rc<Namespace<'input>>>,
-        name: Option<Cow<'input, str>>,
+        name: Option<&'input str>,
         kind: NamespaceKind,
     ) -> Rc<Namespace<'input>> {
         Rc::new(Namespace {
@@ -34,7 +32,7 @@ impl<'input> Namespace<'input> {
     }
 
     fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name
     }
 
     fn len(&self) -> usize {
