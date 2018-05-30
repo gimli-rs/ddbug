@@ -13,7 +13,7 @@ use object::{self, Object, ObjectSection, ObjectSegment};
 use panopticon;
 use typed_arena::Arena;
 
-use function::{Function, FunctionOffset};
+use function::{Function, FunctionDetails, FunctionOffset};
 use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
             ValuePrinter};
 use range::{Range, RangeList};
@@ -31,6 +31,7 @@ pub(crate) struct CodeRegion {
 pub(crate) trait DebugInfo {
     fn get_type(&self, offset: TypeOffset) -> Option<Type>;
     fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator>;
+    fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails>;
 }
 
 pub(crate) struct StringCache {
@@ -70,6 +71,12 @@ impl<'input> File<'input> {
 
     pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
         self.debug_info.get_enumerators(offset)
+    }
+
+    pub(crate) fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
+        self.debug_info
+            .get_function_details(offset)
+            .unwrap_or(FunctionDetails::default())
     }
 
     pub fn parse<Cb>(path: &str, cb: Cb) -> Result<()>

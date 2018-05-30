@@ -37,6 +37,15 @@ impl FunctionOffset {
     pub(crate) fn is_none(self) -> bool {
         self == Self::none()
     }
+
+    #[inline]
+    pub(crate) fn get(self) -> Option<usize> {
+        if self.is_none() {
+            None
+        } else {
+            Some(self.0)
+        }
+    }
 }
 
 impl Default for FunctionOffset {
@@ -61,6 +70,10 @@ pub(crate) struct Function<'input> {
     pub declaration: bool,
     pub parameters: Vec<Parameter<'input>>,
     pub return_type: TypeOffset,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct FunctionDetails<'input> {
     pub variables: Vec<LocalVariable<'input>>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
 }
@@ -149,12 +162,15 @@ impl<'input> Function<'input> {
                     state.line(|w, state| self.print_return_type(w, state))
                 })?;
                 state.field_expanded("parameters", |state| state.list(unit, &self.parameters))?;
+                let details = state.hash().file.get_function_details(self.offset);
                 if state.options().print_function_variables {
-                    state.field_collapsed("variables", |state| state.list(unit, &self.variables))?;
+                    state.field_collapsed("variables", |state| {
+                        state.list(unit, &details.variables)
+                    })?;
                 }
                 state.inline(|state| {
                     state.field_collapsed("inlined functions", |state| {
-                        state.list(unit, &self.inlined_functions)
+                        state.list(unit, &details.inlined_functions)
                     })
                 })?;
                 if state.options().print_function_calls {
@@ -210,12 +226,14 @@ impl<'input> Function<'input> {
                 state.field_expanded("parameters", |state| {
                     state.list(unit_a, &a.parameters, unit_b, &b.parameters)
                 })?;
+                let details_a = state.hash_a().file.get_function_details(a.offset);
+                let details_b = state.hash_b().file.get_function_details(b.offset);
                 if state.options().print_function_variables {
-                    let mut variables_a: Vec<_> = a.variables.iter().collect();
+                    let mut variables_a: Vec<_> = details_a.variables.iter().collect();
                     variables_a.sort_by(|x, y| {
                         LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y, state.options())
                     });
-                    let mut variables_b: Vec<_> = b.variables.iter().collect();
+                    let mut variables_b: Vec<_> = details_b.variables.iter().collect();
                     variables_b.sort_by(|x, y| {
                         LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
                     });
@@ -225,7 +243,12 @@ impl<'input> Function<'input> {
                 }
                 state.inline(|state| {
                     state.field_collapsed("inlined functions", |state| {
-                        state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
+                        state.list(
+                            unit_a,
+                            &details_a.inlined_functions,
+                            unit_b,
+                            &details_b.inlined_functions,
+                        )
                     })
                 })?;
                 if state.options().print_function_calls {
