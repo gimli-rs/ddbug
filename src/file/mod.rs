@@ -129,6 +129,7 @@ impl<'input> File<'input> {
                 let data = segment.data();
                 let address = segment.address();
                 let bound = panopticon::Bound::new(address, address + data.len() as u64);
+                // FIXME: avoid copy
                 let layer = panopticon::Layer::wrap(data.to_vec());
                 region.cover(bound, layer);
             }
@@ -338,6 +339,7 @@ impl<'input> File<'input> {
     // Used to create <unknown> unit. After creation of that unit
     // this will return an empty range list.
     fn unknown_ranges(&self) -> RangeList {
+        // FIXME: don't create this hash twice
         let hash = FileHash::new(self);
         let unit_ranges = self.ranges(&hash);
 
