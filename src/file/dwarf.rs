@@ -3,6 +3,7 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::mem;
 use std::rc::Rc;
+use std::u32;
 
 use gimli;
 use object;
@@ -2687,7 +2688,11 @@ where
 {
     match attr.value() {
         gimli::AttributeValue::Udata(val) => if val != 0 {
-            source.line = val;
+            if val <= u32::MAX as u64 {
+                source.line = val as u32;
+            } else {
+                debug!("large source line: {}", val);
+            }
         },
         val => {
             debug!("unknown DW_AT_decl_line attribute value: {:?}", val);
@@ -2701,7 +2706,11 @@ where
 {
     match attr.value() {
         gimli::AttributeValue::Udata(val) => if val != 0 {
-            source.column = val;
+            if val <= u32::MAX as u64 {
+                source.column = val as u32;
+            } else {
+                debug!("large source column: {}", val);
+            }
         },
         val => {
             debug!("unknown DW_AT_decl_column attribute value: {:?}", val);

@@ -6,8 +6,8 @@ use unit::Unit;
 pub(crate) struct Source<'input> {
     pub directory: Option<&'input str>,
     pub file: Option<&'input str>,
-    pub line: u64,
-    pub column: u64,
+    pub line: u32,
+    pub column: u32,
 }
 
 impl<'input> Source<'input> {
