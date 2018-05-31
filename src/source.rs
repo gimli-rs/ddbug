@@ -1,25 +1,22 @@
-use std::borrow::Cow;
-use std::ops::Deref;
-
 use Result;
 use print::ValuePrinter;
 use unit::Unit;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Source<'input> {
-    pub directory: Option<Cow<'input, str>>,
-    pub file: Option<Cow<'input, str>>,
+    pub directory: Option<&'input str>,
+    pub file: Option<&'input str>,
     pub line: u64,
     pub column: u64,
 }
 
 impl<'input> Source<'input> {
     pub fn directory(&self) -> Option<&str> {
-        self.directory.as_ref().map(Cow::deref)
+        self.directory
     }
 
     pub fn file(&self) -> Option<&str> {
-        self.file.as_ref().map(Cow::deref)
+        self.file
     }
 
     pub fn is_none(&self) -> bool {

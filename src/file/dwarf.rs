@@ -904,7 +904,9 @@ where
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     typedef.ty = offset;
                 },
-                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut typedef.source),
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut typedef.source)
+                }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut typedef.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut typedef.source),
                 _ => debug!(
@@ -959,7 +961,9 @@ where
                 {
                     ty.declaration = flag;
                 },
-                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source)
+                }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
                 gimli::DW_AT_containing_type | gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
@@ -1057,7 +1061,9 @@ where
                 {
                     ty.declaration = flag;
                 },
-                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source)
+                }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
                 gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
@@ -1287,7 +1293,9 @@ where
                 {
                     ty.declaration = flag;
                 },
-                gimli::DW_AT_decl_file => parse_source_file(dwarf_unit, &attr, &mut ty.source),
+                gimli::DW_AT_decl_file => {
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source)
+                }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
                 gimli::DW_AT_sibling
@@ -1648,7 +1656,7 @@ where
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
                 gimli::DW_AT_decl_file => {
-                    parse_source_file(dwarf_unit, &attr, &mut function.source)
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut function.source)
                 }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut function.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut function.source),
@@ -2195,7 +2203,7 @@ where
                     }
                 }
                 gimli::DW_AT_call_file => {
-                    parse_source_file(dwarf_unit, &attr, &mut function.call_source)
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut function.call_source)
                 }
                 gimli::DW_AT_call_line => parse_source_line(&attr, &mut function.call_source),
                 gimli::DW_AT_call_column => parse_source_column(&attr, &mut function.call_source),
@@ -2313,7 +2321,7 @@ where
                     variable.declaration = flag;
                 },
                 gimli::DW_AT_decl_file => {
-                    parse_source_file(dwarf_unit, &attr, &mut variable.source)
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut variable.source)
                 }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
@@ -2398,7 +2406,7 @@ where
                     variable.ty = offset;
                 },
                 gimli::DW_AT_decl_file => {
-                    parse_source_file(dwarf_unit, &attr, &mut variable.source)
+                    parse_source_file(dwarf, dwarf_unit, &attr, &mut variable.source)
                 }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
@@ -2645,6 +2653,7 @@ where
 }
 
 fn parse_source_file<'input, Endian>(
+    dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     attr: &gimli::Attribute<Reader<'input, Endian>>,
     source: &mut Source<'input>,
@@ -2655,9 +2664,9 @@ fn parse_source_file<'input, Endian>(
         gimli::AttributeValue::FileIndex(val) => if val != 0 {
             if let Some(ref line) = dwarf_unit.line {
                 if let Some(entry) = line.header().file(val) {
-                    source.file = Some(entry.path_name().to_string_lossy());
+                    source.file = Some(dwarf.strings.get(entry.path_name().slice()));
                     if let Some(directory) = entry.directory(line.header()) {
-                        source.directory = Some(directory.to_string_lossy());
+                        source.directory = Some(dwarf.strings.get(directory.slice()));
                     } else {
                         debug!("invalid directory index {}", entry.directory_index());
                     }
