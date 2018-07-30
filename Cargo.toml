@@ -16,6 +16,6 @@ gimli = { git = "https://github.com/gimli-rs/gimli", rev = "9a772217407651154c30
 log = "0.4"
 marksman_escape = "0.1"
 memmap = "0.6"
-object = "0.8"
+object = "0.9"
 panopticon-core = { git = "https://github.com/das-labor/panopticon" }
 panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
