@@ -10,7 +10,7 @@ categories = ["development-tools::debugging"]
 license = "Apache-2.0/MIT"
 
 [dependencies]
-clap = "2.26"
+clap = "2.32"
 env_logger = "0.5"
 gimli = { git = "https://github.com/gimli-rs/gimli", rev = "9a772217407651154c3063be03c1337bf0b04cc6" }
 log = "0.4"
