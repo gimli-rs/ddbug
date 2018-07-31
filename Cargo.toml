@@ -13,7 +13,7 @@ license = "Apache-2.0/MIT"
 clap = "2.26"
 env_logger = "0.5"
 fnv = "1.0"
-gimli = { git = "https://github.com/gimli-rs/gimli", rev = "9a772217407651154c3063be03c1337bf0b04cc6" }
+gimli = "0.16"
 log = "0.4"
 marksman_escape = "0.1"
 memmap = "0.6"
