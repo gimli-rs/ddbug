@@ -12,6 +12,10 @@ pub use self::text::TextPrinter;
 mod html;
 pub use self::html::HtmlPrinter;
 
+pub(crate) mod function;
+pub(crate) mod inlined_function;
+pub(crate) mod parameter;
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DiffPrefix {
     None,

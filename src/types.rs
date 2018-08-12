@@ -9,7 +9,7 @@ use std::usize;
 use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
-use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
+use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use source::Source;
 use unit::Unit;
 use {Options, Result, Size, Sort};
@@ -1421,7 +1421,7 @@ impl<'input> FunctionType<'input> {
             } else {
                 write!(w, ", ")?;
             }
-            parameter.print_decl(w, hash)?;
+            print::parameter::print_decl(parameter, w, hash)?;
         }
         write!(w, ")")?;
 
