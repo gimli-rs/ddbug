@@ -342,7 +342,8 @@ impl<'input> Function<'input> {
             // TODO: make this configurable?
             return false;
         }
-        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
+        options.filter_name(self.name())
+            && options.filter_namespace(&self.namespace)
             && options.filter_function_inline(self.inline)
     }
 }

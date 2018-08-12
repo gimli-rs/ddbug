@@ -1,7 +1,7 @@
 use std::mem;
 
-use Result;
 use print::{DiffState, Print, PrintState, ValuePrinter};
+use Result;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Range {

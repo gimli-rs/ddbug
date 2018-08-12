@@ -1,6 +1,6 @@
-use Result;
 use print::ValuePrinter;
 use unit::Unit;
+use Result;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Source<'input> {

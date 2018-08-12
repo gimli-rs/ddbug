@@ -1,8 +1,8 @@
 use std::cmp;
 use std::rc::Rc;
 
-use Result;
 use print::ValuePrinter;
+use Result;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum NamespaceKind {

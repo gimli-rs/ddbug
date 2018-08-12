@@ -14,8 +14,10 @@ use panopticon;
 use typed_arena::Arena;
 
 use function::{Function, FunctionDetails, FunctionOffset};
-use print::{DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
-            ValuePrinter};
+use print::{
+    DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
+    ValuePrinter,
+};
 use range::{Range, RangeList};
 use types::{Enumerator, Type, TypeOffset};
 use unit::Unit;
