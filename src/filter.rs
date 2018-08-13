@@ -1,5 +1,18 @@
+use function::Function;
 use types::{EnumerationType, StructType, Type, TypeDef, TypeKind, UnionType, UnspecifiedType};
 use Options;
+
+pub(crate) fn filter_function(f: &Function, options: &Options) -> bool {
+    if !f.inline && (f.address.is_none() || f.size.is_none()) {
+        // This is either a declaration or a dead function that was removed
+        // from the code, but wasn't removed from the debuginfo.
+        // TODO: make this configurable?
+        return false;
+    }
+    options.filter_name(f.name())
+        && options.filter_namespace(&f.namespace)
+        && options.filter_function_inline(f.inline)
+}
 
 pub(crate) fn filter_type(ty: &Type, options: &Options) -> bool {
     match ty.kind {

@@ -8,9 +8,7 @@ use gimli;
 use file::FileHash;
 use filter;
 use function::Function;
-use print::{
-    self, DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter,
-};
+use print::{DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter};
 use range::{Range, RangeList};
 use types::{Type, TypeKind};
 use variable::Variable;
@@ -509,7 +507,7 @@ impl<'input> Unit<'input> {
     fn filter_functions(&self, options: &Options) -> Vec<&Function<'input>> {
         self.functions
             .iter()
-            .filter(|a| print::function::filter(a, options))
+            .filter(|a| filter::filter_function(a, options))
             .collect()
     }
 
