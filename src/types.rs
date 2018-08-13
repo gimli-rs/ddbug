@@ -2,17 +2,14 @@ use std::borrow::Cow;
 use std::cell::Cell;
 use std::cmp;
 use std::marker;
-use std::ops::Deref;
 use std::rc::Rc;
 use std::usize;
 
 use file::FileHash;
 use function::Parameter;
 use namespace::Namespace;
-use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use source::Source;
-use unit::Unit;
-use {Options, Result, Size, Sort};
+use Size;
 
 #[derive(Debug, Clone)]
 pub(crate) enum TypeKind<'input> {
@@ -184,133 +181,6 @@ impl<'input> Type<'input> {
         }
     }
 
-    pub fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        let id = self.id.get();
-        match self.kind {
-            TypeKind::Def(ref val) => val.print(state, unit, id),
-            TypeKind::Struct(ref val) => val.print(state, unit, id),
-            TypeKind::Union(ref val) => val.print(state, unit, id),
-            TypeKind::Enumeration(ref val) => val.print(state, unit, id, self.offset),
-            TypeKind::Base(..)
-            | TypeKind::Array(..)
-            | TypeKind::Function(..)
-            | TypeKind::Unspecified(..)
-            | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..) => Err(format!("can't print {:?}", self).into()),
-        }
-    }
-
-    pub fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        let id = self.id.get();
-        match self.kind {
-            TypeKind::Base(ref val) => val.print_ref(w),
-            TypeKind::Def(ref val) => val.print_ref(w, id),
-            TypeKind::Struct(ref val) => val.print_ref(w, id),
-            TypeKind::Union(ref val) => val.print_ref(w, id),
-            TypeKind::Enumeration(ref val) => val.print_ref(w, id),
-            TypeKind::Array(ref val) => val.print_ref(w, hash),
-            TypeKind::Function(ref val) => val.print_ref(w, hash),
-            TypeKind::Unspecified(ref val) => val.print_ref(w),
-            TypeKind::PointerToMember(ref val) => val.print_ref(w, hash),
-            TypeKind::Modifier(ref val) => val.print_ref(w, hash),
-        }
-    }
-
-    pub fn print_ref_from_offset(
-        w: &mut ValuePrinter,
-        hash: &FileHash,
-        offset: TypeOffset,
-    ) -> Result<()> {
-        if offset.is_none() {
-            write!(w, "void")?;
-        } else {
-            match Type::from_offset(hash, offset) {
-                Some(ty) => ty.print_ref(w, hash)?,
-                None => write!(w, "<invalid-type {}>", offset.0)?,
-            }
-        }
-        Ok(())
-    }
-
-    pub fn diff(
-        state: &mut DiffState,
-        unit_a: &Unit,
-        type_a: &Type,
-        unit_b: &Unit,
-        type_b: &Type,
-    ) -> Result<()> {
-        use self::TypeKind::*;
-        let id = type_a.id.get();
-        match (&type_a.kind, &type_b.kind) {
-            (&Def(ref a), &Def(ref b)) => TypeDef::diff(state, id, unit_a, a, unit_b, b),
-            (&Struct(ref a), &Struct(ref b)) => StructType::diff(state, id, unit_a, a, unit_b, b),
-            (&Union(ref a), &Union(ref b)) => UnionType::diff(state, id, unit_a, a, unit_b, b),
-            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::diff(
-                state,
-                id,
-                unit_a,
-                a,
-                type_a.offset,
-                unit_b,
-                b,
-                type_b.offset,
-            ),
-            _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
-        }?;
-        Ok(())
-    }
-
-    fn print_members(state: &mut PrintState, unit: &Unit, ty: Option<&Type>) -> Result<()> {
-        if let Some(ty) = ty {
-            match ty.kind {
-                TypeKind::Struct(ref t) => return t.print_members(state, unit),
-                TypeKind::Union(ref t) => return t.print_members(state, unit),
-                _ => return Err(format!("can't print members {:?}", ty).into()),
-            }
-        }
-        Ok(())
-    }
-
-    fn diff_members(
-        state: &mut DiffState,
-        unit_a: &Unit,
-        type_a: Option<&Type>,
-        unit_b: &Unit,
-        type_b: Option<&Type>,
-    ) -> Result<()> {
-        if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
-            match (&type_a.kind, &type_b.kind) {
-                (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
-                    return StructType::diff_members(state, unit_a, a, unit_b, b);
-                }
-                (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
-                    return UnionType::diff_members(state, unit_a, a, unit_b, b);
-                }
-                _ => {}
-            }
-        }
-
-        // Different types, so don't try to diff the members.
-        state.block((unit_a, type_a), (unit_b, type_b), |state, (unit, x)| {
-            Type::print_members(state, unit, x)
-        })
-    }
-
-    pub fn filter(&self, options: &Options) -> bool {
-        match self.kind {
-            TypeKind::Def(ref val) => val.filter(options),
-            TypeKind::Struct(ref val) => val.filter(options),
-            TypeKind::Union(ref val) => val.filter(options),
-            TypeKind::Enumeration(ref val) => val.filter(options),
-            TypeKind::Unspecified(ref val) => val.filter(options),
-            TypeKind::Base(..)
-            | TypeKind::Array(..)
-            | TypeKind::Function(..)
-            | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..) => options.filter_name.is_none(),
-        }
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
@@ -341,51 +211,6 @@ impl<'input> Type<'input> {
                 debug_assert_ne!(discr_a, discr_b);
                 discr_a.cmp(&discr_b)
             }
-        }
-    }
-}
-
-impl<'input> Print for Type<'input> {
-    type Arg = Unit<'input>;
-
-    fn print(&self, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
-        self.print(state, unit)
-    }
-
-    fn diff(
-        state: &mut DiffState,
-        unit_a: &Self::Arg,
-        a: &Self,
-        unit_b: &Self::Arg,
-        b: &Self,
-    ) -> Result<()> {
-        Self::diff(state, unit_a, a, unit_b, b)
-    }
-}
-
-impl<'input> SortList for Type<'input> {
-    /// This must only be called for types that have identifiers.
-    fn cmp_id(
-        hash_a: &FileHash,
-        type_a: &Type,
-        hash_b: &FileHash,
-        type_b: &Type,
-        _options: &Options,
-    ) -> cmp::Ordering {
-        Type::cmp_id(hash_a, type_a, hash_b, type_b)
-    }
-
-    fn cmp_by(
-        hash_a: &FileHash,
-        a: &Self,
-        hash_b: &FileHash,
-        b: &Self,
-        options: &Options,
-    ) -> cmp::Ordering {
-        match options.sort {
-            Sort::None => a.offset.0.cmp(&b.offset.0),
-            Sort::Name => Type::cmp_id(hash_a, a, hash_b, b),
-            Sort::Size => a.byte_size(hash_a).cmp(&b.byte_size(hash_b)),
         }
     }
 }
@@ -436,15 +261,15 @@ impl TypeModifierKind {
 }
 
 impl<'input> TypeModifier<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             return self.byte_size.get();
         }
@@ -462,30 +287,10 @@ impl<'input> TypeModifier<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        if let Some(name) = self.name() {
-            write!(w, "{}", name)?;
-        } else {
-            match self.kind {
-                TypeModifierKind::Pointer => write!(w, "* ")?,
-                TypeModifierKind::Reference | TypeModifierKind::RvalueReference => write!(w, "& ")?,
-                TypeModifierKind::Const => write!(w, "const ")?,
-                TypeModifierKind::Volatile => write!(w, "volatile ")?,
-                TypeModifierKind::Restrict => write!(w, "restrict ")?,
-                TypeModifierKind::Packed
-                | TypeModifierKind::Shared
-                | TypeModifierKind::Atomic
-                | TypeModifierKind::Other => {}
-            }
-            Type::print_ref_from_offset(w, hash, self.ty)?;
-        }
-        Ok(())
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(
+    pub fn cmp_id(
         hash_a: &FileHash,
         a: &TypeModifier,
         hash_b: &FileHash,
@@ -519,17 +324,12 @@ pub(crate) struct BaseType<'input> {
 }
 
 impl<'input> BaseType<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn byte_size(&self) -> Option<u64> {
+    pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
-        write!(w, "{}", self.name().unwrap_or("<anon-base-type>"))?;
-        Ok(())
     }
 
     /// Compare the identifying information of two types.
@@ -549,125 +349,24 @@ pub(crate) struct TypeDef<'input> {
 }
 
 impl<'input> TypeDef<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
-    }
-
-    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        write!(w, "{}", self.name().unwrap_or("<anon-typedef>"))?;
-        Ok(())
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
-        w.link(id, &mut |w| self.print_name(w))
-    }
-
-    fn print_def(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        write!(w, "type ")?;
-        self.print_name(w)?;
-        write!(w, " = ")?;
-        Type::print_ref_from_offset(w, hash, self.ty)?;
-        Ok(())
-    }
-
-    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-        if self.source.is_some() {
-            self.source.print(w, unit)?;
-        }
-        Ok(())
-    }
-
-    fn print_byte_size(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        if let Some(byte_size) = self.byte_size(hash) {
-            write!(w, "{}", byte_size)?;
-        }
-        Ok(())
-    }
-
-    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
-        let ty = self.ty(state.hash());
-        state.collapsed(
-            |state| state.id(id, |w, state| self.print_def(w, state)),
-            |state| {
-                if state.options().print_source {
-                    state.field("source", |w, _state| self.print_source(w, unit))?;
-                }
-                state.field("size", |w, state| self.print_byte_size(w, state))?;
-                if let Some(ref ty) = ty {
-                    if ty.is_anon() {
-                        state.field_expanded("members", |state| {
-                            Type::print_members(state, unit, Some(ty))
-                        })?;
-                    }
-                }
-                Ok(())
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn diff(
-        state: &mut DiffState,
-        id: usize,
-        unit_a: &Unit,
-        a: &TypeDef,
-        unit_b: &Unit,
-        b: &TypeDef,
-    ) -> Result<()> {
-        state.collapsed(
-            |state| state.id(id, a, b, |w, state, x| x.print_def(w, state)),
-            |state| {
-                if state.options().print_source {
-                    state.field(
-                        "source",
-                        (unit_a, a),
-                        (unit_b, b),
-                        |w, _state, (unit, x)| x.print_source(w, unit),
-                    )?;
-                }
-                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
-                let ty_a = filter_option(a.ty(state.hash_a()), |ty| ty.is_anon());
-                let ty_a = ty_a.as_ref().map(Cow::deref);
-                let ty_b = filter_option(b.ty(state.hash_b()), |ty| ty.is_anon());
-                let ty_b = ty_b.as_ref().map(Cow::deref);
-                state.field_expanded("members", |state| {
-                    Type::diff_members(state, unit_a, ty_a, unit_b, ty_b)
-                })
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
+    pub fn cmp_id(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
         Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
-}
-
-fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>
-where
-    F: FnOnce(&T) -> bool,
-{
-    o.and_then(|v| if f(&v) { Some(v) } else { None })
 }
 
 #[derive(Debug, Default, Clone)]
@@ -685,127 +384,24 @@ impl<'input> StructType<'input> {
         self.name
     }
 
-    fn byte_size(&self) -> Option<u64> {
+    pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
-    fn is_anon(&self) -> bool {
+    pub fn is_anon(&self) -> bool {
         self.name.is_none() || Namespace::is_anon_type(&self.namespace)
     }
 
-    fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+    pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
         for member in &self.members {
             f(member);
         }
     }
 
-    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        write!(w, "struct ")?;
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
-        Ok(())
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
-        w.link(id, &mut |w| self.print_name(w))
-    }
-
-    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
-        state.collapsed(
-            |state| state.id(id, |w, _state| self.print_name(w)),
-            |state| {
-                if state.options().print_source {
-                    state.field("source", |w, _state| self.print_source(w, unit))?;
-                }
-                state.field("declaration", |w, state| self.print_declaration(w, state))?;
-                state.field("size", |w, state| self.print_byte_size(w, state))?;
-                state.field_expanded("members", |state| self.print_members(state, unit))
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn diff(
-        state: &mut DiffState,
-        id: usize,
-        unit_a: &Unit,
-        a: &StructType,
-        unit_b: &Unit,
-        b: &StructType,
-    ) -> Result<()> {
-        // The names should be the same, but we can't be sure.
-        state.collapsed(
-            |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
-            |state| {
-                if state.options().print_source {
-                    state.field(
-                        "source",
-                        (unit_a, a),
-                        (unit_b, b),
-                        |w, _state, (unit, x)| x.print_source(w, unit),
-                    )?;
-                }
-                state.field("declaration", a, b, |w, state, x| {
-                    x.print_declaration(w, state)
-                })?;
-                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
-                state.field_expanded("members", |state| {
-                    Self::diff_members(state, unit_a, a, unit_b, b)
-                })
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-        if self.source.is_some() {
-            self.source.print(w, unit)?;
-        }
-        Ok(())
-    }
-
-    fn print_byte_size(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.byte_size() {
-            write!(w, "{}", size)?;
-        } else if !self.declaration {
-            debug!("struct with no size");
-        }
-        Ok(())
-    }
-
-    fn print_declaration(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        if self.declaration {
-            write!(w, "yes")?;
-        }
-        Ok(())
-    }
-
-    fn print_members(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.list(unit, &self.members)
-    }
-
-    fn diff_members(
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &StructType,
-        unit_b: &Unit,
-        b: &StructType,
-    ) -> Result<()> {
-        state.list(unit_a, &a.members, unit_b, &b.members)
-    }
-
-    fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &StructType, b: &StructType) -> cmp::Ordering {
+    pub fn cmp_id(a: &StructType, b: &StructType) -> cmp::Ordering {
         Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
@@ -821,132 +417,28 @@ pub(crate) struct UnionType<'input> {
 }
 
 impl<'input> UnionType<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn byte_size(&self) -> Option<u64> {
+    pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
-    fn is_anon(&self) -> bool {
+    pub fn is_anon(&self) -> bool {
         self.name.is_none() || Namespace::is_anon_type(&self.namespace)
     }
 
-    fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+    pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
         for member in &self.members {
             f(member);
         }
     }
 
-    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        write!(w, "union ")?;
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
-        Ok(())
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
-        w.link(id, &mut |w| self.print_name(w))
-    }
-
-    fn print(&self, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
-        state.collapsed(
-            |state| state.id(id, |w, _state| self.print_name(w)),
-            |state| {
-                if state.options().print_source {
-                    state.field("source", |w, _state| self.print_source(w, unit))?;
-                }
-                state.field("declaration", |w, state| self.print_declaration(w, state))?;
-                state.field("size", |w, state| self.print_byte_size(w, state))?;
-                state.field_expanded("members", |state| self.print_members(state, unit))
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn diff(
-        state: &mut DiffState,
-        id: usize,
-        unit_a: &Unit,
-        a: &UnionType,
-        unit_b: &Unit,
-        b: &UnionType,
-    ) -> Result<()> {
-        // The names should be the same, but we can't be sure.
-        state.collapsed(
-            |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
-            |state| {
-                if state.options().print_source {
-                    state.field(
-                        "source",
-                        (unit_a, a),
-                        (unit_b, b),
-                        |w, _state, (unit, x)| x.print_source(w, unit),
-                    )?;
-                }
-                state.field("declaration", a, b, |w, state, x| {
-                    x.print_declaration(w, state)
-                })?;
-                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
-                state.field_expanded("members", |state| {
-                    Self::diff_members(state, unit_a, a, unit_b, b)
-                })
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-        if self.source.is_some() {
-            self.source.print(w, unit)?;
-        }
-        Ok(())
-    }
-
-    fn print_byte_size(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.byte_size() {
-            write!(w, "{}", size)?;
-        } else if !self.declaration {
-            debug!("struct with no size");
-        }
-        Ok(())
-    }
-
-    fn print_declaration(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        if self.declaration {
-            write!(w, "yes")?;
-        }
-        Ok(())
-    }
-
-    fn print_members(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        state.list(unit, &self.members)
-    }
-
-    fn diff_members(
-        state: &mut DiffState,
-        unit_a: &Unit,
-        a: &UnionType,
-        unit_b: &Unit,
-        b: &UnionType,
-    ) -> Result<()> {
-        // TODO: handle reordering better
-        state.list(unit_a, &a.members, unit_b, &b.members)
-    }
-
-    fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &UnionType, b: &UnionType) -> cmp::Ordering {
+    pub fn cmp_id(a: &UnionType, b: &UnionType) -> cmp::Ordering {
         Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
@@ -963,15 +455,15 @@ pub(crate) struct Member<'input> {
 }
 
 impl<'input> Member<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    fn bit_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn bit_size(&self, hash: &FileHash) -> Option<u64> {
         if self.bit_size.is_some() {
             self.bit_size.get()
         } else {
@@ -993,7 +485,7 @@ impl<'input> Member<'input> {
         }
     }
 
-    fn padding(&self, bit_size: Option<u64>) -> Option<Padding> {
+    pub fn padding(&self, bit_size: Option<u64>) -> Option<Padding> {
         if let (Some(bit_size), Some(next_bit_offset)) = (bit_size, self.next_bit_offset.get()) {
             let bit_offset = self.bit_offset + bit_size;
             if next_bit_offset > bit_offset {
@@ -1006,137 +498,12 @@ impl<'input> Member<'input> {
         }
         None
     }
-
-    fn print_name(
-        &self,
-        w: &mut ValuePrinter,
-        hash: &FileHash,
-        bit_size: Option<u64>,
-    ) -> Result<()> {
-        write!(w, "{}", format_bit(self.bit_offset))?;
-        match bit_size {
-            Some(bit_size) => {
-                write!(w, "[{}]", format_bit(bit_size))?;
-            }
-            None => {
-                // TODO: show element size for unsized arrays.
-                debug!("no size for {:?}", self);
-                write!(w, "[??]")?;
-            }
-        }
-        write!(w, "\t{}: ", self.name().unwrap_or("<anon>"))?;
-        Type::print_ref_from_offset(w, hash, self.ty)?;
-        Ok(())
-    }
-
-    fn print_padding(
-        &self,
-        w: &mut ValuePrinter,
-        hash: &FileHash,
-        bit_size: Option<u64>,
-    ) -> Result<()> {
-        if let Some(padding) = self.padding(bit_size) {
-            padding.print(w, hash)?;
-        }
-        Ok(())
-    }
-}
-
-impl<'input> Print for Member<'input> {
-    type Arg = Unit<'input>;
-
-    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        let hash = state.hash();
-        let bit_size = self.bit_size(hash);
-        let ty = if self.is_inline(hash) {
-            self.ty(hash)
-        } else {
-            None
-        };
-        let ty = ty.as_ref().map(Cow::deref);
-        state.expanded(
-            |state| state.line(|w, state| self.print_name(w, state, bit_size)),
-            |state| Type::print_members(state, unit, ty),
-        )?;
-        state.line(|w, state| self.print_padding(w, state, bit_size))
-    }
-
-    fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
-        let bit_size_a = a.bit_size(state.hash_a());
-        let bit_size_b = b.bit_size(state.hash_b());
-        let ty_a = if a.is_inline(state.hash_a()) {
-            a.ty(state.hash_a())
-        } else {
-            None
-        };
-        let ty_a = ty_a.as_ref().map(Cow::deref);
-        let ty_b = if b.is_inline(state.hash_b()) {
-            b.ty(state.hash_b())
-        } else {
-            None
-        };
-        let ty_b = ty_b.as_ref().map(Cow::deref);
-        state.expanded(
-            |state| {
-                state.line(
-                    (a, bit_size_a),
-                    (b, bit_size_b),
-                    |w, state, (x, bit_size)| x.print_name(w, state, bit_size),
-                )
-            },
-            |state| Type::diff_members(state, unit_a, ty_a, unit_b, ty_b),
-        )?;
-
-        state.line(
-            (a, bit_size_a),
-            (b, bit_size_b),
-            |w, state, (x, bit_size)| x.print_padding(w, state, bit_size),
-        )
-    }
-}
-
-impl<'input> DiffList for Member<'input> {
-    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
-        1
-    }
-
-    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-            cost += 1;
-        }
-        match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
-                if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
-                {
-                    cost += 1;
-                }
-            }
-            (None, None) => {}
-            _ => {
-                cost += 1;
-            }
-        }
-        cost
-    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
-struct Padding {
-    bit_offset: u64,
-    bit_size: u64,
-}
-
-impl Padding {
-    fn print(&self, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-        write!(
-            w,
-            "{}[{}]\t<padding>",
-            format_bit(self.bit_offset),
-            format_bit(self.bit_size)
-        )?;
-        Ok(())
-    }
+pub(crate) struct Padding {
+    pub bit_offset: u64,
+    pub bit_size: u64,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -1150,15 +517,15 @@ pub(crate) struct EnumerationType<'input> {
 }
 
 impl<'input> EnumerationType<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size.get()
         } else {
@@ -1166,109 +533,10 @@ impl<'input> EnumerationType<'input> {
         }
     }
 
-    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        write!(w, "enum ")?;
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
-        Ok(())
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter, id: usize) -> Result<()> {
-        w.link(id, &mut |w| self.print_name(w))
-    }
-
-    fn print(
-        &self,
-        state: &mut PrintState,
-        unit: &Unit,
-        id: usize,
-        offset: TypeOffset,
-    ) -> Result<()> {
-        state.collapsed(
-            |state| state.id(id, |w, _state| self.print_name(w)),
-            |state| {
-                if state.options().print_source {
-                    state.field("source", |w, _state| self.print_source(w, unit))?;
-                }
-                state.field("declaration", |w, _state| self.print_declaration(w))?;
-                state.field("size", |w, state| self.print_byte_size(w, state))?;
-                let enumerators = state.hash().file.get_enumerators(offset);
-                state.field_expanded("enumerators", |state| state.list(unit, &enumerators))
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn diff(
-        state: &mut DiffState,
-        id: usize,
-        unit_a: &Unit,
-        a: &EnumerationType,
-        offset_a: TypeOffset,
-        unit_b: &Unit,
-        b: &EnumerationType,
-        offset_b: TypeOffset,
-    ) -> Result<()> {
-        // The names should be the same, but we can't be sure.
-        state.collapsed(
-            |state| state.id(id, a, b, |w, _state, x| x.print_name(w)),
-            |state| {
-                if state.options().print_source {
-                    state.field(
-                        "source",
-                        (unit_a, a),
-                        (unit_b, b),
-                        |w, _state, (unit, x)| x.print_source(w, unit),
-                    )?;
-                }
-                state.field("declaration", a, b, |w, _state, x| x.print_declaration(w))?;
-                state.field("size", a, b, |w, state, x| x.print_byte_size(w, state))?;
-                // TODO: handle reordering better
-                let enumerators_a = state.hash_a().file.get_enumerators(offset_a);
-                let enumerators_b = state.hash_b().file.get_enumerators(offset_b);
-                state.field_expanded("enumerators", |state| {
-                    state.list(unit_a, &enumerators_a, unit_b, &enumerators_b)
-                })
-            },
-        )?;
-        state.line_break()?;
-        Ok(())
-    }
-
-    fn print_source(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-        if self.source.is_some() {
-            self.source.print(w, unit)?;
-        }
-        Ok(())
-    }
-
-    fn print_declaration(&self, w: &mut ValuePrinter) -> Result<()> {
-        if self.declaration {
-            write!(w, "yes")?;
-        }
-        Ok(())
-    }
-
-    fn print_byte_size(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        if let Some(size) = self.byte_size(hash) {
-            write!(w, "{}", size)?;
-        } else {
-            debug!("enum with no size");
-        }
-        Ok(())
-    }
-
-    fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
+    pub fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
         Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
@@ -1280,53 +548,8 @@ pub(crate) struct Enumerator<'input> {
 }
 
 impl<'input> Enumerator<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
-    }
-
-    fn print_name_value(&self, w: &mut ValuePrinter) -> Result<()> {
-        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
-        if let Some(value) = self.value {
-            write!(w, "({})", value)?;
-        }
-        Ok(())
-    }
-}
-
-impl<'input> Print for Enumerator<'input> {
-    type Arg = Unit<'input>;
-
-    fn print(&self, state: &mut PrintState, _unit: &Unit) -> Result<()> {
-        state.line(|w, _state| self.print_name_value(w))
-    }
-
-    fn diff(
-        state: &mut DiffState,
-        _unit_a: &Unit,
-        a: &Self,
-        _unit_b: &Unit,
-        b: &Self,
-    ) -> Result<()> {
-        state.line(a, b, |w, _state, x| x.print_name_value(w))
-    }
-}
-
-impl<'input> DiffList for Enumerator<'input> {
-    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
-        3
-    }
-
-    fn diff_cost(_state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
-        // A difference in name is usually more significant than a difference in value,
-        // such as for enums where the value is assigned by the compiler.
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-            cost += 4;
-        }
-        if a.value.cmp(&b.value) != cmp::Ordering::Equal {
-            cost += 2;
-        }
-        cost
     }
 }
 
@@ -1339,11 +562,11 @@ pub(crate) struct ArrayType<'input> {
 }
 
 impl<'input> ArrayType<'input> {
-    fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size.get()
         } else if let (Some(ty), Some(count)) = (self.ty(hash), self.count.get()) {
@@ -1353,7 +576,7 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn count(&self, hash: &FileHash) -> Option<u64> {
+    pub fn count(&self, hash: &FileHash) -> Option<u64> {
         if self.count.is_some() {
             self.count.get()
         } else if let (Some(ty), Some(byte_size)) = (self.ty(hash), self.byte_size.get()) {
@@ -1363,20 +586,15 @@ impl<'input> ArrayType<'input> {
         }
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        write!(w, "[")?;
-        Type::print_ref_from_offset(w, hash, self.ty)?;
-        if let Some(count) = self.count(hash) {
-            write!(w, "; {}", count)?;
-        }
-        write!(w, "]")?;
-        Ok(())
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(hash_a: &FileHash, a: &ArrayType, hash_b: &FileHash, b: &ArrayType) -> cmp::Ordering {
+    pub fn cmp_id(
+        hash_a: &FileHash,
+        a: &ArrayType,
+        hash_b: &FileHash,
+        b: &ArrayType,
+    ) -> cmp::Ordering {
         match (a.ty(hash_a), b.ty(hash_b)) {
             (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
@@ -1404,38 +622,18 @@ pub(crate) struct FunctionType<'input> {
 }
 
 impl<'input> FunctionType<'input> {
-    fn byte_size(&self) -> Option<u64> {
+    pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
-    fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.return_type)
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        let mut first = true;
-        write!(w, "(")?;
-        for parameter in &self.parameters {
-            if first {
-                first = false;
-            } else {
-                write!(w, ", ")?;
-            }
-            print::parameter::print_decl(parameter, w, hash)?;
-        }
-        write!(w, ")")?;
-
-        if let Some(return_type) = self.return_type(hash) {
-            write!(w, " -> ")?;
-            return_type.print_ref(w, hash)?;
-        }
-        Ok(())
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(
+    pub fn cmp_id(
         hash_a: &FileHash,
         a: &FunctionType,
         hash_b: &FileHash,
@@ -1480,26 +678,14 @@ pub(crate) struct UnspecifiedType<'input> {
 }
 
 impl<'input> UnspecifiedType<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
-    }
-
-    fn filter(&self, options: &Options) -> bool {
-        options.filter_name(self.name()) && options.filter_namespace(&self.namespace)
-    }
-
-    fn print_ref(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref namespace) = self.namespace {
-            namespace.print(w)?;
-        }
-        write!(w, "{}", self.name().unwrap_or("<void>"))?;
-        Ok(())
     }
 
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
+    pub fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
         Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
     }
 }
@@ -1514,18 +700,18 @@ pub(crate) struct PointerToMemberType {
 }
 
 impl PointerToMemberType {
-    fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    pub fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    fn containing_ty<'a, 'input>(
+    pub fn containing_ty<'a, 'input>(
         &self,
         hash: &'a FileHash<'input>,
     ) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.containing_ty)
     }
 
-    fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             return self.byte_size.get();
         }
@@ -1539,17 +725,10 @@ impl PointerToMemberType {
         })
     }
 
-    fn print_ref(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-        Type::print_ref_from_offset(w, hash, self.containing_ty)?;
-        write!(w, "::* ")?;
-        Type::print_ref_from_offset(w, hash, self.ty)?;
-        Ok(())
-    }
-
     /// Compare the identifying information of two types.
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    fn cmp_id(
+    pub fn cmp_id(
         hash_a: &FileHash,
         a: &PointerToMemberType,
         hash_b: &FileHash,
@@ -1586,15 +765,5 @@ impl PointerToMemberType {
             (None, None) => {}
         }
         cmp::Ordering::Equal
-    }
-}
-
-fn format_bit(val: u64) -> String {
-    let byte = val / 8;
-    let bit = val % 8;
-    if bit == 0 {
-        format!("{}", byte)
-    } else {
-        format!("{}.{}", byte, bit)
     }
 }

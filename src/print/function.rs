@@ -7,9 +7,8 @@ use panopticon;
 use file::{CodeRegion, File, FileHash};
 use function::{Function, Parameter};
 use namespace::Namespace;
-use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
+use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use range::Range;
-use types::Type;
 use unit::Unit;
 use variable::LocalVariable;
 use {Options, Result, Sort};
@@ -101,7 +100,7 @@ fn print_return_type(f: &Function, w: &mut ValuePrinter, hash: &FileHash) -> Res
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        Type::print_ref_from_offset(w, hash, f.return_type)?;
+        print::types::print_ref_from_offset(w, hash, f.return_type)?;
     }
     Ok(())
 }

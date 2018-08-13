@@ -2,7 +2,7 @@ use std::cmp;
 
 use file::FileHash;
 use function::Parameter;
-use print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
+use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use types::Type;
 use unit::Unit;
 use Result;
@@ -12,7 +12,7 @@ pub(crate) fn print_decl(p: &Parameter, w: &mut ValuePrinter, hash: &FileHash) -
         write!(w, "{}: ", name)?;
     }
     match p.ty(hash) {
-        Some(ty) => ty.print_ref(w, hash)?,
+        Some(ty) => print::types::print_ref(&ty, w, hash)?,
         None => write!(w, "<anon>")?,
     }
     Ok(())

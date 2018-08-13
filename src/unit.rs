@@ -6,6 +6,7 @@ use std::ops::Deref;
 use gimli;
 
 use file::FileHash;
+use filter;
 use function::Function;
 use print::{
     self, DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter,
@@ -479,7 +480,7 @@ impl<'input> Unit<'input> {
         let inline_types = self.inline_types(hash);
         let filter_type = |t: &Type| {
             // Filter by user options.
-            if !t.filter(options) {
+            if !filter::filter_type(t, options) {
                 return false;
             }
             match t.kind {

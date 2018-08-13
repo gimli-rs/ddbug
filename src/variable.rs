@@ -6,7 +6,7 @@ use std::usize;
 
 use file::FileHash;
 use namespace::Namespace;
-use print::{DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
+use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use range::Range;
 use source::Source;
 use types::{Type, TypeOffset};
@@ -150,7 +150,7 @@ impl<'input> Variable<'input> {
             namespace.print(w)?;
         }
         write!(w, "{}: ", self.name().unwrap_or("<anon>"))?;
-        Type::print_ref_from_offset(w, hash, self.ty)?;
+        print::types::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 
@@ -275,7 +275,7 @@ impl<'input> LocalVariable<'input> {
 
     fn print_decl(&self, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
         write!(w, "{}: ", self.name().unwrap_or("<anon>"))?;
-        Type::print_ref_from_offset(w, hash, self.ty)?;
+        print::types::print_ref_from_offset(w, hash, self.ty)?;
         Ok(())
     }
 

@@ -10,6 +10,7 @@ extern crate panopticon_core as panopticon;
 extern crate typed_arena;
 
 mod file;
+mod filter;
 mod function;
 mod namespace;
 mod print;
