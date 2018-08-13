@@ -15,12 +15,14 @@ pub use self::html::HtmlPrinter;
 pub(crate) mod enumeration;
 pub(crate) mod function;
 pub(crate) mod inlined_function;
+pub(crate) mod local_variable;
 pub(crate) mod member;
 pub(crate) mod parameter;
 pub(crate) mod struct_type;
 pub(crate) mod type_def;
 pub(crate) mod types;
 pub(crate) mod union_type;
+pub(crate) mod variable;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum DiffPrefix {

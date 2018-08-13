@@ -184,11 +184,11 @@ impl<'input> Print for Function<'input> {
                 if state.options().print_function_variables {
                     let mut variables_a: Vec<_> = details_a.variables.iter().collect();
                     variables_a.sort_by(|x, y| {
-                        LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y, state.options())
+                        LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y)
                     });
                     let mut variables_b: Vec<_> = details_b.variables.iter().collect();
                     variables_b.sort_by(|x, y| {
-                        LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y, state.options())
+                        LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y)
                     });
                     state.field_collapsed("variables", |state| {
                         state.list(unit_a, &variables_a, unit_b, &variables_b)

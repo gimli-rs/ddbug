@@ -1,5 +1,6 @@
 use function::Function;
 use types::{EnumerationType, StructType, Type, TypeDef, TypeKind, UnionType, UnspecifiedType};
+use variable::Variable;
 use Options;
 
 pub(crate) fn filter_function(f: &Function, options: &Options) -> bool {
@@ -12,6 +13,14 @@ pub(crate) fn filter_function(f: &Function, options: &Options) -> bool {
     options.filter_name(f.name())
         && options.filter_namespace(&f.namespace)
         && options.filter_function_inline(f.inline)
+}
+
+pub(crate) fn filter_variable(v: &Variable, options: &Options) -> bool {
+    if !v.declaration && v.address.is_none() {
+        // TODO: make this configurable?
+        return false;
+    }
+    options.filter_name(v.name()) && options.filter_namespace(&v.namespace)
 }
 
 pub(crate) fn filter_type(ty: &Type, options: &Options) -> bool {

@@ -514,7 +514,7 @@ impl<'input> Unit<'input> {
     fn filter_variables(&self, options: &Options) -> Vec<&Variable<'input>> {
         self.variables
             .iter()
-            .filter(|a| a.filter(options))
+            .filter(|a| filter::filter_variable(a, options))
             .collect()
     }
 
