@@ -1,9 +1,107 @@
+use std::cmp;
+use std::collections::HashSet;
+
+use file::FileHash;
 use function::Function;
 use types::{EnumerationType, StructType, Type, TypeDef, TypeKind, UnionType, UnspecifiedType};
+use unit::Unit;
 use variable::Variable;
 use Options;
 
-pub(crate) fn filter_function(f: &Function, options: &Options) -> bool {
+/// Return true if this unit matches the filter options.
+pub(crate) fn filter_unit(unit: &Unit, options: &Options) -> bool {
+    if let Some(filter) = options.filter_unit {
+        let (prefix, suffix) = options.prefix_map(unit.name().unwrap_or(""));
+        let iter = prefix.bytes().chain(suffix.bytes());
+        iter.cmp(filter.bytes()) == cmp::Ordering::Equal
+    } else {
+        true
+    }
+}
+
+/// The offsets of types that should be printed inline.
+fn inline_types(unit: &Unit, hash: &FileHash) -> HashSet<usize> {
+    let mut inline_types = HashSet::new();
+    for ty in &unit.types {
+        // Assume all anonymous types are inline. We don't actually check
+        // that they will be inline, but in future we could (eg for TypeDefs).
+        // TODO: is this a valid assumption?
+        if ty.is_anon() {
+            if let Some(offset) = ty.offset.get() {
+                inline_types.insert(offset);
+            }
+        }
+
+        // Find all inline members.
+        ty.visit_members(&mut |t| {
+            if t.is_inline(hash) {
+                if let Some(offset) = t.ty.get() {
+                    inline_types.insert(offset);
+                }
+            }
+        });
+    }
+    inline_types
+}
+
+/// Filter and the list of types using the options.
+/// Perform additional filtering when diffing.
+pub(crate) fn filter_types<'input, 'unit>(
+    unit: &'unit Unit<'input>,
+    hash: &FileHash,
+    options: &Options,
+    diff: bool,
+) -> Vec<&'unit Type<'input>> {
+    let inline_types = inline_types(unit, hash);
+    let filter_type = |t: &Type| {
+        // Filter by user options.
+        if !filter_type(t, options) {
+            return false;
+        }
+        match t.kind {
+            TypeKind::Struct(ref t) => {
+                // Hack for rust closures
+                // TODO: is there better way of identifying these, or a
+                // a way to match pairs for diffing?
+                if diff && t.name() == Some("closure") {
+                    return false;
+                }
+            }
+            TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
+            TypeKind::Base(..)
+            | TypeKind::Array(..)
+            | TypeKind::Function(..)
+            | TypeKind::Unspecified(..)
+            | TypeKind::PointerToMember(..)
+            | TypeKind::Modifier(..) => return false,
+        }
+        // Filter out inline types.
+        t.offset.get().map(|offset| inline_types.contains(&offset)) != Some(true)
+    };
+    unit.types.iter().filter(|a| filter_type(a)).collect()
+}
+
+pub(crate) fn filter_functions<'input, 'unit>(
+    unit: &'unit Unit<'input>,
+    options: &Options,
+) -> Vec<&'unit Function<'input>> {
+    unit.functions
+        .iter()
+        .filter(|a| filter_function(a, options))
+        .collect()
+}
+
+pub(crate) fn filter_variables<'input, 'unit>(
+    unit: &'unit Unit<'input>,
+    options: &Options,
+) -> Vec<&'unit Variable<'input>> {
+    unit.variables
+        .iter()
+        .filter(|a| filter_variable(a, options))
+        .collect()
+}
+
+fn filter_function(f: &Function, options: &Options) -> bool {
     if !f.inline && (f.address.is_none() || f.size.is_none()) {
         // This is either a declaration or a dead function that was removed
         // from the code, but wasn't removed from the debuginfo.
@@ -15,7 +113,7 @@ pub(crate) fn filter_function(f: &Function, options: &Options) -> bool {
         && options.filter_function_inline(f.inline)
 }
 
-pub(crate) fn filter_variable(v: &Variable, options: &Options) -> bool {
+fn filter_variable(v: &Variable, options: &Options) -> bool {
     if !v.declaration && v.address.is_none() {
         // TODO: make this configurable?
         return false;
@@ -23,7 +121,7 @@ pub(crate) fn filter_variable(v: &Variable, options: &Options) -> bool {
     options.filter_name(v.name()) && options.filter_namespace(&v.namespace)
 }
 
-pub(crate) fn filter_type(ty: &Type, options: &Options) -> bool {
+fn filter_type(ty: &Type, options: &Options) -> bool {
     match ty.kind {
         TypeKind::Def(ref val) => filter_type_def(val, options),
         TypeKind::Struct(ref val) => filter_struct(val, options),

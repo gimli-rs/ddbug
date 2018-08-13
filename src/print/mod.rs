@@ -22,6 +22,7 @@ pub(crate) mod struct_type;
 pub(crate) mod type_def;
 pub(crate) mod types;
 pub(crate) mod union_type;
+pub(crate) mod unit;
 pub(crate) mod variable;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

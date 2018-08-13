@@ -156,6 +156,15 @@ impl<'a> Options<'a> {
             }
         }
     }
+
+    fn prefix_map<'name>(&self, name: &'name str) -> (&'a str, &'name str) {
+        for &(old, new) in &self.prefix_map {
+            if name.starts_with(old) {
+                return (new, &name[old.len()..]);
+            }
+        }
+        ("", name)
+    }
 }
 
 mod address {

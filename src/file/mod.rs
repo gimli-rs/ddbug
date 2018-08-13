@@ -13,6 +13,7 @@ use object::{self, Object, ObjectSection, ObjectSegment};
 use panopticon;
 use typed_arena::Arena;
 
+use filter;
 use function::{Function, FunctionDetails, FunctionOffset};
 use print::{
     DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
@@ -511,7 +512,10 @@ impl<'input> File<'input> {
     }
 
     fn filter_units(&self, options: &Options) -> Vec<&Unit<'input>> {
-        self.units.iter().filter(|a| a.filter(options)).collect()
+        self.units
+            .iter()
+            .filter(|a| filter::filter_unit(a, options))
+            .collect()
     }
 }
 
