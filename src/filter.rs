@@ -1,15 +1,25 @@
 use std::cmp;
 use std::collections::HashSet;
 
-use file::FileHash;
+use file::{File, FileHash};
 use function::Function;
 use types::{EnumerationType, StructType, Type, TypeDef, TypeKind, UnionType, UnspecifiedType};
 use unit::Unit;
 use variable::Variable;
 use Options;
 
+pub(crate) fn filter_units<'input, 'file>(
+    file: &'file File<'input>,
+    options: &Options,
+) -> Vec<&'file Unit<'input>> {
+    file.units
+        .iter()
+        .filter(|a| filter_unit(a, options))
+        .collect()
+}
+
 /// Return true if this unit matches the filter options.
-pub(crate) fn filter_unit(unit: &Unit, options: &Options) -> bool {
+fn filter_unit(unit: &Unit, options: &Options) -> bool {
     if let Some(filter) = options.filter_unit {
         let (prefix, suffix) = options.prefix_map(unit.name().unwrap_or(""));
         let iter = prefix.bytes().chain(suffix.bytes());

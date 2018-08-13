@@ -390,7 +390,7 @@ fn diff_file(
     options: &ddbug::Options,
 ) -> ddbug::Result<()> {
     format(options, |printer| {
-        if let Err(e) = ddbug::File::diff(printer, file_a, file_b, options) {
+        if let Err(e) = ddbug::diff(printer, file_a, file_b, options) {
             error!("{}", e);
         }
         Ok(())
@@ -398,7 +398,7 @@ fn diff_file(
 }
 
 fn print_file(file: &ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
-    format(options, |printer| file.print(printer, options))
+    format(options, |printer| ddbug::print(file, printer, options))
 }
 
 fn format<F>(options: &ddbug::Options, f: F) -> ddbug::Result<()>

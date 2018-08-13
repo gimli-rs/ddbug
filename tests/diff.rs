@@ -7,7 +7,7 @@ fn diff(name: &str, expect: &str) {
     ddbug::File::parse("tests/bin/diff1", |output_1| {
         ddbug::File::parse("tests/bin/diff2", |output_2| {
             let mut printer = ddbug::TextPrinter::new(&mut diff, &options);
-            ddbug::File::diff(&mut printer, output_1, output_2, &options)
+            ddbug::diff(&mut printer, output_1, output_2, &options)
         })
     }).unwrap();
     let diff = String::from_utf8(diff).unwrap();

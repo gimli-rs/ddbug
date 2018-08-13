@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cmp;
 use std::default::Default;
 use std::fs;
 use std::ops::Deref;
@@ -13,17 +12,12 @@ use object::{self, Object, ObjectSection, ObjectSegment};
 use panopticon;
 use typed_arena::Arena;
 
-use filter;
 use function::{Function, FunctionDetails, FunctionOffset};
-use print::{
-    DiffList, DiffState, MergeIterator, MergeResult, Print, PrintState, Printer, SortList,
-    ValuePrinter,
-};
 use range::{Range, RangeList};
 use types::{Enumerator, Type, TypeOffset};
 use unit::Unit;
 use variable::Variable;
-use {Address, Options, Result, Size};
+use {Address, Result, Size};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {
@@ -59,12 +53,12 @@ impl StringCache {
 }
 
 pub struct File<'input> {
-    path: &'input str,
-    code: Option<CodeRegion>,
-    sections: Vec<Section<'input>>,
-    symbols: Vec<Symbol<'input>>,
-    units: Vec<Unit<'input>>,
-    debug_info: &'input DebugInfo,
+    pub(crate) path: &'input str,
+    pub(crate) code: Option<CodeRegion>,
+    pub(crate) sections: Vec<Section<'input>>,
+    pub(crate) symbols: Vec<Symbol<'input>>,
+    pub(crate) units: Vec<Unit<'input>>,
+    pub(crate) debug_info: &'input DebugInfo,
 }
 
 impl<'input> File<'input> {
@@ -325,7 +319,7 @@ impl<'input> File<'input> {
         self.code.as_ref()
     }
 
-    fn ranges(&self, hash: &FileHash) -> RangeList {
+    pub(crate) fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
         for unit in &self.units {
             for range in unit.ranges(hash).list() {
@@ -356,7 +350,7 @@ impl<'input> File<'input> {
         ranges.subtract(&unit_ranges)
     }
 
-    fn function_size(&self) -> u64 {
+    pub(crate) fn function_size(&self) -> u64 {
         let mut size = 0;
         for unit in &self.units {
             size += unit.function_size();
@@ -364,158 +358,12 @@ impl<'input> File<'input> {
         size
     }
 
-    fn variable_size(&self, hash: &FileHash) -> u64 {
+    pub(crate) fn variable_size(&self, hash: &FileHash) -> u64 {
         let mut size = 0;
         for unit in &self.units {
             size += unit.variable_size(hash);
         }
         size
-    }
-
-    fn assign_ids(&self, options: &Options) {
-        let mut id = 0;
-        for unit in &self.units {
-            id = unit.assign_ids(options, id);
-        }
-    }
-
-    fn assign_merged_ids(
-        hash_a: &FileHash,
-        file_a: &File,
-        hash_b: &FileHash,
-        file_b: &File,
-        options: &Options,
-    ) {
-        let mut id = 0;
-        for unit in File::merged_units(hash_a, file_a, hash_b, file_b, options) {
-            match unit {
-                MergeResult::Both(a, b) => {
-                    id = Unit::assign_merged_ids(hash_a, a, hash_b, b, options, id);
-                }
-                MergeResult::Left(a) => {
-                    id = a.assign_ids(options, id);
-                }
-                MergeResult::Right(b) => {
-                    id = b.assign_ids(options, id);
-                }
-            }
-        }
-    }
-
-    fn merged_units<'a>(
-        hash_a: &FileHash,
-        file_a: &'a File<'input>,
-        hash_b: &FileHash,
-        file_b: &'a File<'input>,
-        options: &Options,
-    ) -> Vec<MergeResult<&'a Unit<'input>, &'a Unit<'input>>> {
-        let mut units_a = file_a.filter_units(options);
-        units_a.sort_by(|x, y| Unit::cmp_id(hash_a, x, hash_a, y, options));
-        let mut units_b = file_b.filter_units(options);
-        units_b.sort_by(|x, y| Unit::cmp_id(hash_b, x, hash_b, y, options));
-        MergeIterator::new(units_a.into_iter(), units_b.into_iter(), |a, b| {
-            Unit::cmp_id(hash_a, a, hash_b, b, options)
-        }).collect()
-    }
-
-    pub fn print(&self, printer: &mut Printer, options: &Options) -> Result<()> {
-        self.assign_ids(options);
-        let hash = FileHash::new(self);
-        let mut state = PrintState::new(printer, &hash, options);
-
-        if options.category_file {
-            state.collapsed(
-                |state| {
-                    state.line(|w, _hash| {
-                        write!(w, "file {}", self.path)?;
-                        Ok(())
-                    })
-                },
-                |state| {
-                    let ranges = self.ranges(state.hash());
-                    let size = ranges.size();
-                    let fn_size = self.function_size();
-                    let var_size = self.variable_size(state.hash());
-                    let other_size = size - fn_size - var_size;
-                    if options.print_file_address {
-                        state.field_collapsed("addresses", |state| state.list(&(), ranges.list()))?;
-                    }
-                    state.field_u64("size", size)?;
-                    state.field_u64("fn size", fn_size)?;
-                    state.field_u64("var size", var_size)?;
-                    state.field_u64("other size", other_size)?;
-                    state.field_collapsed("sections", |state| state.list(&(), &*self.sections))?;
-                    Ok(())
-                },
-            )?;
-            state.line_break()?;
-        }
-
-        state.sort_list(&(), &mut self.filter_units(options))
-    }
-
-    pub fn diff(
-        printer: &mut Printer,
-        file_a: &File,
-        file_b: &File,
-        options: &Options,
-    ) -> Result<()> {
-        let hash_a = FileHash::new(file_a);
-        let hash_b = FileHash::new(file_b);
-        File::assign_merged_ids(&hash_a, file_a, &hash_b, file_b, options);
-
-        let mut state = DiffState::new(printer, &hash_a, &hash_b, options);
-
-        if options.category_file {
-            state.collapsed(
-                |state| {
-                    state.line(file_a, file_b, |w, _hash, x| {
-                        write!(w, "file {}", x.path)?;
-                        Ok(())
-                    })
-                },
-                |state| {
-                    let ranges_a = file_a.ranges(state.hash_a());
-                    let ranges_b = file_b.ranges(state.hash_b());
-                    let size_a = ranges_a.size();
-                    let size_b = ranges_b.size();
-                    let fn_size_a = file_a.function_size();
-                    let fn_size_b = file_b.function_size();
-                    let var_size_a = file_a.variable_size(state.hash_a());
-                    let var_size_b = file_b.variable_size(state.hash_b());
-                    let other_size_a = size_a - fn_size_a - var_size_a;
-                    let other_size_b = size_b - fn_size_b - var_size_b;
-                    if options.print_file_address {
-                        state.field_collapsed("addresses", |state| {
-                            state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
-                        })?;
-                    }
-                    state.field_u64("size", size_a, size_b)?;
-                    state.field_u64("fn size", fn_size_a, fn_size_b)?;
-                    state.field_u64("var size", var_size_a, var_size_b)?;
-                    state.field_u64("other size", other_size_a, other_size_b)?;
-                    // TODO: sort sections
-                    state.field_collapsed("sections", |state| {
-                        state.list(&(), &*file_a.sections, &(), &*file_b.sections)
-                    })?;
-                    Ok(())
-                },
-            )?;
-            state.line_break()?;
-        }
-
-        state.sort_list(
-            &(),
-            &(),
-            &mut File::merged_units(&hash_a, file_a, &hash_b, file_b, options),
-        )
-    }
-
-    fn filter_units(&self, options: &Options) -> Vec<&Unit<'input>> {
-        self.units
-            .iter()
-            .filter(|a| filter::filter_unit(a, options))
-            .collect()
     }
 }
 
@@ -530,7 +378,7 @@ pub(crate) struct FileHash<'input> {
 }
 
 impl<'input> FileHash<'input> {
-    fn new(file: &'input File<'input>) -> Self {
+    pub fn new(file: &'input File<'input>) -> Self {
         FileHash {
             file,
             functions_by_address: FileHash::functions_by_address(file),
@@ -580,84 +428,26 @@ impl<'input> FileHash<'input> {
 
 #[derive(Debug)]
 pub(crate) struct Section<'input> {
-    name: Option<Cow<'input, str>>,
-    segment: Option<Cow<'input, str>>,
-    address: Option<u64>,
-    size: u64,
+    pub name: Option<Cow<'input, str>>,
+    pub segment: Option<Cow<'input, str>>,
+    pub address: Option<u64>,
+    pub size: u64,
 }
 
 impl<'input> Section<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name.as_ref().map(Cow::deref)
     }
 
-    fn segment(&self) -> Option<&str> {
+    pub fn segment(&self) -> Option<&str> {
         self.segment.as_ref().map(Cow::deref)
     }
 
-    fn address(&self) -> Option<Range> {
+    pub fn address(&self) -> Option<Range> {
         self.address.map(|address| Range {
             begin: address,
             end: address + self.size,
         })
-    }
-
-    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref segment) = self.segment() {
-            write!(w, "{},", segment)?;
-        }
-        match self.name() {
-            Some(name) => write!(w, "{}", name)?,
-            None => write!(w, "<anon-section>")?,
-        }
-        Ok(())
-    }
-
-    fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(address) = self.address() {
-            address.print_address(w)?;
-        }
-        Ok(())
-    }
-}
-
-impl<'input> Print for Section<'input> {
-    type Arg = ();
-
-    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.collapsed(
-            |state| state.line(|w, _state| self.print_name(w)),
-            |state| {
-                state.field("address", |w, _state| self.print_address(w))?;
-                state.field_u64("size", self.size)
-            },
-        )
-    }
-
-    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.collapsed(
-            |state| state.line(a, b, |w, _state, x| x.print_name(w)),
-            |state| {
-                state.field("address", a, b, |w, _state, x| x.print_address(w))?;
-                state.field_u64("size", a.size, b.size)
-            },
-        )
-    }
-}
-
-impl<'input> DiffList for Section<'input> {
-    fn step_cost(&self, _state: &DiffState, _arg: &()) -> usize {
-        1
-    }
-
-    fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal
-            || a.segment.cmp(&b.segment) != cmp::Ordering::Equal
-        {
-            cost += 2;
-        }
-        cost
     }
 }
 
@@ -669,76 +459,21 @@ pub(crate) enum SymbolType {
 
 #[derive(Debug, Clone)]
 pub(crate) struct Symbol<'input> {
-    name: Option<&'input str>,
-    ty: SymbolType,
-    address: u64,
-    size: u64,
+    pub name: Option<&'input str>,
+    pub ty: SymbolType,
+    pub address: u64,
+    pub size: u64,
 }
 
 impl<'input> Symbol<'input> {
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
-    fn address(&self) -> Range {
+    pub fn address(&self) -> Range {
         Range {
             begin: self.address,
             end: self.address + self.size,
         }
-    }
-
-    fn print_name(&self, w: &mut ValuePrinter) -> Result<()> {
-        match self.ty {
-            SymbolType::Variable => write!(w, "var ")?,
-            SymbolType::Function => write!(w, "fn ")?,
-        }
-        match self.name() {
-            Some(name) => write!(w, "{}", name)?,
-            None => write!(w, "<anon>")?,
-        }
-        Ok(())
-    }
-
-    fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
-        self.address().print_address(w)?;
-        Ok(())
-    }
-}
-
-impl<'input> Print for Symbol<'input> {
-    type Arg = ();
-
-    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.collapsed(
-            |state| state.line(|w, _state| self.print_name(w)),
-            |state| {
-                state.field("address", |w, _state| self.print_address(w))?;
-                state.field_u64("size", self.size)
-            },
-        )
-    }
-
-    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.collapsed(
-            |state| state.line(a, b, |w, _state, x| x.print_name(w)),
-            |state| {
-                state.field("address", a, b, |w, _state, x| x.print_address(w))?;
-                state.field_u64("size", a.size, b.size)
-            },
-        )
-    }
-}
-
-impl<'input> DiffList for Symbol<'input> {
-    fn step_cost(&self, _state: &DiffState, _arg: &()) -> usize {
-        1
-    }
-
-    fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
-        let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
-            cost += 2;
-        }
-        cost
     }
 }

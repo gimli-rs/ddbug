@@ -31,6 +31,7 @@ use std::result;
 use namespace::Namespace;
 
 pub use file::File;
+pub use print::file::{diff, print};
 pub use print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
 
 #[derive(Debug)]
