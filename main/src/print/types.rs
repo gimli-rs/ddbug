@@ -1,12 +1,10 @@
 use std::cmp;
 
-use file::FileHash;
-use print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
-use types::{
-    ArrayType, BaseType, FunctionType, PointerToMemberType, Type, TypeKind, TypeModifier,
-    TypeModifierKind, TypeOffset, UnspecifiedType,
+use parser::{
+    ArrayType, BaseType, FileHash, FunctionType, PointerToMemberType, Type, TypeKind, TypeModifier,
+    TypeModifierKind, TypeOffset, Unit, UnspecifiedType,
 };
-use unit::Unit;
+use print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
 use {Options, Result, Sort};
 
 pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -80,7 +78,7 @@ fn print_ref_function(ty: &FunctionType, w: &mut ValuePrinter, hash: &FileHash) 
 
 fn print_ref_unspecified(ty: &UnspecifiedType, w: &mut ValuePrinter) -> Result<()> {
     if let Some(ref namespace) = ty.namespace {
-        namespace.print(w)?;
+        print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<void>"))?;
     Ok(())

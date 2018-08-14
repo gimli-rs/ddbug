@@ -2,10 +2,8 @@ use std::borrow::Cow;
 use std::cmp;
 use std::ops::Deref;
 
-use file::FileHash;
+use parser::{FileHash, Member, Type, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use types::{Member, Type};
-use unit::Unit;
 use Result;
 
 fn print_name(

@@ -1,13 +1,11 @@
-use file::FileHash;
-use print::{DiffState, PrintState, ValuePrinter};
-use types::UnionType;
-use unit::Unit;
+use parser::{FileHash, UnionType, Unit};
+use print::{self, DiffState, PrintState, ValuePrinter};
 use Result;
 
 fn print_name(ty: &UnionType, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "union ")?;
     if let Some(ref namespace) = ty.namespace {
-        namespace.print(w)?;
+        print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
     Ok(())
@@ -65,10 +63,7 @@ pub(crate) fn diff(
 }
 
 fn print_source(ty: &UnionType, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    if ty.source.is_some() {
-        ty.source.print(w, unit)?;
-    }
-    Ok(())
+    print::source::print(&ty.source, w, unit)
 }
 
 fn print_byte_size(ty: &UnionType, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {

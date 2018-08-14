@@ -1,9 +1,7 @@
-use print::ValuePrinter;
 use unit::Unit;
-use Result;
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Source<'input> {
+pub struct Source<'input> {
     pub directory: Option<&'input str>,
     pub file: Option<&'input str>,
     pub line: u32,
@@ -45,18 +43,5 @@ impl<'input> Source<'input> {
             path.push_str(file);
             path
         })
-    }
-
-    pub fn print(&self, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-        if let Some(path) = self.path(unit) {
-            write!(w, "{}", path)?;
-            if self.line != 0 {
-                write!(w, ":{}", self.line)?;
-                if self.column != 0 {
-                    write!(w, ":{}", self.column)?;
-                }
-            }
-        }
-        Ok(())
     }
 }

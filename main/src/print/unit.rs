@@ -1,13 +1,10 @@
 use std::cmp;
 
-use file::FileHash;
 use filter;
-use function::Function;
-use print::{DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter};
-use range::Range;
-use types::Type;
-use unit::Unit;
-use variable::Variable;
+use parser::{FileHash, Function, Range, Type, Unit, Variable};
+use print::{
+    self, DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter,
+};
 use {Options, Result, Sort};
 
 pub(crate) fn merged_types<'a, 'input>(
@@ -281,8 +278,8 @@ pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Resul
 }
 
 fn print_address(unit: &Unit, w: &mut ValuePrinter, range: Option<Range>) -> Result<()> {
-    if let Some(range) = range {
-        range.print_address(w)?;
+    if let Some(ref range) = range {
+        print::range::print_address(range, w)?;
     } else if let Some(low_pc) = unit.low_pc {
         write!(w, "0x{:x}", low_pc)?;
     }

@@ -1,7 +1,7 @@
 use std::cmp;
 
-use file::{Symbol, SymbolType};
-use print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
+use parser::{Symbol, SymbolType};
+use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
 fn print_name(symbol: &Symbol, w: &mut ValuePrinter) -> Result<()> {
@@ -17,8 +17,7 @@ fn print_name(symbol: &Symbol, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_address(symbol: &Symbol, w: &mut ValuePrinter) -> Result<()> {
-    symbol.address().print_address(w)?;
-    Ok(())
+    print::range::print_address(&symbol.address(), w)
 }
 
 impl<'input> Print for Symbol<'input> {

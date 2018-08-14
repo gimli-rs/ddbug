@@ -13,7 +13,7 @@ use variable::LocalVariable;
 use {Address, Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct FunctionOffset(usize);
+pub struct FunctionOffset(usize);
 
 impl FunctionOffset {
     #[inline]
@@ -50,7 +50,7 @@ impl Default for FunctionOffset {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Function<'input> {
+pub struct Function<'input> {
     pub id: Cell<usize>,
     pub offset: FunctionOffset,
     pub namespace: Option<Rc<Namespace<'input>>>,
@@ -67,7 +67,7 @@ pub(crate) struct Function<'input> {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct FunctionDetails<'input> {
+pub struct FunctionDetails<'input> {
     pub variables: Vec<LocalVariable<'input>>,
     pub inlined_functions: Vec<InlinedFunction<'input>>,
 }
@@ -122,7 +122,7 @@ impl<'input> Function<'input> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ParameterOffset(usize);
+pub struct ParameterOffset(usize);
 
 impl ParameterOffset {
     #[inline]
@@ -145,7 +145,7 @@ impl Default for ParameterOffset {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Parameter<'input> {
+pub struct Parameter<'input> {
     pub offset: ParameterOffset,
     pub name: Option<&'input str>,
     pub ty: TypeOffset,
@@ -192,7 +192,7 @@ impl<'input> Parameter<'input> {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct InlinedFunction<'input> {
+pub struct InlinedFunction<'input> {
     pub abstract_origin: FunctionOffset,
     pub size: Size,
     pub parameters: Vec<Parameter<'input>>,

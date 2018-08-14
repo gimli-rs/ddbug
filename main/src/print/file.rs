@@ -1,13 +1,12 @@
 use code::CodeRegion;
-use file::{File, FileHash};
 use filter;
+use parser::{File, FileHash, Unit};
 use print::{self, DiffState, MergeIterator, MergeResult, PrintState, Printer, SortList};
-use unit::Unit;
 use {Options, Result};
 
 fn assign_ids(file: &File, options: &Options) {
     let mut id = 0;
-    for unit in &file.units {
+    for unit in file.units() {
         id = assign_ids_in_unit(unit, options, id);
     }
 }
@@ -138,7 +137,7 @@ pub fn print(file: &File, printer: &mut Printer, options: &Options) -> Result<()
         state.collapsed(
             |state| {
                 state.line(|w, _hash| {
-                    write!(w, "file {}", file.path)?;
+                    write!(w, "file {}", file.path())?;
                     Ok(())
                 })
             },
@@ -155,7 +154,7 @@ pub fn print(file: &File, printer: &mut Printer, options: &Options) -> Result<()
                 state.field_u64("fn size", fn_size)?;
                 state.field_u64("var size", var_size)?;
                 state.field_u64("other size", other_size)?;
-                state.field_collapsed("sections", |state| state.list(&(), &*file.sections))?;
+                state.field_collapsed("sections", |state| state.list(&(), file.sections()))?;
                 Ok(())
             },
         )?;
@@ -185,7 +184,7 @@ pub fn diff(printer: &mut Printer, file_a: &File, file_b: &File, options: &Optio
         state.collapsed(
             |state| {
                 state.line(file_a, file_b, |w, _hash, x| {
-                    write!(w, "file {}", x.path)?;
+                    write!(w, "file {}", x.path())?;
                     Ok(())
                 })
             },
@@ -211,7 +210,7 @@ pub fn diff(printer: &mut Printer, file_a: &File, file_b: &File, options: &Optio
                 state.field_u64("other size", other_size_a, other_size_b)?;
                 // TODO: sort sections
                 state.field_collapsed("sections", |state| {
-                    state.list(&(), &*file_a.sections, &(), &*file_b.sections)
+                    state.list(&(), file_a.sections(), &(), file_b.sections())
                 })?;
                 Ok(())
             },

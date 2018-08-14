@@ -1,9 +1,7 @@
 use std::cmp;
 
-use file::FileHash;
-use function::{Function, InlinedFunction};
+use parser::{FileHash, Function, InlinedFunction, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
-use unit::Unit;
 use Result;
 
 fn print_size_and_decl(f: &InlinedFunction, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
@@ -20,10 +18,7 @@ fn print_size_and_decl(f: &InlinedFunction, w: &mut ValuePrinter, hash: &FileHas
 }
 
 fn print_call_source(f: &InlinedFunction, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    if f.call_source.is_some() {
-        f.call_source.print(w, unit)?;
-    }
-    Ok(())
+    print::source::print(&f.call_source, w, unit)
 }
 
 impl<'input> Print for InlinedFunction<'input> {

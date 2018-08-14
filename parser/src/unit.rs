@@ -10,7 +10,7 @@ use types::Type;
 use variable::Variable;
 
 #[derive(Debug, Default)]
-pub(crate) struct Unit<'input> {
+pub struct Unit<'input> {
     pub dir: Option<Cow<'input, str>>,
     pub name: Option<Cow<'input, str>>,
     pub language: Option<gimli::DwLang>,

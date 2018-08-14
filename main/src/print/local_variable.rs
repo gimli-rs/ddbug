@@ -1,10 +1,7 @@
 use std::cmp;
 
-use file::FileHash;
+use parser::{FileHash, LocalVariable, Type, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use types::Type;
-use unit::Unit;
-use variable::LocalVariable;
 use Result;
 
 fn print_decl(v: &LocalVariable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {

@@ -1,18 +1,14 @@
 use std::cmp;
 
 use code::{Call, CodeRegion};
-use file::FileHash;
-use function::{Function, Parameter};
-use namespace::Namespace;
+use parser::{FileHash, Function, LocalVariable, Namespace, Parameter, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
-use unit::Unit;
-use variable::LocalVariable;
 use {Options, Result, Sort};
 
 pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
     w.link(f.id.get(), &mut |w| {
         if let Some(ref namespace) = f.namespace {
-            namespace.print(w)?;
+            print::namespace::print(namespace, w)?;
         }
         write!(w, "{}", f.name().unwrap_or("<anon>"))?;
         Ok(())
@@ -22,7 +18,7 @@ pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
 fn print_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "fn ")?;
     if let Some(ref namespace) = f.namespace {
-        namespace.print(w)?;
+        print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", f.name().unwrap_or("<anon>"))?;
     Ok(())
@@ -43,15 +39,12 @@ fn print_symbol_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_source(f: &Function, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    if f.source.is_some() {
-        f.source.print(w, unit)?;
-    }
-    Ok(())
+    print::source::print(&f.source, w, unit)
 }
 
 fn print_address(f: &Function, w: &mut ValuePrinter) -> Result<()> {
-    if let Some(range) = f.range() {
-        range.print_address(w)?;
+    if let Some(ref range) = f.range() {
+        print::range::print_address(range, w)?;
     }
     Ok(())
 }

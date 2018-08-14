@@ -12,7 +12,7 @@ use source::Source;
 use Size;
 
 #[derive(Debug, Clone)]
-pub(crate) enum TypeKind<'input> {
+pub enum TypeKind<'input> {
     Base(BaseType<'input>),
     Def(TypeDef<'input>),
     Struct(StructType<'input>),
@@ -43,7 +43,7 @@ impl<'input> TypeKind<'input> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub(crate) struct TypeOffset(usize);
+pub struct TypeOffset(usize);
 
 impl TypeOffset {
     #[inline]
@@ -58,12 +58,12 @@ impl TypeOffset {
     }
 
     #[inline]
-    pub(crate) fn is_none(self) -> bool {
+    pub fn is_none(self) -> bool {
         self == Self::none()
     }
 
     #[inline]
-    pub(crate) fn is_some(self) -> bool {
+    pub fn is_some(self) -> bool {
         self != Self::none()
     }
 
@@ -85,7 +85,7 @@ impl Default for TypeOffset {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Type<'input> {
+pub struct Type<'input> {
     pub id: Cell<usize>,
     pub offset: TypeOffset,
     pub kind: TypeKind<'input>,
@@ -216,7 +216,7 @@ impl<'input> Type<'input> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TypeModifier<'input> {
+pub struct TypeModifier<'input> {
     pub kind: TypeModifierKind,
     pub ty: TypeOffset,
     pub name: Option<&'input str>,
@@ -226,7 +226,7 @@ pub(crate) struct TypeModifier<'input> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum TypeModifierKind {
+pub enum TypeModifierKind {
     Pointer,
     Reference,
     Const,
@@ -318,7 +318,7 @@ impl<'input> TypeModifier<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct BaseType<'input> {
+pub struct BaseType<'input> {
     pub name: Option<&'input str>,
     pub byte_size: Size,
 }
@@ -341,7 +341,7 @@ impl<'input> BaseType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct TypeDef<'input> {
+pub struct TypeDef<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input str>,
     pub ty: TypeOffset,
@@ -370,7 +370,7 @@ impl<'input> TypeDef<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct StructType<'input> {
+pub struct StructType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input str>,
     pub source: Source<'input>,
@@ -407,7 +407,7 @@ impl<'input> StructType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct UnionType<'input> {
+pub struct UnionType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input str>,
     pub source: Source<'input>,
@@ -444,7 +444,7 @@ impl<'input> UnionType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Member<'input> {
+pub struct Member<'input> {
     pub name: Option<&'input str>,
     pub ty: TypeOffset,
     // Defaults to 0, so always present.
@@ -501,13 +501,13 @@ impl<'input> Member<'input> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Padding {
+pub struct Padding {
     pub bit_offset: u64,
     pub bit_size: u64,
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct EnumerationType<'input> {
+pub struct EnumerationType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input str>,
     pub source: Source<'input>,
@@ -542,7 +542,7 @@ impl<'input> EnumerationType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct Enumerator<'input> {
+pub struct Enumerator<'input> {
     pub name: Option<&'input str>,
     pub value: Option<i64>,
 }
@@ -554,7 +554,7 @@ impl<'input> Enumerator<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct ArrayType<'input> {
+pub struct ArrayType<'input> {
     pub ty: TypeOffset,
     pub count: Size,
     pub byte_size: Size,
@@ -615,7 +615,7 @@ impl<'input> ArrayType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct FunctionType<'input> {
+pub struct FunctionType<'input> {
     pub parameters: Vec<Parameter<'input>>,
     pub return_type: TypeOffset,
     pub byte_size: Size,
@@ -672,7 +672,7 @@ impl<'input> FunctionType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct UnspecifiedType<'input> {
+pub struct UnspecifiedType<'input> {
     pub namespace: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input str>,
 }
@@ -691,7 +691,7 @@ impl<'input> UnspecifiedType<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct PointerToMemberType {
+pub struct PointerToMemberType {
     pub ty: TypeOffset,
     pub containing_ty: TypeOffset,
     pub byte_size: Size,

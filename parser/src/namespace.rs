@@ -1,18 +1,15 @@
 use std::cmp;
 use std::rc::Rc;
 
-use print::ValuePrinter;
-use Result;
-
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum NamespaceKind {
+pub enum NamespaceKind {
     Namespace,
     Function,
     Type,
 }
 
 #[derive(Debug)]
-pub(crate) struct Namespace<'input> {
+pub struct Namespace<'input> {
     pub parent: Option<Rc<Namespace<'input>>>,
     pub name: Option<&'input str>,
     pub kind: NamespaceKind,
@@ -31,7 +28,7 @@ impl<'input> Namespace<'input> {
         })
     }
 
-    fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&str> {
         self.name
     }
 
@@ -61,18 +58,6 @@ impl<'input> Namespace<'input> {
             }
             None => false,
         }
-    }
-
-    pub fn print(&self, w: &mut ValuePrinter) -> Result<()> {
-        if let Some(ref parent) = self.parent {
-            parent.print(w)?;
-        }
-        write!(w, "{}", self.name().unwrap_or("<anon>"))?;
-        if self.kind == NamespaceKind::Function {
-            write!(w, "()")?;
-        }
-        write!(w, "::")?;
-        Ok(())
     }
 
     fn _filter(&self, namespace: &[&str]) -> (bool, usize) {

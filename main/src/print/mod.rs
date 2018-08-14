@@ -4,7 +4,7 @@ use std::io::Write;
 use std::usize;
 
 use code::CodeRegion;
-use file::FileHash;
+use parser::FileHash;
 use {Options, Result};
 
 mod text;
@@ -19,8 +19,11 @@ pub(crate) mod function;
 pub(crate) mod inlined_function;
 pub(crate) mod local_variable;
 pub(crate) mod member;
+pub(crate) mod namespace;
 pub(crate) mod parameter;
+pub(crate) mod range;
 pub(crate) mod section;
+pub(crate) mod source;
 pub(crate) mod struct_type;
 pub(crate) mod symbol;
 pub(crate) mod type_def;

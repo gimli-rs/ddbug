@@ -1,10 +1,7 @@
 use std::mem;
 
-use print::{DiffState, Print, PrintState, ValuePrinter};
-use Result;
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Range {
+pub struct Range {
     pub begin: u64,
     pub end: u64,
 }
@@ -13,46 +10,10 @@ impl Range {
     pub fn size(&self) -> u64 {
         self.end - self.begin
     }
-
-    pub fn print_address(&self, w: &mut ValuePrinter) -> Result<()> {
-        if self.end > self.begin {
-            write!(w, "0x{:x}-0x{:x}", self.begin, self.end - 1)?;
-        } else {
-            write!(w, "0x{:x}", self.begin)?;
-        }
-        Ok(())
-    }
-
-    pub fn print_address_and_size(&self, w: &mut ValuePrinter) -> Result<()> {
-        if self.end > self.begin {
-            write!(
-                w,
-                "0x{:x}-0x{:x} ({})",
-                self.begin,
-                self.end - 1,
-                self.end - self.begin
-            )?;
-        } else {
-            write!(w, "0x{:x}", self.begin)?;
-        }
-        Ok(())
-    }
-}
-
-impl Print for Range {
-    type Arg = ();
-
-    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(|w, _state| self.print_address_and_size(w))
-    }
-
-    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.line(a, b, |w, _state, x| x.print_address_and_size(w))
-    }
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct RangeList {
+pub struct RangeList {
     pub ranges: Vec<Range>,
 }
 

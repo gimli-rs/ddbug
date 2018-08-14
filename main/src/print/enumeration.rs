@@ -1,15 +1,13 @@
 use std::cmp;
 
-use file::FileHash;
-use print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
-use types::{EnumerationType, Enumerator, TypeOffset};
-use unit::Unit;
+use parser::{EnumerationType, Enumerator, FileHash, TypeOffset, Unit};
+use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
 fn print_name(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "enum ")?;
     if let Some(ref namespace) = ty.namespace {
-        namespace.print(w)?;
+        print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
     Ok(())
@@ -79,10 +77,7 @@ pub(crate) fn diff(
 }
 
 fn print_source(ty: &EnumerationType, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    if ty.source.is_some() {
-        ty.source.print(w, unit)?;
-    }
-    Ok(())
+    print::source::print(&ty.source, w, unit)
 }
 
 fn print_declaration(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {

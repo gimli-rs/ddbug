@@ -1,15 +1,13 @@
 use std::borrow::Cow;
 use std::ops::Deref;
 
-use file::FileHash;
+use parser::{FileHash, TypeDef, Unit};
 use print::{self, DiffState, PrintState, ValuePrinter};
-use types::TypeDef;
-use unit::Unit;
 use Result;
 
 fn print_name(ty: &TypeDef, w: &mut ValuePrinter) -> Result<()> {
     if let Some(ref namespace) = ty.namespace {
-        namespace.print(w)?;
+        print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<anon-typedef>"))?;
     Ok(())
@@ -28,10 +26,7 @@ fn print_def(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> 
 }
 
 fn print_source(ty: &TypeDef, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    if ty.source.is_some() {
-        ty.source.print(w, unit)?;
-    }
-    Ok(())
+    print::source::print(&ty.source, w, unit)
 }
 
 fn print_byte_size(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {

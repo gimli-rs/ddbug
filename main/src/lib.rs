@@ -1,3 +1,4 @@
+extern crate ddbug_parser as parser;
 extern crate fnv;
 extern crate gimli;
 #[macro_use]
@@ -10,79 +11,16 @@ extern crate panopticon_core as panopticon;
 extern crate typed_arena;
 
 mod code;
-mod file;
 mod filter;
-mod function;
-mod namespace;
 mod print;
-mod range;
-mod source;
-mod types;
-mod unit;
-mod variable;
 
-use std::borrow::Borrow;
-use std::borrow::Cow;
-use std::error;
-use std::fmt;
-use std::io;
 use std::rc::Rc;
-use std::result;
 
-use namespace::Namespace;
+use parser::Namespace;
 
-pub use file::File;
+pub use parser::{File, Result};
 pub use print::file::{diff, print};
 pub use print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
-
-#[derive(Debug)]
-pub struct Error(pub Cow<'static, str>);
-
-impl error::Error for Error {
-    fn description(&self) -> &str {
-        self.0.borrow()
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<&'static str> for Error {
-    fn from(s: &'static str) -> Error {
-        Error(Cow::Borrowed(s))
-    }
-}
-
-impl From<String> for Error {
-    fn from(s: String) -> Error {
-        Error(Cow::Owned(s))
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(e: io::Error) -> Error {
-        Error(Cow::Owned(format!("IO error: {}", e)))
-    }
-}
-
-impl From<gimli::Error> for Error {
-    fn from(e: gimli::Error) -> Error {
-        Error(Cow::Owned(format!("DWARF error: {}", e)))
-    }
-}
-
-/*
-impl From<crate_pdb::Error> for Error {
-    fn from(e: crate_pdb::Error) -> Error {
-        Error(Cow::Owned(format!("PDB error: {}", e)))
-    }
-}
-*/
-
-pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
@@ -168,99 +106,3 @@ impl<'a> Options<'a> {
         ("", name)
     }
 }
-
-mod address {
-    use std::u64;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub(crate) struct Address(u64);
-
-    impl Address {
-        #[inline]
-        pub(crate) fn new(address: u64) -> Address {
-            debug_assert!(Address(address) != Address::none());
-            Address(address)
-        }
-
-        #[inline]
-        pub(crate) fn none() -> Address {
-            Address(0)
-        }
-
-        #[inline]
-        pub(crate) fn is_none(self) -> bool {
-            self == Self::none()
-        }
-
-        #[inline]
-        pub(crate) fn is_some(self) -> bool {
-            self != Self::none()
-        }
-
-        #[inline]
-        pub(crate) fn get(self) -> Option<u64> {
-            if self.is_none() {
-                None
-            } else {
-                Some(self.0)
-            }
-        }
-    }
-
-    impl Default for Address {
-        #[inline]
-        fn default() -> Self {
-            Address::none()
-        }
-    }
-}
-
-pub(crate) use address::Address;
-
-mod size {
-    use std::u64;
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub(crate) struct Size(u64);
-
-    impl Size {
-        #[inline]
-        pub(crate) fn new(size: u64) -> Size {
-            debug_assert!(Size(size) != Size::none());
-            Size(size)
-        }
-
-        #[inline]
-        pub(crate) fn none() -> Size {
-            Size(u64::MAX)
-        }
-
-        #[inline]
-        pub(crate) fn is_none(self) -> bool {
-            self == Self::none()
-        }
-
-        #[inline]
-        pub(crate) fn is_some(self) -> bool {
-            self != Self::none()
-        }
-
-        #[inline]
-        pub(crate) fn get(self) -> Option<u64> {
-            if self.is_none() {
-                None
-            } else {
-                Some(self.0)
-            }
-        }
-    }
-
-    impl Default for Size {
-        #[inline]
-        fn default() -> Self {
-            Size::none()
-        }
-    }
-}
-
-pub(crate) use size::Size;

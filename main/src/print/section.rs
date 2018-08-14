@@ -1,7 +1,7 @@
 use std::cmp;
 
-use file::Section;
-use print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
+use parser::Section;
+use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
 fn print_name(section: &Section, w: &mut ValuePrinter) -> Result<()> {
@@ -16,8 +16,8 @@ fn print_name(section: &Section, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_address(section: &Section, w: &mut ValuePrinter) -> Result<()> {
-    if let Some(address) = section.address() {
-        address.print_address(w)?;
+    if let Some(ref address) = section.address() {
+        print::range::print_address(address, w)?;
     }
     Ok(())
 }

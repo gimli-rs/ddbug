@@ -1,10 +1,7 @@
 use std::cmp;
 
-use file::FileHash;
-use function::Parameter;
+use parser::{FileHash, Parameter, Type, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use types::Type;
-use unit::Unit;
 use Result;
 
 pub(crate) fn print_decl(p: &Parameter, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {

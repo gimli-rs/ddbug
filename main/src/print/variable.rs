@@ -1,10 +1,7 @@
 use std::cmp;
 
-use file::FileHash;
-use namespace::Namespace;
+use parser::{FileHash, Namespace, Unit, Variable};
 use print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
-use unit::Unit;
-use variable::Variable;
 use {Options, Result, Sort};
 
 pub(crate) fn print(v: &Variable, state: &mut PrintState, unit: &Unit) -> Result<()> {
@@ -66,7 +63,7 @@ pub(crate) fn diff(
 fn print_name(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "var ")?;
     if let Some(ref namespace) = v.namespace {
-        namespace.print(w)?;
+        print::namespace::print(namespace, w)?;
     }
     write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;
     print::types::print_ref_from_offset(w, hash, v.ty)?;
@@ -88,10 +85,7 @@ fn print_symbol_name(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_source(v: &Variable, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    if v.source.is_some() {
-        v.source.print(w, unit)?;
-    }
-    Ok(())
+    print::source::print(&v.source, w, unit)
 }
 
 fn print_address(v: &Variable, w: &mut ValuePrinter) -> Result<()> {

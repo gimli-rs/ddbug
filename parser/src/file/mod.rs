@@ -45,7 +45,7 @@ impl StringCache {
     }
 }
 
-pub(crate) type Machine = object::Machine;
+pub type Machine = object::Machine;
 
 pub struct File<'input> {
     pub(crate) path: &'input str,
@@ -58,15 +58,15 @@ pub struct File<'input> {
 }
 
 impl<'input> File<'input> {
-    pub(crate) fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
+    pub fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
         self.debug_info.get_type(offset)
     }
 
-    pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
+    pub fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
         self.debug_info.get_enumerators(offset)
     }
 
-    pub(crate) fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
+    pub fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
         self.debug_info
             .get_function_details(offset)
             .unwrap_or(FunctionDetails::default())
@@ -299,15 +299,27 @@ impl<'input> File<'input> {
         }
     }
 
-    pub(crate) fn machine(&self) -> Machine {
+    pub fn path(&self) -> &'input str {
+        self.path
+    }
+
+    pub fn machine(&self) -> Machine {
         self.machine
     }
 
-    pub(crate) fn segments(&self) -> &[Segment<'input>] {
+    pub fn segments(&self) -> &[Segment<'input>] {
         &self.segments
     }
 
-    pub(crate) fn ranges(&self, hash: &FileHash) -> RangeList {
+    pub fn sections(&self) -> &[Section<'input>] {
+        &self.sections
+    }
+
+    pub fn units(&self) -> &[Unit<'input>] {
+        &self.units
+    }
+
+    pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
         for unit in &self.units {
             for range in unit.ranges(hash).list() {
@@ -338,7 +350,7 @@ impl<'input> File<'input> {
         ranges.subtract(&unit_ranges)
     }
 
-    pub(crate) fn function_size(&self) -> u64 {
+    pub fn function_size(&self) -> u64 {
         let mut size = 0;
         for unit in &self.units {
             size += unit.function_size();
@@ -346,7 +358,7 @@ impl<'input> File<'input> {
         size
     }
 
-    pub(crate) fn variable_size(&self, hash: &FileHash) -> u64 {
+    pub fn variable_size(&self, hash: &FileHash) -> u64 {
         let mut size = 0;
         for unit in &self.units {
             size += unit.variable_size(hash);
@@ -355,7 +367,7 @@ impl<'input> File<'input> {
     }
 }
 
-pub(crate) struct FileHash<'input> {
+pub struct FileHash<'input> {
     pub file: &'input File<'input>,
     // All functions by address.
     pub functions_by_address: HashMap<u64, &'input Function<'input>>,
@@ -415,13 +427,13 @@ impl<'input> FileHash<'input> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Segment<'input> {
+pub struct Segment<'input> {
     pub address: u64,
     pub data: &'input [u8],
 }
 
 #[derive(Debug)]
-pub(crate) struct Section<'input> {
+pub struct Section<'input> {
     pub name: Option<Cow<'input, str>>,
     pub segment: Option<Cow<'input, str>>,
     pub address: Option<u64>,
@@ -446,13 +458,13 @@ impl<'input> Section<'input> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum SymbolType {
+pub enum SymbolType {
     Variable,
     Function,
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Symbol<'input> {
+pub struct Symbol<'input> {
     pub name: Option<&'input str>,
     pub ty: SymbolType,
     pub address: u64,

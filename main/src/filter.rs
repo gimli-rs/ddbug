@@ -1,18 +1,17 @@
 use std::cmp;
 use std::collections::HashSet;
 
-use file::{File, FileHash};
-use function::Function;
-use types::{EnumerationType, StructType, Type, TypeDef, TypeKind, UnionType, UnspecifiedType};
-use unit::Unit;
-use variable::Variable;
+use parser::{
+    EnumerationType, File, FileHash, Function, StructType, Type, TypeDef, TypeKind, TypeOffset,
+    UnionType, Unit, UnspecifiedType, Variable,
+};
 use Options;
 
 pub(crate) fn filter_units<'input, 'file>(
     file: &'file File<'input>,
     options: &Options,
 ) -> Vec<&'file Unit<'input>> {
-    file.units
+    file.units()
         .iter()
         .filter(|a| filter_unit(a, options))
         .collect()
@@ -30,23 +29,23 @@ fn filter_unit(unit: &Unit, options: &Options) -> bool {
 }
 
 /// The offsets of types that should be printed inline.
-fn inline_types(unit: &Unit, hash: &FileHash) -> HashSet<usize> {
+fn inline_types(unit: &Unit, hash: &FileHash) -> HashSet<TypeOffset> {
     let mut inline_types = HashSet::new();
     for ty in &unit.types {
         // Assume all anonymous types are inline. We don't actually check
         // that they will be inline, but in future we could (eg for TypeDefs).
         // TODO: is this a valid assumption?
         if ty.is_anon() {
-            if let Some(offset) = ty.offset.get() {
-                inline_types.insert(offset);
+            if ty.offset.is_some() {
+                inline_types.insert(ty.offset);
             }
         }
 
         // Find all inline members.
         ty.visit_members(&mut |t| {
             if t.is_inline(hash) {
-                if let Some(offset) = t.ty.get() {
-                    inline_types.insert(offset);
+                if t.ty.is_some() {
+                    inline_types.insert(t.ty);
                 }
             }
         });
@@ -86,7 +85,7 @@ pub(crate) fn filter_types<'input, 'unit>(
             | TypeKind::Modifier(..) => return false,
         }
         // Filter out inline types.
-        t.offset.get().map(|offset| inline_types.contains(&offset)) != Some(true)
+        t.offset.is_some() && !inline_types.contains(&t.offset)
     };
     unit.types.iter().filter(|a| filter_type(a)).collect()
 }

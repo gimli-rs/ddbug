@@ -12,7 +12,7 @@ use types::{Type, TypeOffset};
 use {Address, Size};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct VariableOffset(usize);
+pub struct VariableOffset(usize);
 
 impl VariableOffset {
     #[inline]
@@ -35,7 +35,7 @@ impl Default for VariableOffset {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct Variable<'input> {
+pub struct Variable<'input> {
     pub id: Cell<usize>,
     pub offset: VariableOffset,
     pub namespace: Option<Rc<Namespace<'input>>>,
@@ -90,7 +90,7 @@ impl<'input> Variable<'input> {
 }
 
 #[derive(Debug, Default, Clone)]
-pub(crate) struct LocalVariable<'input> {
+pub struct LocalVariable<'input> {
     pub offset: VariableOffset,
     pub name: Option<&'input str>,
     pub ty: TypeOffset,
