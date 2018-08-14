@@ -3,9 +3,7 @@ use std::fmt::Debug;
 use amd64;
 use panopticon;
 
-use object::Machine;
-use parser::File;
-use parser::Range;
+use parser::{File, Machine, Range};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {

@@ -45,7 +45,7 @@ impl StringCache {
     }
 }
 
-pub type Machine = object::Machine;
+pub use object::Machine;
 
 pub struct File<'input> {
     pub(crate) path: &'input str,

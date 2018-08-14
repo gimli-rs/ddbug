@@ -17,7 +17,6 @@ gimli = "0.16"
 log = "0.4"
 marksman_escape = "0.1"
 memmap = "0.6"
-object = "0.9"
 panopticon-core = { git = "https://github.com/das-labor/panopticon" }
 panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
 typed-arena = "1.3"
