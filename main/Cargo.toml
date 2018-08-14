@@ -17,8 +17,8 @@ gimli = "0.16"
 log = "0.4"
 marksman_escape = "0.1"
 memmap = "0.6"
-panopticon-core = { git = "https://github.com/das-labor/panopticon" }
-panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
+panopticon-core = { git = "https://github.com/das-labor/panopticon", rev = "33ffec0d6d379d51b38d6ea00d040f54b1356ae4" }
+panopticon-amd64 = { git = "https://github.com/das-labor/panopticon", rev = "33ffec0d6d379d51b38d6ea00d040f54b1356ae4" }
 typed-arena = "1.3"
 ddbug_parser = { path = "../parser" }
 
