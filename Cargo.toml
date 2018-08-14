@@ -1,27 +1,4 @@
-[package]
-name = "ddbug"
-version = "0.2.0"
-authors = ["Philip Craig <philipjcraig@gmail.com>"]
-description = "Display debugging information"
-repository = "https://github.com/philipc/ddbug"
-readme = "README.md"
-keywords = ["debug", "DWARF", "PDB"]
-categories = ["development-tools::debugging"]
-license = "Apache-2.0/MIT"
-
-[dependencies]
-clap = "2.26"
-env_logger = "0.5"
-fnv = "1.0"
-gimli = "0.16"
-log = "0.4"
-marksman_escape = "0.1"
-memmap = "0.6"
-object = "0.9"
-panopticon-core = { git = "https://github.com/das-labor/panopticon" }
-panopticon-amd64 = { git = "https://github.com/das-labor/panopticon" }
-typed-arena = "1.3"
-
-[features]
-system_alloc = []
-default = []
+[workspace]
+members = [
+    "main",
+]
