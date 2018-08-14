@@ -1,3 +1,4 @@
+use code::CodeRegion;
 use file::{File, FileHash};
 use filter;
 use print::{self, DiffState, MergeIterator, MergeResult, PrintState, Printer, SortList};
@@ -130,7 +131,8 @@ fn merged_units<'a, 'input>(
 pub fn print(file: &File, printer: &mut Printer, options: &Options) -> Result<()> {
     assign_ids(file, options);
     let hash = FileHash::new(file);
-    let mut state = PrintState::new(printer, &hash, options);
+    let code = CodeRegion::new(file);
+    let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
 
     if options.category_file {
         state.collapsed(
@@ -166,9 +168,18 @@ pub fn print(file: &File, printer: &mut Printer, options: &Options) -> Result<()
 pub fn diff(printer: &mut Printer, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
     let hash_a = FileHash::new(file_a);
     let hash_b = FileHash::new(file_b);
+    let code_a = CodeRegion::new(file_a);
+    let code_b = CodeRegion::new(file_b);
     assign_merged_ids(&hash_a, file_a, &hash_b, file_b, options);
 
-    let mut state = DiffState::new(printer, &hash_a, &hash_b, options);
+    let mut state = DiffState::new(
+        printer,
+        &hash_a,
+        &hash_b,
+        code_a.as_ref(),
+        code_b.as_ref(),
+        options,
+    );
 
     if options.category_file {
         state.collapsed(

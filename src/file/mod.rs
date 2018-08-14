@@ -9,7 +9,6 @@ use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
 use object::{self, Object, ObjectSection, ObjectSegment};
-use panopticon;
 use typed_arena::Arena;
 
 use function::{Function, FunctionDetails, FunctionOffset};
@@ -18,12 +17,6 @@ use types::{Enumerator, Type, TypeOffset};
 use unit::Unit;
 use variable::Variable;
 use {Address, Result, Size};
-
-#[derive(Debug)]
-pub(crate) struct CodeRegion {
-    pub machine: panopticon::Machine,
-    pub region: panopticon::Region,
-}
 
 pub(crate) trait DebugInfo {
     fn get_type(&self, offset: TypeOffset) -> Option<Type>;
@@ -52,9 +45,12 @@ impl StringCache {
     }
 }
 
+pub(crate) type Machine = object::Machine;
+
 pub struct File<'input> {
     pub(crate) path: &'input str,
-    pub(crate) code: Option<CodeRegion>,
+    pub(crate) machine: Machine,
+    pub(crate) segments: Vec<Segment<'input>>,
     pub(crate) sections: Vec<Section<'input>>,
     pub(crate) symbols: Vec<Symbol<'input>>,
     pub(crate) units: Vec<Unit<'input>>,
@@ -111,26 +107,13 @@ impl<'input> File<'input> {
     {
         let object = object::File::parse(input)?;
 
-        let machine = match object.machine() {
-            object::Machine::X86_64 => {
-                let region =
-                    panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
-                Some((panopticon::Machine::Amd64, region))
-            }
-            _ => None,
-        };
-
-        let mut code = None;
-        if let Some((machine, mut region)) = machine {
-            for segment in object.segments() {
-                let data = segment.data();
-                let address = segment.address();
-                let bound = panopticon::Bound::new(address, address + data.len() as u64);
-                // FIXME: avoid copy
-                let layer = panopticon::Layer::wrap(data.to_vec());
-                region.cover(bound, layer);
-            }
-            code = Some(CodeRegion { machine, region });
+        let machine = object.machine();
+        let mut segments = Vec::new();
+        for segment in object.segments() {
+            segments.push(Segment {
+                address: segment.address(),
+                data: segment.data(),
+            });
         }
 
         let mut sections = Vec::new();
@@ -193,7 +176,8 @@ impl<'input> File<'input> {
         dwarf::parse(endian, &object, strings, |units, debug_info| {
             let mut file = File {
                 path,
-                code,
+                machine,
+                segments,
                 sections,
                 symbols,
                 units,
@@ -315,8 +299,12 @@ impl<'input> File<'input> {
         }
     }
 
-    pub(crate) fn code(&self) -> Option<&CodeRegion> {
-        self.code.as_ref()
+    pub(crate) fn machine(&self) -> Machine {
+        self.machine
+    }
+
+    pub(crate) fn segments(&self) -> &[Segment<'input>] {
+        &self.segments
     }
 
     pub(crate) fn ranges(&self, hash: &FileHash) -> RangeList {
@@ -424,6 +412,12 @@ impl<'input> FileHash<'input> {
         }
         types
     }
+}
+
+#[derive(Debug)]
+pub(crate) struct Segment<'input> {
+    pub address: u64,
+    pub data: &'input [u8],
 }
 
 #[derive(Debug)]

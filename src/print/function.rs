@@ -1,14 +1,10 @@
 use std::cmp;
-use std::fmt::Debug;
 
-use amd64;
-use panopticon;
-
-use file::{CodeRegion, File, FileHash};
+use code::{Call, CodeRegion};
+use file::FileHash;
 use function::{Function, Parameter};
 use namespace::Namespace;
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
-use range::Range;
 use unit::Unit;
 use variable::LocalVariable;
 use {Options, Result, Sort};
@@ -125,7 +121,7 @@ impl<'input> Print for Function<'input> {
                     })
                 })?;
                 if state.options().print_function_calls {
-                    let calls = calls(self, state.hash().file);
+                    let calls = calls(self, state.code);
                     state.field_collapsed("calls", |state| state.list(&(), &calls))?;
                 }
                 Ok(())
@@ -205,8 +201,8 @@ impl<'input> Print for Function<'input> {
                     })
                 })?;
                 if state.options().print_function_calls {
-                    let calls_a = calls(a, state.hash_a().file);
-                    let calls_b = calls(b, state.hash_b().file);
+                    let calls_a = calls(a, state.code_a);
+                    let calls_b = calls(b, state.code_b);
                     state.field_collapsed("calls", |state| {
                         state.list(&(), &calls_a, &(), &calls_b)
                     })?;
@@ -272,88 +268,19 @@ impl<'input> SortList for Function<'input> {
     }
 }
 
-fn calls(f: &Function, file: &File) -> Vec<Call> {
-    if let Some(range) = f.range() {
-        if let Some(code) = file.code() {
-            return disassemble(code, range);
-        }
+fn print_call(call: &Call, w: &mut ValuePrinter, hash: &FileHash, options: &Options) -> Result<()> {
+    if !options.ignore_function_address {
+        // FIXME: it would be nice to display this in a way that doesn't clutter the output
+        // when diffing
+        write!(w, "0x{:x} -> 0x{:x} ", call.from, call.to)?;
     }
-    Vec::new()
-}
-
-fn disassemble(code: &CodeRegion, range: Range) -> Vec<Call> {
-    match code.machine {
-        panopticon::Machine::Amd64 => {
-            disassemble_arch::<amd64::Amd64>(&code.region, range, amd64::Mode::Long)
-        }
-        _ => Vec::new(),
+    if let Some(function) = hash.functions_by_address.get(&call.to) {
+        print_ref(function, w)?;
+    } else if options.ignore_function_address {
+        // We haven't displayed an address yet, so we need to display something.
+        write!(w, "0x{:x}", call.to)?;
     }
-}
-
-fn disassemble_arch<A>(
-    region: &panopticon::Region,
-    range: Range,
-    cfg: A::Configuration,
-) -> Vec<Call>
-where
-    A: panopticon::Architecture + Debug,
-    A::Configuration: Debug,
-{
-    let mut calls = Vec::new();
-    let mut addr = range.begin;
-    while addr < range.end {
-        let m = match A::decode(region, addr, &cfg) {
-            Ok(m) => m,
-            Err(e) => {
-                error!("failed to disassemble: {}", e);
-                return calls;
-            }
-        };
-
-        for mnemonic in m.mnemonics {
-            for instruction in &mnemonic.instructions {
-                match *instruction {
-                    panopticon::Statement {
-                        op: panopticon::Operation::Call(ref call),
-                        ..
-                    } => match *call {
-                        panopticon::Rvalue::Constant { ref value, .. } => {
-                            calls.push(Call {
-                                from: mnemonic.area.start,
-                                to: *value,
-                            });
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
-            addr = mnemonic.area.end;
-        }
-    }
-    calls
-}
-
-struct Call {
-    from: u64,
-    to: u64,
-}
-
-impl Call {
-    fn print(&self, w: &mut ValuePrinter, hash: &FileHash, options: &Options) -> Result<()> {
-        if !options.ignore_function_address {
-            // FIXME: it would be nice to display this in a way that doesn't clutter the output
-            // when diffing
-            write!(w, "0x{:x} -> 0x{:x} ", self.from, self.to)?;
-        }
-        if let Some(function) = hash.functions_by_address.get(&self.to) {
-            print_ref(function, w)?;
-        } else if options.ignore_function_address {
-            // We haven't displayed an address yet, so we need to display something.
-            write!(w, "0x{:x}", self.to)?;
-        }
-        Ok(())
-    }
+    Ok(())
 }
 
 impl Print for Call {
@@ -361,12 +288,12 @@ impl Print for Call {
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
         let options = state.options();
-        state.line(|w, hash| self.print(w, hash, options))
+        state.line(|w, hash| print_call(self, w, hash, options))
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
         let options = state.options();
-        state.line(a, b, |w, hash, x| x.print(w, hash, options))
+        state.line(a, b, |w, hash, x| print_call(x, w, hash, options))
     }
 }
 
@@ -400,4 +327,11 @@ impl DiffList for Call {
         }
         cost
     }
+}
+
+fn calls(f: &Function, code: Option<&CodeRegion>) -> Vec<Call> {
+    if let (Some(code), Some(range)) = (code, f.range()) {
+        return code.calls(range);
+    }
+    Vec::new()
 }

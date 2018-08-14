@@ -3,6 +3,7 @@ use std::collections::BinaryHeap;
 use std::io::Write;
 use std::usize;
 
+use code::CodeRegion;
 use file::FileHash;
 use {Options, Result};
 
@@ -86,6 +87,7 @@ pub(crate) struct PrintState<'a> {
 
     // The remaining fields contain information that is commonly needed in print methods.
     hash: &'a FileHash<'a>,
+    code: Option<&'a CodeRegion>,
     options: &'a Options<'a>,
 }
 
@@ -100,10 +102,16 @@ impl<'a> PrintState<'a> {
         self.options
     }
 
-    pub fn new(printer: &'a mut Printer, hash: &'a FileHash<'a>, options: &'a Options<'a>) -> Self {
+    pub fn new(
+        printer: &'a mut Printer,
+        hash: &'a FileHash<'a>,
+        code: Option<&'a CodeRegion>,
+        options: &'a Options<'a>,
+    ) -> Self {
         PrintState {
             printer,
             hash,
+            code,
             options,
         }
     }
@@ -122,17 +130,18 @@ impl<'a> PrintState<'a> {
         FBody: FnMut(&mut PrintState) -> Result<()>,
     {
         let hash = self.hash;
+        let code = self.code;
         let options = self.options;
         let mut body_buf = Vec::new();
         self.printer.indent_body(&mut body_buf, &mut |printer| {
-            let mut state = PrintState::new(printer, hash, options);
+            let mut state = PrintState::new(printer, hash, code, options);
             body(&mut state)?;
             Ok(())
         })?;
         if !body_buf.is_empty() {
             self.printer
                 .indent_header(collapsed, &*body_buf, &mut |printer| {
-                    let mut state = PrintState::new(printer, hash, options);
+                    let mut state = PrintState::new(printer, hash, code, options);
                     header(&mut state)?;
                     Ok(())
                 })?;
@@ -269,18 +278,20 @@ pub(crate) struct DiffState<'a> {
     // The remaining fields contain information that is commonly needed in print methods.
     hash_a: &'a FileHash<'a>,
     hash_b: &'a FileHash<'a>,
+    code_a: Option<&'a CodeRegion>,
+    code_b: Option<&'a CodeRegion>,
     options: &'a Options<'a>,
 }
 
 impl<'a> DiffState<'a> {
     #[inline]
     fn a(&mut self) -> PrintState {
-        PrintState::new(self.printer, self.hash_a, self.options)
+        PrintState::new(self.printer, self.hash_a, self.code_a, self.options)
     }
 
     #[inline]
     fn b(&mut self) -> PrintState {
-        PrintState::new(self.printer, self.hash_b, self.options)
+        PrintState::new(self.printer, self.hash_b, self.code_b, self.options)
     }
 
     #[inline]
@@ -302,6 +313,8 @@ impl<'a> DiffState<'a> {
         printer: &'a mut Printer,
         hash_a: &'a FileHash<'a>,
         hash_b: &'a FileHash<'a>,
+        code_a: Option<&'a CodeRegion>,
+        code_b: Option<&'a CodeRegion>,
         options: &'a Options<'a>,
     ) -> Self {
         DiffState {
@@ -309,6 +322,8 @@ impl<'a> DiffState<'a> {
             diff: false,
             hash_a,
             hash_b,
+            code_a,
+            code_b,
             options,
         }
     }
@@ -321,11 +336,13 @@ impl<'a> DiffState<'a> {
     {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
+        let code_a = self.code_a;
+        let code_b = self.code_b;
         let options = self.options;
         let mut buf = Vec::new();
         let mut diff = false;
         self.printer.buffer(&mut buf, &mut |printer| {
-            let mut state = DiffState::new(printer, hash_a, hash_b, options);
+            let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
             f(&mut state)?;
             diff = state.diff;
             Ok(())
@@ -367,13 +384,15 @@ impl<'a> DiffState<'a> {
     {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
+        let code_a = self.code_a;
+        let code_b = self.code_b;
         let options = self.options;
 
         let mut body_buf = Vec::new();
         let mut diff = false;
         self.printer.indent_body(&mut body_buf, &mut |printer| {
             printer.prefix(DiffPrefix::Equal);
-            let mut state = DiffState::new(printer, hash_a, hash_b, options);
+            let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
             body(&mut state)?;
             if state.diff {
                 diff = true;
@@ -389,7 +408,8 @@ impl<'a> DiffState<'a> {
                     } else {
                         printer.prefix(DiffPrefix::Equal);
                     }
-                    let mut state = DiffState::new(printer, hash_a, hash_b, options);
+                    let mut state =
+                        DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
                     header(&mut state)?;
                     if state.diff {
                         diff = true;
@@ -476,10 +496,12 @@ impl<'a> DiffState<'a> {
     {
         let hash_a = self.hash_a;
         let hash_b = self.hash_b;
+        let code_a = self.code_a;
+        let code_b = self.code_b;
         let options = self.options;
         let mut buf = Vec::new();
         self.printer.buffer(&mut buf, &mut |printer| {
-            let mut state = DiffState::new(printer, hash_a, hash_b, options);
+            let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
             state
                 .a()
                 .prefix(DiffPrefix::Delete, &mut |state| f(state, arg_a))?;

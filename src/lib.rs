@@ -9,6 +9,7 @@ extern crate panopticon_amd64 as amd64;
 extern crate panopticon_core as panopticon;
 extern crate typed_arena;
 
+mod code;
 mod file;
 mod filter;
 mod function;
