@@ -8,10 +8,7 @@ pub(crate) fn print_decl(p: &Parameter, w: &mut ValuePrinter, hash: &FileHash) -
     if let Some(name) = p.name() {
         write!(w, "{}: ", name)?;
     }
-    match p.ty(hash) {
-        Some(ty) => print::types::print_ref(&ty, w, hash)?,
-        None => write!(w, "<anon>")?,
-    }
+    print::types::print_ref(p.ty(hash), w, hash)?;
     Ok(())
 }
 
