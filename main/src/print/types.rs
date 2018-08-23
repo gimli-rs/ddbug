@@ -16,7 +16,8 @@ pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()
         TypeKind::Enumeration(ref val) => {
             print::enumeration::print(val, state, unit, id, ty.offset)
         }
-        TypeKind::Base(..)
+        TypeKind::Void
+        | TypeKind::Base(..)
         | TypeKind::Array(..)
         | TypeKind::Function(..)
         | TypeKind::Unspecified(..)
@@ -28,6 +29,7 @@ pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()
 pub(crate) fn print_ref(ty: &Type, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     let id = ty.id.get();
     match ty.kind {
+        TypeKind::Void => print_ref_void(w),
         TypeKind::Base(ref val) => print_ref_base(val, w),
         TypeKind::Def(ref val) => print::type_def::print_ref(val, w, id),
         TypeKind::Struct(ref val) => print::struct_type::print_ref(val, w, id),
@@ -39,6 +41,11 @@ pub(crate) fn print_ref(ty: &Type, w: &mut ValuePrinter, hash: &FileHash) -> Res
         TypeKind::PointerToMember(ref val) => print_ref_pointer_to_member(val, w, hash),
         TypeKind::Modifier(ref val) => print_ref_modifier(val, w, hash),
     }
+}
+
+fn print_ref_void(w: &mut ValuePrinter) -> Result<()> {
+    write!(w, "void")?;
+    Ok(())
 }
 
 fn print_ref_base(ty: &BaseType, w: &mut ValuePrinter) -> Result<()> {
@@ -70,8 +77,10 @@ fn print_ref_function(ty: &FunctionType, w: &mut ValuePrinter, hash: &FileHash) 
     write!(w, ")")?;
 
     if let Some(return_type) = ty.return_type(hash) {
-        write!(w, " -> ")?;
-        print_ref(&return_type, w, hash)?;
+        if !return_type.is_void() {
+            write!(w, " -> ")?;
+            print_ref(&return_type, w, hash)?;
+        }
     }
     Ok(())
 }
@@ -120,13 +129,9 @@ pub(crate) fn print_ref_from_offset(
     hash: &FileHash,
     offset: TypeOffset,
 ) -> Result<()> {
-    if offset.is_none() {
-        write!(w, "void")?;
-    } else {
-        match Type::from_offset(hash, offset) {
-            Some(ty) => print_ref(&ty, w, hash)?,
-            None => write!(w, "<invalid-type {:?}>", offset)?,
-        }
+    match Type::from_offset(hash, offset) {
+        Some(ty) => print_ref(&ty, w, hash)?,
+        None => write!(w, "<invalid-type {:?}>", offset)?,
     }
     Ok(())
 }

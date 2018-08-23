@@ -375,6 +375,8 @@ pub struct FileHash<'input> {
     pub functions_by_offset: HashMap<FunctionOffset, &'input Function<'input>>,
     // All types by offset.
     pub types: HashMap<TypeOffset, &'input Type<'input>>,
+    // The type corresponding to `TypeOffset::none()`.
+    pub(crate) void: Type<'input>,
 }
 
 impl<'input> FileHash<'input> {
@@ -384,6 +386,7 @@ impl<'input> FileHash<'input> {
             functions_by_address: FileHash::functions_by_address(file),
             functions_by_offset: FileHash::functions_by_offset(file),
             types: FileHash::types(file),
+            void: Type::void(),
         }
     }
 

@@ -13,6 +13,7 @@ use Size;
 
 #[derive(Debug, Clone)]
 pub enum TypeKind<'input> {
+    Void,
     Base(BaseType<'input>),
     Def(TypeDef<'input>),
     Struct(StructType<'input>),
@@ -28,16 +29,17 @@ pub enum TypeKind<'input> {
 impl<'input> TypeKind<'input> {
     fn discriminant_value(&self) -> u8 {
         match *self {
-            TypeKind::Base(..) => 0,
-            TypeKind::Def(..) => 1,
-            TypeKind::Struct(..) => 2,
-            TypeKind::Union(..) => 3,
-            TypeKind::Enumeration(..) => 4,
-            TypeKind::Array(..) => 5,
-            TypeKind::Function(..) => 6,
-            TypeKind::Unspecified(..) => 7,
-            TypeKind::PointerToMember(..) => 8,
-            TypeKind::Modifier(..) => 9,
+            TypeKind::Void => 1,
+            TypeKind::Base(..) => 2,
+            TypeKind::Def(..) => 3,
+            TypeKind::Struct(..) => 4,
+            TypeKind::Union(..) => 5,
+            TypeKind::Enumeration(..) => 6,
+            TypeKind::Array(..) => 7,
+            TypeKind::Function(..) => 8,
+            TypeKind::Unspecified(..) => 9,
+            TypeKind::PointerToMember(..) => 10,
+            TypeKind::Modifier(..) => 11,
         }
     }
 }
@@ -107,7 +109,7 @@ impl<'input> Type<'input> {
         offset: TypeOffset,
     ) -> Option<Cow<'a, Type<'input>>> {
         if offset.is_none() {
-            return None;
+            return Some(Cow::Borrowed(&hash.void));
         }
         hash.types
             .get(&offset)
@@ -115,8 +117,24 @@ impl<'input> Type<'input> {
             .or_else(|| hash.file.get_type(offset).map(Cow::Owned))
     }
 
+    pub(crate) fn void() -> Type<'static> {
+        Type {
+            id: Cell::new(usize::MAX),
+            offset: TypeOffset(usize::MAX),
+            kind: TypeKind::Void,
+        }
+    }
+
+    pub fn is_void(&self) -> bool {
+        match self.kind {
+            TypeKind::Void => true,
+            _ => false,
+        }
+    }
+
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         match self.kind {
+            TypeKind::Void => Some(0),
             TypeKind::Base(ref val) => val.byte_size(),
             TypeKind::Def(ref val) => val.byte_size(hash),
             TypeKind::Struct(ref val) => val.byte_size(),
@@ -134,7 +152,8 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.is_anon(),
             TypeKind::Union(ref val) => val.is_anon(),
-            TypeKind::Base(..)
+            TypeKind::Void
+            | TypeKind::Base(..)
             | TypeKind::Def(..)
             | TypeKind::Enumeration(..)
             | TypeKind::Array(..)
@@ -156,7 +175,8 @@ impl<'input> Type<'input> {
                 Some(ty) => ty.is_function(hash),
                 None => false,
             },
-            TypeKind::Struct(..)
+            TypeKind::Void
+            | TypeKind::Struct(..)
             | TypeKind::Union(..)
             | TypeKind::Base(..)
             | TypeKind::Enumeration(..)
@@ -170,7 +190,8 @@ impl<'input> Type<'input> {
         match self.kind {
             TypeKind::Struct(ref val) => val.visit_members(f),
             TypeKind::Union(ref val) => val.visit_members(f),
-            TypeKind::Enumeration(..)
+            TypeKind::Void
+            | TypeKind::Enumeration(..)
             | TypeKind::Def(..)
             | TypeKind::Base(..)
             | TypeKind::Array(..)

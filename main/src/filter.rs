@@ -77,7 +77,8 @@ pub(crate) fn filter_types<'input, 'unit>(
                 }
             }
             TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
-            TypeKind::Base(..)
+            TypeKind::Void
+            | TypeKind::Base(..)
             | TypeKind::Array(..)
             | TypeKind::Function(..)
             | TypeKind::Unspecified(..)
@@ -137,7 +138,8 @@ fn filter_type(ty: &Type, options: &Options) -> bool {
         TypeKind::Union(ref val) => filter_union(val, options),
         TypeKind::Enumeration(ref val) => filter_enumeration(val, options),
         TypeKind::Unspecified(ref val) => filter_unspecified(val, options),
-        TypeKind::Base(..)
+        TypeKind::Void
+        | TypeKind::Base(..)
         | TypeKind::Array(..)
         | TypeKind::Function(..)
         | TypeKind::PointerToMember(..)
