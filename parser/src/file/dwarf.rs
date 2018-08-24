@@ -1584,7 +1584,10 @@ fn parse_pointer_to_member_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = PointerToMemberType::default();
+    let mut ty = PointerToMemberType {
+        address_size: Some(u64::from(dwarf_unit.header.address_size())),
+        ..Default::default()
+    };
 
     {
         let mut attrs = node.entry().attrs();
