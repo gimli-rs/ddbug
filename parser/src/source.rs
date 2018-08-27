@@ -1,30 +1,38 @@
 use unit::Unit;
 
+/// A source location.
 #[derive(Debug, Default, Clone)]
 pub struct Source<'input> {
-    pub directory: Option<&'input str>,
-    pub file: Option<&'input str>,
-    pub line: u32,
-    pub column: u32,
+    pub(crate) directory: Option<&'input str>,
+    pub(crate) file: Option<&'input str>,
+    pub(crate) line: u32,
+    pub(crate) column: u32,
 }
 
 impl<'input> Source<'input> {
+    /// The directory.
+    ///
+    /// This may be absolute, or relative to the working directory of the unit.
     pub fn directory(&self) -> Option<&str> {
         self.directory
     }
 
+    /// The file name.
     pub fn file(&self) -> Option<&str> {
         self.file
     }
 
+    /// Return true if there is no file name.
     pub fn is_none(&self) -> bool {
         self.file.is_none()
     }
 
+    /// Return true if there is a file name.
     pub fn is_some(&self) -> bool {
         self.file.is_some()
     }
 
+    /// The complete file path.
     pub fn path(&self, unit: &Unit) -> Option<String> {
         fn is_absolute(directory: &str) -> bool {
             directory.get(0..1) == Some("/") || directory.get(1..2) == Some(":")
@@ -43,5 +51,19 @@ impl<'input> Source<'input> {
             path.push_str(file);
             path
         })
+    }
+
+    /// The source line number.
+    ///
+    /// 0 means unknown line number.
+    pub fn line(&self) -> u32 {
+        self.line
+    }
+
+    /// The source column number.
+    ///
+    /// 0 means unknown column number.
+    pub fn column(&self) -> u32 {
+        self.column
     }
 }

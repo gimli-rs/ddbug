@@ -6,7 +6,7 @@ use Result;
 
 fn print_decl(v: &LocalVariable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;
-    print::types::print_ref_from_offset(w, hash, v.ty)?;
+    print::types::print_ref(v.ty(hash), w, hash)?;
     Ok(())
 }
 
@@ -45,7 +45,7 @@ impl<'a, 'input> DiffList for &'a LocalVariable<'input> {
 
     fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+        if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
             cost += 1;
         }
         match (a.ty(state.hash_a()), b.ty(state.hash_b())) {

@@ -12,7 +12,7 @@ fn print_name(
     hash: &FileHash,
     bit_size: Option<u64>,
 ) -> Result<()> {
-    write!(w, "{}", format_bit(member.bit_offset))?;
+    write!(w, "{}", format_bit(member.bit_offset()))?;
     match bit_size {
         Some(bit_size) => {
             write!(w, "[{}]", format_bit(bit_size))?;
@@ -24,7 +24,7 @@ fn print_name(
         }
     }
     write!(w, "\t{}: ", member.name().unwrap_or("<anon>"))?;
-    print::types::print_ref_from_offset(w, hash, member.ty)?;
+    print::types::print_ref(member.ty(hash), w, hash)?;
     Ok(())
 }
 
@@ -105,7 +105,7 @@ impl<'input> DiffList for Member<'input> {
 
     fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+        if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
             cost += 1;
         }
         match (a.ty(state.hash_a()), b.ty(state.hash_b())) {

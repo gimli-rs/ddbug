@@ -31,21 +31,21 @@ fn filter_unit(unit: &Unit, options: &Options) -> bool {
 /// The offsets of types that should be printed inline.
 fn inline_types(unit: &Unit, hash: &FileHash) -> HashSet<TypeOffset> {
     let mut inline_types = HashSet::new();
-    for ty in &unit.types {
+    for ty in unit.types() {
         // Assume all anonymous types are inline. We don't actually check
         // that they will be inline, but in future we could (eg for TypeDefs).
         // TODO: is this a valid assumption?
         if ty.is_anon() {
-            if ty.offset.is_some() {
-                inline_types.insert(ty.offset);
+            if ty.offset().is_some() {
+                inline_types.insert(ty.offset());
             }
         }
 
         // Find all inline members.
         ty.visit_members(&mut |t| {
             if t.is_inline(hash) {
-                if t.ty.is_some() {
-                    inline_types.insert(t.ty);
+                if t.type_offset().is_some() {
+                    inline_types.insert(t.type_offset());
                 }
             }
         });
@@ -67,7 +67,7 @@ pub(crate) fn filter_types<'input, 'unit>(
         if !filter_type(t, options) {
             return false;
         }
-        match t.kind {
+        match *t.kind() {
             TypeKind::Struct(ref t) => {
                 // Hack for rust closures
                 // TODO: is there better way of identifying these, or a
@@ -86,16 +86,16 @@ pub(crate) fn filter_types<'input, 'unit>(
             | TypeKind::Modifier(..) => return false,
         }
         // Filter out inline types.
-        t.offset.is_some() && !inline_types.contains(&t.offset)
+        t.offset().is_some() && !inline_types.contains(&t.offset())
     };
-    unit.types.iter().filter(|a| filter_type(a)).collect()
+    unit.types().iter().filter(|a| filter_type(a)).collect()
 }
 
 pub(crate) fn filter_functions<'input, 'unit>(
     unit: &'unit Unit<'input>,
     options: &Options,
 ) -> Vec<&'unit Function<'input>> {
-    unit.functions
+    unit.functions()
         .iter()
         .filter(|a| filter_function(a, options))
         .collect()
@@ -105,34 +105,34 @@ pub(crate) fn filter_variables<'input, 'unit>(
     unit: &'unit Unit<'input>,
     options: &Options,
 ) -> Vec<&'unit Variable<'input>> {
-    unit.variables
+    unit.variables()
         .iter()
         .filter(|a| filter_variable(a, options))
         .collect()
 }
 
 fn filter_function(f: &Function, options: &Options) -> bool {
-    if !f.inline && (f.address.is_none() || f.size.is_none()) {
+    if !f.is_inline() && (f.address().is_none() || f.size().is_none()) {
         // This is either a declaration or a dead function that was removed
         // from the code, but wasn't removed from the debuginfo.
         // TODO: make this configurable?
         return false;
     }
     options.filter_name(f.name())
-        && options.filter_namespace(&f.namespace)
-        && options.filter_function_inline(f.inline)
+        && options.filter_namespace(f.namespace())
+        && options.filter_function_inline(f.is_inline())
 }
 
 fn filter_variable(v: &Variable, options: &Options) -> bool {
-    if !v.declaration && v.address.is_none() {
+    if !v.is_declaration() && v.address().is_none() {
         // TODO: make this configurable?
         return false;
     }
-    options.filter_name(v.name()) && options.filter_namespace(&v.namespace)
+    options.filter_name(v.name()) && options.filter_namespace(v.namespace())
 }
 
 fn filter_type(ty: &Type, options: &Options) -> bool {
-    match ty.kind {
+    match *ty.kind() {
         TypeKind::Def(ref val) => filter_type_def(val, options),
         TypeKind::Struct(ref val) => filter_struct(val, options),
         TypeKind::Union(ref val) => filter_union(val, options),
@@ -148,21 +148,21 @@ fn filter_type(ty: &Type, options: &Options) -> bool {
 }
 
 fn filter_type_def(ty: &TypeDef, options: &Options) -> bool {
-    options.filter_name(ty.name()) && options.filter_namespace(&ty.namespace)
+    options.filter_name(ty.name()) && options.filter_namespace(ty.namespace())
 }
 
 fn filter_struct(ty: &StructType, options: &Options) -> bool {
-    options.filter_name(ty.name()) && options.filter_namespace(&ty.namespace)
+    options.filter_name(ty.name()) && options.filter_namespace(ty.namespace())
 }
 
 fn filter_union(ty: &UnionType, options: &Options) -> bool {
-    options.filter_name(ty.name()) && options.filter_namespace(&ty.namespace)
+    options.filter_name(ty.name()) && options.filter_namespace(ty.namespace())
 }
 
 fn filter_enumeration(ty: &EnumerationType, options: &Options) -> bool {
-    options.filter_name(ty.name()) && options.filter_namespace(&ty.namespace)
+    options.filter_name(ty.name()) && options.filter_namespace(ty.namespace())
 }
 
 fn filter_unspecified(ty: &UnspecifiedType, options: &Options) -> bool {
-    options.filter_name(ty.name()) && options.filter_namespace(&ty.namespace)
+    options.filter_name(ty.name()) && options.filter_namespace(ty.namespace())
 }

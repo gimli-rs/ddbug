@@ -1,13 +1,13 @@
 use std::cmp;
 
 use code::{Call, CodeRegion};
-use parser::{FileHash, Function, LocalVariable, Namespace, Parameter, Unit};
+use parser::{FileHash, Function, LocalVariable, Parameter, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use {Options, Result, Sort};
 
 pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
-    w.link(f.id.get(), &mut |w| {
-        if let Some(ref namespace) = f.namespace {
+    w.link(f.id(), &mut |w| {
+        if let Some(namespace) = f.namespace() {
             print::namespace::print(namespace, w)?;
         }
         write!(w, "{}", f.name().unwrap_or("<anon>"))?;
@@ -17,7 +17,7 @@ pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
 
 fn print_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "fn ")?;
-    if let Some(ref namespace) = f.namespace {
+    if let Some(namespace) = f.namespace() {
         print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", f.name().unwrap_or("<anon>"))?;
@@ -39,7 +39,7 @@ fn print_symbol_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_source(f: &Function, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    print::source::print(&f.source, w, unit)
+    print::source::print(f.source(), w, unit)
 }
 
 fn print_address(f: &Function, w: &mut ValuePrinter) -> Result<()> {
@@ -57,27 +57,28 @@ fn print_size(f: &Function, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_inline(f: &Function, w: &mut ValuePrinter) -> Result<()> {
-    if f.inline {
+    if f.is_inline() {
         write!(w, "yes")?;
     }
     Ok(())
 }
 
 fn print_declaration(f: &Function, w: &mut ValuePrinter) -> Result<()> {
-    if f.declaration {
+    if f.is_declaration() {
         write!(w, "yes")?;
     }
     Ok(())
 }
 
 fn print_return_type(f: &Function, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
-    if f.return_type.is_some() {
-        match f.return_type(hash).and_then(|t| t.byte_size(hash)) {
+    let ty = f.return_type(hash);
+    if ty.as_ref().map(|t| t.is_void()) != Some(true) {
+        match ty.as_ref().and_then(|t| t.byte_size(hash)) {
             Some(byte_size) => write!(w, "[{}]", byte_size)?,
             None => write!(w, "[??]")?,
         }
         write!(w, "\t")?;
-        print::types::print_ref_from_offset(w, hash, f.return_type)?;
+        print::types::print_ref(ty, w, hash)?;
     }
     Ok(())
 }
@@ -87,7 +88,7 @@ impl<'input> Print for Function<'input> {
 
     fn print(&self, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
         state.collapsed(
-            |state| state.id(self.id.get(), |w, _state| print_name(self, w)),
+            |state| state.id(self.id(), |w, _state| print_name(self, w)),
             |state| {
                 state.field("linkage name", |w, _state| print_linkage_name(self, w))?;
                 state.field("symbol name", |w, _state| print_symbol_name(self, w))?;
@@ -101,16 +102,16 @@ impl<'input> Print for Function<'input> {
                 state.field_expanded("return type", |state| {
                     state.line(|w, state| print_return_type(self, w, state))
                 })?;
-                state.field_expanded("parameters", |state| state.list(unit, &self.parameters))?;
-                let details = state.hash().file.get_function_details(self.offset);
+                state.field_expanded("parameters", |state| state.list(unit, self.parameters()))?;
+                let details = self.details(state.hash());
                 if state.options().print_function_variables {
                     state.field_collapsed("variables", |state| {
-                        state.list(unit, &details.variables)
+                        state.list(unit, details.variables())
                     })?;
                 }
                 state.inline(|state| {
                     state.field_collapsed("inlined functions", |state| {
-                        state.list(unit, &details.inlined_functions)
+                        state.list(unit, details.inlined_functions())
                     })
                 })?;
                 if state.options().print_function_calls {
@@ -132,7 +133,7 @@ impl<'input> Print for Function<'input> {
         b: &Self,
     ) -> Result<()> {
         state.collapsed(
-            |state| state.id(a.id.get(), a, b, |w, _state, x| print_name(x, w)),
+            |state| state.id(a.id(), a, b, |w, _state, x| print_name(x, w)),
             |state| {
                 state.field("linkage name", a, b, |w, _state, x| {
                     print_linkage_name(x, w)
@@ -166,16 +167,16 @@ impl<'input> Print for Function<'input> {
                     state.line(a, b, |w, state, x| print_return_type(x, w, state))
                 })?;
                 state.field_expanded("parameters", |state| {
-                    state.list(unit_a, &a.parameters, unit_b, &b.parameters)
+                    state.list(unit_a, a.parameters(), unit_b, b.parameters())
                 })?;
-                let details_a = state.hash_a().file.get_function_details(a.offset);
-                let details_b = state.hash_b().file.get_function_details(b.offset);
+                let details_a = a.details(state.hash_a());
+                let details_b = b.details(state.hash_b());
                 if state.options().print_function_variables {
-                    let mut variables_a: Vec<_> = details_a.variables.iter().collect();
+                    let mut variables_a: Vec<_> = details_a.variables().iter().collect();
                     variables_a.sort_by(|x, y| {
                         LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y)
                     });
-                    let mut variables_b: Vec<_> = details_b.variables.iter().collect();
+                    let mut variables_b: Vec<_> = details_b.variables().iter().collect();
                     variables_b.sort_by(|x, y| {
                         LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y)
                     });
@@ -187,9 +188,9 @@ impl<'input> Print for Function<'input> {
                     state.field_collapsed("inlined functions", |state| {
                         state.list(
                             unit_a,
-                            &details_a.inlined_functions,
+                            details_a.inlined_functions(),
                             unit_b,
-                            &details_b.inlined_functions,
+                            details_b.inlined_functions(),
                         )
                     })
                 })?;
@@ -210,13 +211,13 @@ impl<'input> Print for Function<'input> {
 
 impl<'input> SortList for Function<'input> {
     fn cmp_id(
-        _hash_a: &FileHash,
+        hash_a: &FileHash,
         a: &Self,
-        _hash_b: &FileHash,
+        hash_b: &FileHash,
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Function::cmp_id(hash_a, a, hash_b, b)
     }
 
     // This function is a bit of a hack. We use it for sorting, but not for
@@ -228,21 +229,21 @@ impl<'input> SortList for Function<'input> {
         a: &Self,
         hash_b: &FileHash,
         b: &Self,
-        options: &Options,
+        _options: &Options,
     ) -> cmp::Ordering {
-        let ord = Self::cmp_id(hash_a, a, hash_b, b, options);
+        let ord = Function::cmp_id(hash_a, a, hash_b, b);
         if ord != cmp::Ordering::Equal {
             return ord;
         }
 
-        for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
+        for (parameter_a, parameter_b) in a.parameters().iter().zip(b.parameters().iter()) {
             let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
         }
 
-        a.parameters.len().cmp(&b.parameters.len())
+        a.parameters().len().cmp(&b.parameters().len())
     }
 
     fn cmp_by(
@@ -254,9 +255,9 @@ impl<'input> SortList for Function<'input> {
     ) -> cmp::Ordering {
         match options.sort {
             // TODO: sort by offset?
-            Sort::None => a.address.cmp(&b.address),
+            Sort::None => a.address().cmp(&b.address()),
             Sort::Name => Self::cmp_id_for_sort(hash_a, a, hash_b, b, options),
-            Sort::Size => a.size.cmp(&b.size),
+            Sort::Size => a.size().cmp(&b.size()),
         }
     }
 }
@@ -302,7 +303,7 @@ impl DiffList for Call {
             state.hash_b().functions_by_address.get(&b.to),
         ) {
             (Some(function_a), Some(function_b)) => {
-                if Function::cmp_id(
+                if <Function as SortList>::cmp_id(
                     state.hash_a(),
                     function_a,
                     state.hash_b(),

@@ -12,17 +12,17 @@ fn assign_ids(file: &File, options: &Options) {
 }
 
 pub(crate) fn assign_ids_in_unit(unit: &Unit, _options: &Options, mut id: usize) -> usize {
-    for ty in &unit.types {
+    for ty in unit.types() {
         id += 1;
-        ty.id.set(id);
+        ty.set_id(id);
     }
-    for function in &unit.functions {
+    for function in unit.functions() {
         id += 1;
-        function.id.set(id);
+        function.set_id(id);
     }
-    for variable in &unit.variables {
+    for variable in unit.variables() {
         id += 1;
-        variable.id.set(id);
+        variable.set_id(id);
     }
     id
 }
@@ -62,14 +62,14 @@ fn assign_merged_ids_in_unit(
         id += 1;
         match ty {
             MergeResult::Both(a, b) => {
-                a.id.set(id);
-                b.id.set(id);
+                a.set_id(id);
+                b.set_id(id);
             }
             MergeResult::Left(a) => {
-                a.id.set(id);
+                a.set_id(id);
             }
             MergeResult::Right(b) => {
-                b.id.set(id);
+                b.set_id(id);
             }
         }
     }
@@ -80,14 +80,14 @@ fn assign_merged_ids_in_unit(
         id += 1;
         match function {
             MergeResult::Both(a, b) => {
-                a.id.set(id);
-                b.id.set(id);
+                a.set_id(id);
+                b.set_id(id);
             }
             MergeResult::Left(a) => {
-                a.id.set(id);
+                a.set_id(id);
             }
             MergeResult::Right(b) => {
-                b.id.set(id);
+                b.set_id(id);
             }
         }
     }
@@ -96,14 +96,14 @@ fn assign_merged_ids_in_unit(
         id += 1;
         match variable {
             MergeResult::Both(a, b) => {
-                a.id.set(id);
-                b.id.set(id);
+                a.set_id(id);
+                b.set_id(id);
             }
             MergeResult::Left(a) => {
-                a.id.set(id);
+                a.set_id(id);
             }
             MergeResult::Right(b) => {
-                b.id.set(id);
+                b.set_id(id);
             }
         }
     }

@@ -12,6 +12,9 @@ use types::{Type, TypeOffset};
 use variable::LocalVariable;
 use {Address, Size};
 
+/// The debuginfo offset of a function.
+///
+/// This is unique for all functions in a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct FunctionOffset(usize);
 
@@ -49,31 +52,35 @@ impl Default for FunctionOffset {
     }
 }
 
+/// A function.
 #[derive(Debug, Default)]
 pub struct Function<'input> {
-    pub id: Cell<usize>,
-    pub offset: FunctionOffset,
-    pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
-    pub linkage_name: Option<&'input str>,
-    pub symbol_name: Option<&'input str>,
-    pub source: Source<'input>,
-    pub address: Address,
-    pub size: Size,
-    pub inline: bool,
-    pub declaration: bool,
-    pub parameters: Vec<Parameter<'input>>,
-    pub return_type: TypeOffset,
+    pub(crate) id: Cell<usize>,
+    pub(crate) offset: FunctionOffset,
+    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) linkage_name: Option<&'input str>,
+    pub(crate) symbol_name: Option<&'input str>,
+    pub(crate) source: Source<'input>,
+    pub(crate) address: Address,
+    pub(crate) size: Size,
+    pub(crate) inline: bool,
+    pub(crate) declaration: bool,
+    pub(crate) parameters: Vec<Parameter<'input>>,
+    pub(crate) return_type: TypeOffset,
 }
 
+/// Extra function details.
+///
+/// These are kept separate from `Function` so that they can be loaded only when needed.
 #[derive(Debug, Default)]
 pub struct FunctionDetails<'input> {
-    pub variables: Vec<LocalVariable<'input>>,
-    pub inlined_functions: Vec<InlinedFunction<'input>>,
+    pub(crate) variables: Vec<LocalVariable<'input>>,
+    pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
 }
 
 impl<'input> Function<'input> {
-    pub fn from_offset<'a>(
+    pub(crate) fn from_offset<'a>(
         hash: &'a FileHash<'input>,
         offset: FunctionOffset,
     ) -> Option<&'a Function<'input>> {
@@ -85,26 +92,56 @@ impl<'input> Function<'input> {
             .map(|function| *function)
     }
 
+    /// The user defined id for this function.
+    pub fn id(&self) -> usize {
+        self.id.get()
+    }
+
+    /// Set a user defined id for this function.
+    pub fn set_id(&self, id: usize) {
+        self.id.set(id)
+    }
+
+    /// The namespace of the function.
+    pub fn namespace(&self) -> Option<&Namespace> {
+        self.namespace.as_ref().map(|x| &**x)
+    }
+
+    /// The name of the function.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The linkage name of the variable.
     pub fn linkage_name(&self) -> Option<&str> {
         self.linkage_name
     }
 
+    /// The symbol name of the function.
+    ///
+    /// This is determined from a symbol table entry with a matching address.
     pub fn symbol_name(&self) -> Option<&str> {
         self.symbol_name
     }
 
+    /// The source information for the function.
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
+    }
+
+    /// The address of the function.
     pub fn address(&self) -> Option<u64> {
         self.address.get()
     }
 
+    /// The size in bytes of the function.
+    ///
+    /// This may exclude padding.
     pub fn size(&self) -> Option<u64> {
         self.size.get()
     }
 
+    /// The address range of the function.
     pub fn range(&self) -> Option<Range> {
         if let (Some(address), Some(size)) = (self.address(), self.size()) {
             Some(Range {
@@ -116,13 +153,63 @@ impl<'input> Function<'input> {
         }
     }
 
+    /// Return true if this is an inlined function.
+    pub fn is_inline(&self) -> bool {
+        self.inline
+    }
+
+    /// Return true if this is a declaration.
+    pub fn is_declaration(&self) -> bool {
+        self.declaration
+    }
+
+    /// The function parameters.
+    pub fn parameters(&self) -> &[Parameter<'input>] {
+        &self.parameters
+    }
+
+    /// The return type.
+    ///
+    /// Returns `None` if the return type is invalid.
     pub fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.return_type)
+    }
+
+    /// Extra function details.
+    pub fn details(&self, hash: &FileHash<'input>) -> FunctionDetails<'input> {
+        hash.file.get_function_details(self.offset)
+    }
+
+    /// Compare the identifying information of two functions.
+    ///
+    /// Functions are equal if they have the same namespace and name.
+    ///
+    /// This can be used to sort, and to determine if two functions refer to the same definition
+    /// (even if there are differences in the definitions).
+    pub fn cmp_id(
+        _hash_a: &FileHash,
+        a: &Function,
+        _hash_b: &FileHash,
+        b: &Function,
+    ) -> cmp::Ordering {
+        Namespace::cmp_ns_and_name(a.namespace(), a.name(), b.namespace(), b.name())
+    }
+}
+
+impl<'input> FunctionDetails<'input> {
+    /// The local variables.
+    pub fn variables(&self) -> &[LocalVariable<'input>] {
+        &self.variables
+    }
+
+    /// The inlined functions.
+    pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
+        &self.inlined_functions
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ParameterOffset(usize);
+pub(crate) struct ParameterOffset(usize);
 
 impl ParameterOffset {
     #[inline]
@@ -144,27 +231,34 @@ impl Default for ParameterOffset {
     }
 }
 
+/// A function parameter.
 #[derive(Debug, Default, Clone)]
 pub struct Parameter<'input> {
-    pub offset: ParameterOffset,
-    pub name: Option<&'input str>,
-    pub ty: TypeOffset,
+    pub(crate) offset: ParameterOffset,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: TypeOffset,
 }
 
 impl<'input> Parameter<'input> {
+    /// The name of the parameter.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The type of the parameter.
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The size in bytes of the parameter.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
-    /// Compare the identifying information of two types.
+    /// Compare the identifying information of two parameters.
+    ///
+    /// Parameters are considered equal if their name and type are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     #[allow(dead_code)]
@@ -176,6 +270,7 @@ impl<'input> Parameter<'input> {
         a.name.cmp(&b.name)
     }
 
+    /// Compare the types of two parameters.
     pub fn cmp_type(
         hash_a: &FileHash,
         a: &Parameter,
@@ -191,18 +286,40 @@ impl<'input> Parameter<'input> {
     }
 }
 
+/// An inlined instance of a function.
 #[derive(Debug, Default)]
 pub struct InlinedFunction<'input> {
-    pub abstract_origin: FunctionOffset,
-    pub size: Size,
-    pub parameters: Vec<Parameter<'input>>,
-    pub variables: Vec<LocalVariable<'input>>,
-    pub inlined_functions: Vec<InlinedFunction<'input>>,
-    pub call_source: Source<'input>,
+    pub(crate) abstract_origin: FunctionOffset,
+    pub(crate) size: Size,
+    pub(crate) parameters: Vec<Parameter<'input>>,
+    pub(crate) variables: Vec<LocalVariable<'input>>,
+    pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
+    pub(crate) call_source: Source<'input>,
 }
 
 impl<'input> InlinedFunction<'input> {
+    /// The function that this is an inlined instance of.
+    pub fn abstract_origin<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Function<'input>> {
+        Function::from_offset(hash, self.abstract_origin)
+    }
+
+    /// The size of the inlined function.
     pub fn size(&self) -> Option<u64> {
         self.size.get()
+    }
+
+    /// The source information for call location.
+    pub fn call_source(&self) -> &Source<'input> {
+        &self.call_source
+    }
+
+    /// The local variables.
+    pub fn variables(&self) -> &[LocalVariable<'input>] {
+        &self.variables
+    }
+
+    /// The inlined functions within this inlined functions.
+    pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
+        &self.inlined_functions
     }
 }

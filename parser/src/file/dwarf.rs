@@ -661,8 +661,11 @@ where
     Endian: gimli::Endianity,
 {
     let tag = node.entry().tag();
+    let mut ty = Type::default();
     let offset = node.entry().offset();
-    let kind = match tag {
+    let offset = offset.to_debug_info_offset(&dwarf_unit.header);
+    ty.offset = offset.into();
+    ty.kind = match tag {
         gimli::DW_TAG_typedef => TypeKind::Def(parse_typedef(dwarf, dwarf_unit, namespace, node)?),
         // TODO: distinguish between class and structure
         gimli::DW_TAG_class_type | gimli::DW_TAG_structure_type => {
@@ -686,6 +689,7 @@ where
             node,
         )?),
         gimli::DW_TAG_enumeration_type => TypeKind::Enumeration(parse_enumeration_type(
+            ty.offset,
             unit,
             dwarf,
             dwarf_unit,
@@ -700,10 +704,6 @@ where
         // Parse unnamed types for validation, but don't store them.
         _ => return parse_unnamed_type(dwarf, dwarf_unit, node).map(|x| x.is_some()),
     };
-    let mut ty = Type::default();
-    let offset = offset.to_debug_info_offset(&dwarf_unit.header);
-    ty.offset = offset.into();
-    ty.kind = kind;
     unit.types.push(ty);
     Ok(true)
 }
@@ -1273,6 +1273,7 @@ where
 }
 
 fn parse_enumeration_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+    offset: TypeOffset,
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
@@ -1284,8 +1285,11 @@ fn parse_enumeration_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = EnumerationType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = EnumerationType {
+        offset,
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     {
         let mut attrs = node.entry().attrs();

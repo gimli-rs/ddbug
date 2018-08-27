@@ -40,12 +40,12 @@ pub(crate) fn merged_functions<'a, 'input>(
     let mut functions = Vec::new();
     let mut inlined_functions = Vec::new();
     for function in MergeIterator::new(functions_a.into_iter(), functions_b.into_iter(), |a, b| {
-        Function::cmp_id(hash_a, a, hash_b, b, options)
+        <Function as SortList>::cmp_id(hash_a, a, hash_b, b, options)
     }) {
         let inline = match function {
-            MergeResult::Both(a, b) => a.size.is_none() || b.size.is_none(),
-            MergeResult::Left(a) => a.size.is_none(),
-            MergeResult::Right(b) => b.size.is_none(),
+            MergeResult::Both(a, b) => a.size().is_none() || b.size().is_none(),
+            MergeResult::Left(a) => a.size().is_none(),
+            MergeResult::Right(b) => b.size().is_none(),
         };
         if inline {
             inlined_functions.push(function);
@@ -68,7 +68,7 @@ pub(crate) fn merged_variables<'a, 'input>(
     let mut variables_b = filter::filter_variables(unit_b, options);
     variables_b.sort_by(|x, y| Variable::cmp_id_for_sort(hash_b, x, hash_b, y, options));
     MergeIterator::new(variables_a.into_iter(), variables_b.into_iter(), |a, b| {
-        Variable::cmp_id(hash_a, a, hash_b, b, options)
+        <Variable as SortList>::cmp_id(hash_a, a, hash_b, b, options)
     }).collect()
 }
 
@@ -280,7 +280,7 @@ pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Resul
 fn print_address(unit: &Unit, w: &mut ValuePrinter, range: Option<Range>) -> Result<()> {
     if let Some(ref range) = range {
         print::range::print_address(range, w)?;
-    } else if let Some(low_pc) = unit.low_pc {
+    } else if let Some(low_pc) = unit.address() {
         write!(w, "0x{:x}", low_pc)?;
     }
     Ok(())

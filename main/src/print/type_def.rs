@@ -6,7 +6,7 @@ use print::{self, DiffState, PrintState, ValuePrinter};
 use Result;
 
 fn print_name(ty: &TypeDef, w: &mut ValuePrinter) -> Result<()> {
-    if let Some(ref namespace) = ty.namespace {
+    if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<anon-typedef>"))?;
@@ -21,12 +21,12 @@ fn print_def(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> 
     write!(w, "type ")?;
     print_name(ty, w)?;
     write!(w, " = ")?;
-    print::types::print_ref_from_offset(w, hash, ty.ty)?;
+    print::types::print_ref(ty.ty(hash), w, hash)?;
     Ok(())
 }
 
 fn print_source(ty: &TypeDef, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    print::source::print(&ty.source, w, unit)
+    print::source::print(ty.source(), w, unit)
 }
 
 fn print_byte_size(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {

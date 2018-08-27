@@ -23,11 +23,11 @@ impl CodeRegion {
         };
 
         for segment in file.segments() {
-            let data = segment.data;
+            let bytes = segment.bytes;
             let address = segment.address;
-            let bound = panopticon::Bound::new(address, address + data.len() as u64);
+            let bound = panopticon::Bound::new(address, address + bytes.len() as u64);
             // FIXME: avoid copy
-            let layer = panopticon::Layer::wrap(data.to_vec());
+            let layer = panopticon::Layer::wrap(bytes.to_vec());
             region.cover(bound, layer);
         }
 

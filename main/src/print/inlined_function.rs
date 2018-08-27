@@ -10,7 +10,7 @@ fn print_size_and_decl(f: &InlinedFunction, w: &mut ValuePrinter, hash: &FileHas
         None => write!(w, "[??]")?,
     }
     write!(w, "\t")?;
-    match Function::from_offset(hash, f.abstract_origin) {
+    match f.abstract_origin(hash) {
         Some(function) => print::function::print_ref(function, w)?,
         None => write!(w, "<anon>")?,
     }
@@ -18,7 +18,7 @@ fn print_size_and_decl(f: &InlinedFunction, w: &mut ValuePrinter, hash: &FileHas
 }
 
 fn print_call_source(f: &InlinedFunction, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    print::source::print(&f.call_source, w, unit)
+    print::source::print(f.call_source(), w, unit)
 }
 
 impl<'input> Print for InlinedFunction<'input> {
@@ -32,7 +32,7 @@ impl<'input> Print for InlinedFunction<'input> {
                 if state.options().print_source {
                     state.field("call source", |w, _state| print_call_source(self, w, unit))?;
                 }
-                state.inline(|state| state.list(unit, &self.inlined_functions))?;
+                state.inline(|state| state.list(unit, self.inlined_functions()))?;
                 Ok(())
             },
         )?;
@@ -53,7 +53,7 @@ impl<'input> Print for InlinedFunction<'input> {
                     )?;
                 }
                 state.inline(|state| {
-                    state.list(unit_a, &a.inlined_functions, unit_b, &b.inlined_functions)
+                    state.list(unit_a, a.inlined_functions(), unit_b, b.inlined_functions())
                 })?;
                 Ok(())
             },
@@ -75,11 +75,11 @@ impl<'input> DiffList for InlinedFunction<'input> {
     // - include diff cost of lower levels of inlined functions
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        let function_a = Function::from_offset(state.hash_a(), a.abstract_origin);
-        let function_b = Function::from_offset(state.hash_b(), b.abstract_origin);
+        let function_a = a.abstract_origin(state.hash_a());
+        let function_b = b.abstract_origin(state.hash_b());
         match (function_a, function_b) {
             (Some(function_a), Some(function_b)) => {
-                if Function::cmp_id(
+                if <Function as SortList>::cmp_id(
                     state.hash_a(),
                     function_a,
                     state.hash_b(),
@@ -96,11 +96,11 @@ impl<'input> DiffList for InlinedFunction<'input> {
             }
         }
 
-        let path_a = a.call_source.path(unit_a);
-        let path_b = b.call_source.path(unit_b);
+        let path_a = a.call_source().path(unit_a);
+        let path_b = b.call_source().path(unit_b);
         if path_a.cmp(&path_b) != cmp::Ordering::Equal
-            || a.call_source.line.cmp(&b.call_source.line) != cmp::Ordering::Equal
-            || a.call_source.column.cmp(&b.call_source.column) != cmp::Ordering::Equal
+            || a.call_source().line().cmp(&b.call_source().line()) != cmp::Ordering::Equal
+            || a.call_source().column().cmp(&b.call_source().column()) != cmp::Ordering::Equal
         {
             cost += 1;
         }

@@ -1,12 +1,12 @@
 use std::cmp;
 
-use parser::{EnumerationType, Enumerator, FileHash, TypeOffset, Unit};
+use parser::{EnumerationType, Enumerator, FileHash, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
 fn print_name(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "enum ")?;
-    if let Some(ref namespace) = ty.namespace {
+    if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
@@ -22,7 +22,6 @@ pub(crate) fn print(
     state: &mut PrintState,
     unit: &Unit,
     id: usize,
-    offset: TypeOffset,
 ) -> Result<()> {
     state.collapsed(
         |state| state.id(id, |w, _state| print_name(ty, w)),
@@ -32,7 +31,7 @@ pub(crate) fn print(
             }
             state.field("declaration", |w, _state| print_declaration(ty, w))?;
             state.field("size", |w, state| print_byte_size(ty, w, state))?;
-            let enumerators = state.hash().file.get_enumerators(offset);
+            let enumerators = ty.enumerators(state.hash());
             state.field_expanded("enumerators", |state| state.list(unit, &enumerators))
         },
     )?;
@@ -45,10 +44,8 @@ pub(crate) fn diff(
     id: usize,
     unit_a: &Unit,
     a: &EnumerationType,
-    offset_a: TypeOffset,
     unit_b: &Unit,
     b: &EnumerationType,
-    offset_b: TypeOffset,
 ) -> Result<()> {
     // The names should be the same, but we can't be sure.
     state.collapsed(
@@ -65,8 +62,8 @@ pub(crate) fn diff(
             state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))?;
             state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
             // TODO: handle reordering better
-            let enumerators_a = state.hash_a().file.get_enumerators(offset_a);
-            let enumerators_b = state.hash_b().file.get_enumerators(offset_b);
+            let enumerators_a = a.enumerators(state.hash_a());
+            let enumerators_b = b.enumerators(state.hash_b());
             state.field_expanded("enumerators", |state| {
                 state.list(unit_a, &enumerators_a, unit_b, &enumerators_b)
             })
@@ -77,11 +74,11 @@ pub(crate) fn diff(
 }
 
 fn print_source(ty: &EnumerationType, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    print::source::print(&ty.source, w, unit)
+    print::source::print(ty.source(), w, unit)
 }
 
 fn print_declaration(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {
-    if ty.declaration {
+    if ty.is_declaration() {
         write!(w, "yes")?;
     }
     Ok(())
@@ -98,7 +95,7 @@ fn print_byte_size(ty: &EnumerationType, w: &mut ValuePrinter, hash: &FileHash) 
 
 fn print_enumerator(ty: &Enumerator, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
-    if let Some(value) = ty.value {
+    if let Some(value) = ty.value() {
         write!(w, "({})", value)?;
     }
     Ok(())
@@ -131,10 +128,10 @@ impl<'input> DiffList for Enumerator<'input> {
         // A difference in name is usually more significant than a difference in value,
         // such as for enums where the value is assigned by the compiler.
         let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+        if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
             cost += 4;
         }
-        if a.value.cmp(&b.value) != cmp::Ordering::Equal {
+        if a.value().cmp(&b.value()) != cmp::Ordering::Equal {
             cost += 2;
         }
         cost

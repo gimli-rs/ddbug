@@ -1,22 +1,27 @@
 use std::cmp;
 use std::rc::Rc;
 
-#[derive(Debug, PartialEq, Eq)]
+/// A namespace kind.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum NamespaceKind {
+    /// An explicit namespace.
     Namespace,
+    /// A namespace for items defined within a function.
     Function,
+    /// A namespace for items defined within a type.
     Type,
 }
 
+/// A nestable namspace.
 #[derive(Debug)]
 pub struct Namespace<'input> {
-    pub parent: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
-    pub kind: NamespaceKind,
+    pub(crate) parent: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) kind: NamespaceKind,
 }
 
 impl<'input> Namespace<'input> {
-    pub fn new(
+    pub(crate) fn new(
         parent: &Option<Rc<Namespace<'input>>>,
         name: Option<&'input str>,
         kind: NamespaceKind,
@@ -28,8 +33,19 @@ impl<'input> Namespace<'input> {
         })
     }
 
+    /// The parent namespace.
+    pub fn parent(&self) -> Option<&Namespace<'input>> {
+        self.parent.as_ref().map(|x| &**x)
+    }
+
+    /// The namespace name.
     pub fn name(&self) -> Option<&str> {
         self.name
+    }
+
+    /// The namespace kind.
+    pub fn kind(&self) -> NamespaceKind {
+        self.kind
     }
 
     fn len(&self) -> usize {
@@ -50,7 +66,7 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    pub fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
+    pub(crate) fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
         match *namespace {
             Some(ref namespace) => {
                 namespace.kind == NamespaceKind::Type
@@ -60,9 +76,9 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    fn _filter(&self, namespace: &[&str]) -> (bool, usize) {
+    fn _is_within(&self, namespace: &[&str]) -> (bool, usize) {
         let (ret, offset) = match self.parent {
-            Some(ref parent) => parent._filter(namespace),
+            Some(ref parent) => parent._is_within(namespace),
             None => (true, 0),
         };
 
@@ -80,8 +96,11 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    pub fn filter(&self, namespace: &[&str]) -> bool {
-        self._filter(namespace) == (true, namespace.len())
+    /// Return true if this namespace is within the given namespace.
+    ///
+    /// `namespace` is a slice of names, starting with the root namespace name.
+    pub fn is_within(&self, namespace: &[&str]) -> bool {
+        self._is_within(namespace) == (true, namespace.len())
     }
 
     fn _cmp(a: &Namespace, b: &Namespace) -> cmp::Ordering {
@@ -120,20 +139,20 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    pub fn cmp_ns_and_name(
-        ns1: &Option<Rc<Namespace>>,
+    pub(crate) fn cmp_ns_and_name(
+        ns1: Option<&Namespace>,
         name1: Option<&str>,
-        ns2: &Option<Rc<Namespace>>,
+        ns2: Option<&Namespace>,
         name2: Option<&str>,
     ) -> cmp::Ordering {
         match (ns1, ns2) {
-            (&Some(ref ns1), &Some(ref ns2)) => match Namespace::cmp(ns1, ns2) {
+            (Some(ns1), Some(ns2)) => match Namespace::cmp(ns1, ns2) {
                 cmp::Ordering::Equal => name1.cmp(&name2),
                 o => o,
             },
-            (&Some(_), &None) => cmp::Ordering::Greater,
-            (&None, &Some(_)) => cmp::Ordering::Less,
-            (&None, &None) => name1.cmp(&name2),
+            (Some(_), None) => cmp::Ordering::Greater,
+            (None, Some(_)) => cmp::Ordering::Less,
+            (None, None) => name1.cmp(&name2),
         }
     }
 }

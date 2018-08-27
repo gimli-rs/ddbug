@@ -4,7 +4,7 @@ use Result;
 
 fn print_name(ty: &StructType, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "struct ")?;
-    if let Some(ref namespace) = ty.namespace {
+    if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
@@ -63,27 +63,27 @@ pub(crate) fn diff(
 }
 
 fn print_source(ty: &StructType, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    print::source::print(&ty.source, w, unit)
+    print::source::print(ty.source(), w, unit)
 }
 
 fn print_byte_size(ty: &StructType, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
     if let Some(size) = ty.byte_size() {
         write!(w, "{}", size)?;
-    } else if !ty.declaration {
+    } else if !ty.is_declaration() {
         debug!("struct with no size");
     }
     Ok(())
 }
 
 fn print_declaration(ty: &StructType, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
-    if ty.declaration {
+    if ty.is_declaration() {
         write!(w, "yes")?;
     }
     Ok(())
 }
 
 pub(crate) fn print_members(ty: &StructType, state: &mut PrintState, unit: &Unit) -> Result<()> {
-    state.list(unit, &ty.members)
+    state.list(unit, ty.members())
 }
 
 pub(crate) fn diff_members(
@@ -93,5 +93,5 @@ pub(crate) fn diff_members(
     unit_b: &Unit,
     b: &StructType,
 ) -> Result<()> {
-    state.list(unit_a, &a.members, unit_b, &b.members)
+    state.list(unit_a, a.members(), unit_b, b.members())
 }

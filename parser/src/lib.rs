@@ -1,3 +1,24 @@
+//! A library for parsing debuginfo.
+//!
+//! ## Example usage
+//!
+//! ```rust,no_run
+//! extern crate ddbug_parser;
+//!
+//! # let a_file_path = "";
+//! ddbug_parser::File::parse(a_file_path, |file| {
+//!     for unit in file.units() {
+//!         for function in unit.functions() {
+//!             if let Some(name) = function.name() {
+//!                 println!("{}", name);
+//!             }
+//!         }
+//!     }
+//!     Ok(())
+//! });
+//! ```
+#![deny(missing_docs)]
+
 extern crate fnv;
 extern crate gimli;
 #[macro_use]
@@ -30,6 +51,7 @@ use std::fmt;
 use std::io;
 use std::result;
 
+/// A parsing error.
 #[derive(Debug)]
 pub struct Error(pub Cow<'static, str>);
 
@@ -77,36 +99,45 @@ impl From<crate_pdb::Error> for Error {
 }
 */
 
+/// A parsing result.
 pub type Result<T> = result::Result<T, Error>;
 
 mod address {
     use std::u64;
 
+    /// An optional address.
+    ///
+    /// This is similar to `Option<u64>`, but uses `0` to encode the `None` case.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Address(u64);
 
     impl Address {
+        /// Create a known address value.
         #[inline]
         pub fn new(address: u64) -> Address {
             debug_assert!(Address(address) != Address::none());
             Address(address)
         }
 
+        /// Create an unknown or absent address value.
         #[inline]
         pub fn none() -> Address {
             Address(0)
         }
 
+        /// Return true if the address is unknown or absent.
         #[inline]
         pub fn is_none(self) -> bool {
             self == Self::none()
         }
 
+        /// Return true if the address is known.
         #[inline]
         pub fn is_some(self) -> bool {
             self != Self::none()
         }
 
+        /// Return the address.
         #[inline]
         pub fn get(self) -> Option<u64> {
             if self.is_none() {
@@ -130,31 +161,39 @@ pub use address::Address;
 mod size {
     use std::u64;
 
+    /// An optional size.
+    ///
+    /// This is similar to `Option<u64>`, but uses `u64::MAX` to encode the `None` case.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Size(u64);
 
     impl Size {
+        /// Create a known size value.
         #[inline]
         pub fn new(size: u64) -> Size {
             debug_assert!(Size(size) != Size::none());
             Size(size)
         }
 
+        /// Create an unknown or absent size value.
         #[inline]
         pub fn none() -> Size {
             Size(u64::MAX)
         }
 
+        /// Return true if the size is unknown or absent.
         #[inline]
         pub fn is_none(self) -> bool {
             self == Self::none()
         }
 
+        /// Return true if the size is known.
         #[inline]
         pub fn is_some(self) -> bool {
             self != Self::none()
         }
 
+        /// Return the size.
         #[inline]
         pub fn get(self) -> Option<u64> {
             if self.is_none() {

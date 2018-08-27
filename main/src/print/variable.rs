@@ -1,6 +1,6 @@
 use std::cmp;
 
-use parser::{FileHash, Namespace, Unit, Variable};
+use parser::{FileHash, Unit, Variable};
 use print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
 use {Options, Result, Sort};
 
@@ -62,11 +62,11 @@ pub(crate) fn diff(
 
 fn print_name(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "var ")?;
-    if let Some(ref namespace) = v.namespace {
+    if let Some(namespace) = v.namespace() {
         print::namespace::print(namespace, w)?;
     }
     write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;
-    print::types::print_ref_from_offset(w, hash, v.ty)?;
+    print::types::print_ref(v.ty(hash), w, hash)?;
     Ok(())
 }
 
@@ -85,7 +85,7 @@ fn print_symbol_name(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
 }
 
 fn print_source(v: &Variable, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
-    print::source::print(&v.source, w, unit)
+    print::source::print(v.source(), w, unit)
 }
 
 fn print_address(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
@@ -98,14 +98,14 @@ fn print_address(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
 fn print_size(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(byte_size) = v.byte_size(hash) {
         write!(w, "{}", byte_size)?;
-    } else if !v.declaration {
+    } else if !v.is_declaration() {
         debug!("variable with no size");
     }
     Ok(())
 }
 
 fn print_declaration(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
-    if v.declaration {
+    if v.is_declaration() {
         write!(w, "yes")?;
     }
     Ok(())
@@ -125,13 +125,13 @@ impl<'input> Print for Variable<'input> {
 
 impl<'input> SortList for Variable<'input> {
     fn cmp_id(
-        _hash_a: &FileHash,
+        hash_a: &FileHash,
         a: &Self,
-        _hash_b: &FileHash,
+        hash_b: &FileHash,
         b: &Self,
         _options: &Options,
     ) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Variable::cmp_id(hash_a, a, hash_b, b)
     }
 
     fn cmp_by(
@@ -143,8 +143,8 @@ impl<'input> SortList for Variable<'input> {
     ) -> cmp::Ordering {
         match options.sort {
             // TODO: sort by offset?
-            Sort::None => a.address.cmp(&b.address),
-            Sort::Name => Self::cmp_id(hash_a, a, hash_b, b, options),
+            Sort::None => a.address().cmp(&b.address()),
+            Sort::Name => SortList::cmp_id(hash_a, a, hash_b, b, options),
             Sort::Size => a.byte_size(hash_a).cmp(&b.byte_size(hash_b)),
         }
     }

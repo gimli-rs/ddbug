@@ -13,8 +13,6 @@ mod code;
 mod filter;
 mod print;
 
-use std::rc::Rc;
-
 use parser::Namespace;
 
 pub use parser::{File, Result};
@@ -87,10 +85,10 @@ impl<'a> Options<'a> {
         self.filter_name.is_none() || self.filter_name == name
     }
 
-    fn filter_namespace(&self, namespace: &Option<Rc<Namespace>>) -> bool {
+    fn filter_namespace(&self, namespace: Option<&Namespace>) -> bool {
         self.filter_namespace.is_empty() || {
-            match *namespace {
-                Some(ref namespace) => namespace.filter(&self.filter_namespace),
+            match namespace {
+                Some(namespace) => namespace.is_within(&self.filter_namespace),
                 None => false,
             }
         }

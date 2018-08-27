@@ -1,28 +1,36 @@
 use std::mem;
 
+/// An address range.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Range {
+    /// The beginning of the address range (inclusive).
     pub begin: u64,
+
+    /// The end of the address range (exclusive).
     pub end: u64,
 }
 
 impl Range {
+    /// The size of the address range.
     pub fn size(&self) -> u64 {
         self.end - self.begin
     }
 }
 
+/// A list of address ranges.
 #[derive(Debug, Default, Clone)]
 pub struct RangeList {
-    pub ranges: Vec<Range>,
+    ranges: Vec<Range>,
 }
 
 impl RangeList {
+    /// The ranges in the list.
     #[inline]
     pub fn list(&self) -> &[Range] {
         &self.ranges
     }
 
+    /// The total size of the ranges in the list.
     pub fn size(&self) -> u64 {
         let mut size = 0;
         for range in &self.ranges {
@@ -31,7 +39,7 @@ impl RangeList {
         size
     }
 
-    // Append a range, combining with previous range if possible.
+    /// Append a range, combining with previous range if possible.
     pub fn push(&mut self, range: Range) {
         if range.end <= range.begin {
             debug!("invalid range: {:?}", range);
@@ -60,6 +68,7 @@ impl RangeList {
         self.ranges.push(range);
     }
 
+    /// Sort the ranges by beginning address, and combine ranges where possible.
     pub fn sort(&mut self) {
         self.ranges.sort_by(|a, b| a.begin.cmp(&b.begin));
         // Combine ranges by adding to a new list.
@@ -70,6 +79,9 @@ impl RangeList {
         }
     }
 
+    /// Remove a list of ranges from the list.
+    ///
+    /// This handles ranges that only partially overlap with existing ranges.
     pub fn subtract(&self, other: &Self) -> Self {
         let mut ranges = RangeList::default();
         let mut other_ranges = other.ranges.iter();

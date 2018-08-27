@@ -30,7 +30,7 @@ impl<'input> Print for Section<'input> {
             |state| state.line(|w, _state| print_name(self, w)),
             |state| {
                 state.field("address", |w, _state| print_address(self, w))?;
-                state.field_u64("size", self.size)
+                state.field_u64("size", self.size())
             },
         )
     }
@@ -40,7 +40,7 @@ impl<'input> Print for Section<'input> {
             |state| state.line(a, b, |w, _state, x| print_name(x, w)),
             |state| {
                 state.field("address", a, b, |w, _state, x| print_address(x, w))?;
-                state.field_u64("size", a.size, b.size)
+                state.field_u64("size", a.size(), b.size())
             },
         )
     }
@@ -53,8 +53,8 @@ impl<'input> DiffList for Section<'input> {
 
     fn diff_cost(_state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
         let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal
-            || a.segment.cmp(&b.segment) != cmp::Ordering::Equal
+        if a.name().cmp(&b.name()) != cmp::Ordering::Equal
+            || a.segment().cmp(&b.segment()) != cmp::Ordering::Equal
         {
             cost += 2;
         }

@@ -46,7 +46,7 @@ impl<'input> DiffList for Parameter<'input> {
 
     fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
         let mut cost = 0;
-        if a.name.cmp(&b.name) != cmp::Ordering::Equal {
+        if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
             cost += 1;
         }
         match (a.ty(state.hash_a()), b.ty(state.hash_b())) {

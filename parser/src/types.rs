@@ -11,18 +11,30 @@ use namespace::Namespace;
 use source::Source;
 use Size;
 
+/// The kind of a type.
 #[derive(Debug, Clone)]
 pub enum TypeKind<'input> {
+    /// The void type.
     Void,
+    /// A base type.
     Base(BaseType<'input>),
+    /// A type alias definition.
     Def(TypeDef<'input>),
+    /// A struct type.
     Struct(StructType<'input>),
+    /// A union type.
     Union(UnionType<'input>),
+    /// An enumeration type.
     Enumeration(EnumerationType<'input>),
+    /// A type for an array of elements.
     Array(ArrayType<'input>),
+    /// A function type.
     Function(FunctionType<'input>),
+    /// An unspecified type.
     Unspecified(UnspecifiedType<'input>),
+    /// The type of a pointer to a member.
     PointerToMember(PointerToMemberType),
+    /// A type that is obtained by adding a modifier to another type.
     Modifier(TypeModifier<'input>),
 }
 
@@ -44,6 +56,9 @@ impl<'input> TypeKind<'input> {
     }
 }
 
+/// The debuginfo offset of a type.
+///
+/// This is unique for all types in a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeOffset(usize);
 
@@ -59,11 +74,13 @@ impl TypeOffset {
         TypeOffset(usize::MAX)
     }
 
+    /// Return true if the type is unknown or `void`.
     #[inline]
     pub fn is_none(self) -> bool {
         self == Self::none()
     }
 
+    /// Return true if the type is known and not `void`.
     #[inline]
     pub fn is_some(self) -> bool {
         self != Self::none()
@@ -86,11 +103,12 @@ impl Default for TypeOffset {
     }
 }
 
+/// A type.
 #[derive(Debug, Clone)]
 pub struct Type<'input> {
-    pub id: Cell<usize>,
-    pub offset: TypeOffset,
-    pub kind: TypeKind<'input>,
+    pub(crate) id: Cell<usize>,
+    pub(crate) offset: TypeOffset,
+    pub(crate) kind: TypeKind<'input>,
 }
 
 impl<'input> Default for Type<'input> {
@@ -104,6 +122,9 @@ impl<'input> Default for Type<'input> {
 }
 
 impl<'input> Type<'input> {
+    /// Lookup a type given its offset.
+    ///
+    /// Returns `None` if the type offset is invalid.
     pub fn from_offset<'a>(
         hash: &'a FileHash<'input>,
         offset: TypeOffset,
@@ -125,6 +146,7 @@ impl<'input> Type<'input> {
         }
     }
 
+    /// Return true if the type is the void type.
     pub fn is_void(&self) -> bool {
         match self.kind {
             TypeKind::Void => true,
@@ -132,6 +154,27 @@ impl<'input> Type<'input> {
         }
     }
 
+    /// The user defined id for this type.
+    pub fn id(&self) -> usize {
+        self.id.get()
+    }
+
+    /// Set a user defined id for this type.
+    pub fn set_id(&self, id: usize) {
+        self.id.set(id)
+    }
+
+    /// The debuginfo offset of this type.
+    pub fn offset(&self) -> TypeOffset {
+        self.offset
+    }
+
+    /// The kind of this type.
+    pub fn kind(&self) -> &TypeKind<'input> {
+        &self.kind
+    }
+
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         match self.kind {
             TypeKind::Void => Some(0),
@@ -148,6 +191,7 @@ impl<'input> Type<'input> {
         }
     }
 
+    /// Return true if this is an anonymous type, or defined within an anonymous type.
     pub fn is_anon(&self) -> bool {
         match self.kind {
             TypeKind::Struct(ref val) => val.is_anon(),
@@ -164,6 +208,7 @@ impl<'input> Type<'input> {
         }
     }
 
+    /// Return true if this is the type of a function (including aliases and modifiers).
     fn is_function(&self, hash: &FileHash) -> bool {
         match self.kind {
             TypeKind::Function(..) => true,
@@ -186,6 +231,7 @@ impl<'input> Type<'input> {
         }
     }
 
+    /// If this is a type that has members, then call 'f' for each member of this type.
     pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
         match self.kind {
             TypeKind::Struct(ref val) => val.visit_members(f),
@@ -203,9 +249,12 @@ impl<'input> Type<'input> {
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Equal types must have the same type kind. Further requirements for equality
+    /// depend on the specific type kind.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
-    /// This must only be called for types that have identifiers.
     pub fn cmp_id(
         hash_a: &FileHash,
         type_a: &Type,
@@ -236,29 +285,41 @@ impl<'input> Type<'input> {
     }
 }
 
+/// A type that is obtained by adding a modifier to another type.
 #[derive(Debug, Clone)]
 pub struct TypeModifier<'input> {
-    pub kind: TypeModifierKind,
-    pub ty: TypeOffset,
-    pub name: Option<&'input str>,
-    pub byte_size: Size,
+    pub(crate) kind: TypeModifierKind,
+    pub(crate) ty: TypeOffset,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) byte_size: Size,
     // TODO: hack
-    pub address_size: Option<u64>,
+    pub(crate) address_size: Option<u64>,
 }
 
+/// The kind of a type modifier.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TypeModifierKind {
+    /// The resulting type is a pointer to the type being modified.
     Pointer,
+    /// The resulting type is a reference to the type being modified.
     Reference,
+    /// The resulting type is a constant.
     Const,
+    /// The resulting type is packed.
     Packed,
+    /// The resulting type is volatile.
     Volatile,
+    /// The resulting type has restricted aliasing.
     Restrict,
+    /// The resulting type is shared (for example, in UPC).
     Shared,
+    /// The resulting type is a rvalue reference to the type being modified.
     RvalueReference,
+    /// The resulting type is atomic.
     Atomic,
     // TODO:
     // Immutable,
+    /// Any other type modifier.
     // PDB is disabled
     #[allow(dead_code)]
     Other,
@@ -282,14 +343,24 @@ impl TypeModifierKind {
 }
 
 impl<'input> TypeModifier<'input> {
+    /// The name of the type.
+    ///
+    /// If this is `None` then the name should be derived from the type that is being modified.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The kind of this type modifier.
+    pub fn kind(&self) -> TypeModifierKind {
+        self.kind
+    }
+
+    /// The type that is being modified.
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             return self.byte_size.get();
@@ -309,6 +380,10 @@ impl<'input> TypeModifier<'input> {
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Type modifiers are equal if the modifiers are the same and the types being modified
+    /// are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(
@@ -338,22 +413,28 @@ impl<'input> TypeModifier<'input> {
     }
 }
 
+/// A base type.
 #[derive(Debug, Default, Clone)]
 pub struct BaseType<'input> {
-    pub name: Option<&'input str>,
-    pub byte_size: Size,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) byte_size: Size,
 }
 
 impl<'input> BaseType<'input> {
+    /// The name of the type.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Base types are considered equal if their names are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     fn cmp_id(a: &BaseType, b: &BaseType) -> cmp::Ordering {
@@ -361,58 +442,101 @@ impl<'input> BaseType<'input> {
     }
 }
 
+/// A type alias definition.
 #[derive(Debug, Default, Clone)]
 pub struct TypeDef<'input> {
-    pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
-    pub ty: TypeOffset,
-    pub source: Source<'input>,
+    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: TypeOffset,
+    pub(crate) source: Source<'input>,
 }
 
 impl<'input> TypeDef<'input> {
+    /// The namespace of the type.
+    pub fn namespace(&self) -> Option<&Namespace> {
+        self.namespace.as_ref().map(|x| &**x)
+    }
+
+    /// The name of the type definition.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The type that the alias is being defined for.
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The source information for the type definition.
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
+    }
+
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Type definitions are considered equal if their names are equal, even if the type being
+    /// aliased is different.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(a: &TypeDef, b: &TypeDef) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Namespace::cmp_ns_and_name(a.namespace(), a.name(), b.namespace(), b.name())
     }
 }
 
+/// A struct type.
 #[derive(Debug, Default, Clone)]
 pub struct StructType<'input> {
-    pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
-    pub source: Source<'input>,
-    pub byte_size: Size,
-    pub declaration: bool,
-    pub members: Vec<Member<'input>>,
+    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) source: Source<'input>,
+    pub(crate) byte_size: Size,
+    pub(crate) declaration: bool,
+    pub(crate) members: Vec<Member<'input>>,
 }
 
 impl<'input> StructType<'input> {
+    /// The namespace of the type.
+    pub fn namespace(&self) -> Option<&Namespace> {
+        self.namespace.as_ref().map(|x| &**x)
+    }
+
+    /// The name of the type.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The source information for the type.
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
+    }
+
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
+    /// Return true if this is a declaration.
+    pub fn is_declaration(&self) -> bool {
+        self.declaration
+    }
+
+    /// Return true if this is an anonymous type, or defined within an anonymous type.
     pub fn is_anon(&self) -> bool {
         self.name.is_none() || Namespace::is_anon_type(&self.namespace)
     }
 
+    /// The members of this type.
+    pub fn members(&self) -> &[Member<'input>] {
+        &self.members
+    }
+
+    /// Call 'f' for each member of this type.
     pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
         for member in &self.members {
             f(member);
@@ -420,36 +544,64 @@ impl<'input> StructType<'input> {
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Structs are considered equal if their names are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(a: &StructType, b: &StructType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Namespace::cmp_ns_and_name(a.namespace(), a.name(), b.namespace(), b.name())
     }
 }
 
+/// A union type.
 #[derive(Debug, Default, Clone)]
 pub struct UnionType<'input> {
-    pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
-    pub source: Source<'input>,
-    pub byte_size: Size,
-    pub declaration: bool,
-    pub members: Vec<Member<'input>>,
+    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) source: Source<'input>,
+    pub(crate) byte_size: Size,
+    pub(crate) declaration: bool,
+    pub(crate) members: Vec<Member<'input>>,
 }
 
 impl<'input> UnionType<'input> {
+    /// The namespace of the type.
+    pub fn namespace(&self) -> Option<&Namespace> {
+        self.namespace.as_ref().map(|x| &**x)
+    }
+
+    /// The name of the type.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The source information for the type.
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
+    }
+
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
+    /// Return true if this is a declaration.
+    pub fn is_declaration(&self) -> bool {
+        self.declaration
+    }
+
+    /// Return true if this is an anonymous type, or defined within an anonymous type.
     pub fn is_anon(&self) -> bool {
         self.name.is_none() || Namespace::is_anon_type(&self.namespace)
     }
 
+    /// The members of this type.
+    pub fn members(&self) -> &[Member<'input>] {
+        &self.members
+    }
+
+    /// Call 'f' for each member of this type.
     pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
         for member in &self.members {
             f(member);
@@ -457,33 +609,50 @@ impl<'input> UnionType<'input> {
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Unions are considered equal if their names are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(a: &UnionType, b: &UnionType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Namespace::cmp_ns_and_name(a.namespace(), a.name(), b.namespace(), b.name())
     }
 }
 
+/// A member of a struct or union.
 #[derive(Debug, Default, Clone)]
 pub struct Member<'input> {
-    pub name: Option<&'input str>,
-    pub ty: TypeOffset,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: TypeOffset,
     // Defaults to 0, so always present.
-    pub bit_offset: u64,
-    pub bit_size: Size,
+    pub(crate) bit_offset: u64,
+    pub(crate) bit_size: Size,
     // Redundant, but simplifies code.
-    pub next_bit_offset: Size,
+    pub(crate) next_bit_offset: Size,
 }
 
 impl<'input> Member<'input> {
+    /// The name of the member.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The debuginfo offset of the type of this member.
+    pub fn type_offset<'a>(&self) -> TypeOffset {
+        self.ty
+    }
+
+    /// The type of this member.
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The offset in bits of this member.
+    pub fn bit_offset(&self) -> u64 {
+        self.bit_offset
+    }
+
+    /// The size in bits of this member.
     pub fn bit_size(&self, hash: &FileHash) -> Option<u64> {
         if self.bit_size.is_some() {
             self.bit_size.get()
@@ -492,6 +661,7 @@ impl<'input> Member<'input> {
         }
     }
 
+    /// Return true if this member defines an inline type.
     pub fn is_inline(&self, hash: &FileHash) -> bool {
         match self.name() {
             Some(s) => if s.starts_with("RUST$ENCODED$ENUM$") {
@@ -506,6 +676,7 @@ impl<'input> Member<'input> {
         }
     }
 
+    /// The size in bits of the padding that follows this member.
     pub fn padding(&self, bit_size: Option<u64>) -> Option<Padding> {
         if let (Some(bit_size), Some(next_bit_offset)) = (bit_size, self.next_bit_offset.get()) {
             let bit_offset = self.bit_offset + bit_size;
@@ -521,31 +692,54 @@ impl<'input> Member<'input> {
     }
 }
 
+/// The padding after a struct or union member.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Padding {
+    /// The offset in bits of the padding within the struct or union.
     pub bit_offset: u64,
+    /// The size in bits of the padding.
     pub bit_size: u64,
 }
 
+/// An enumeration type.
 #[derive(Debug, Default, Clone)]
 pub struct EnumerationType<'input> {
-    pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
-    pub source: Source<'input>,
-    pub declaration: bool,
-    pub ty: TypeOffset,
-    pub byte_size: Size,
+    pub(crate) offset: TypeOffset,
+    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) source: Source<'input>,
+    pub(crate) declaration: bool,
+    pub(crate) ty: TypeOffset,
+    pub(crate) byte_size: Size,
 }
 
 impl<'input> EnumerationType<'input> {
+    /// The namespace of the type.
+    pub fn namespace(&self) -> Option<&Namespace> {
+        self.namespace.as_ref().map(|x| &**x)
+    }
+
+    /// The name of the type.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The source information for the type.
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
+    }
+
+    /// Return true if this is a declaration.
+    pub fn is_declaration(&self) -> bool {
+        self.declaration
+    }
+
+    /// The underlying type of the enumeration.
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size.get()
@@ -554,53 +748,75 @@ impl<'input> EnumerationType<'input> {
         }
     }
 
+    /// The enumerators of this type.
+    pub fn enumerators(&self, hash: &FileHash<'input>) -> Vec<Enumerator<'input>> {
+        hash.file.get_enumerators(self.offset)
+    }
+
     /// Compare the identifying information of two types.
+    ///
+    /// Enumerations are considered equal if their names are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(a: &EnumerationType, b: &EnumerationType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Namespace::cmp_ns_and_name(a.namespace(), a.name(), b.namespace(), b.name())
     }
 }
 
+/// A member of an enumeration.
 #[derive(Debug, Default, Clone)]
 pub struct Enumerator<'input> {
-    pub name: Option<&'input str>,
-    pub value: Option<i64>,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) value: Option<i64>,
 }
 
 impl<'input> Enumerator<'input> {
+    /// The name of the enumerator.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
+
+    /// The value of the enumerator.
+    #[inline]
+    pub fn value(&self) -> Option<i64> {
+        self.value
+    }
 }
 
+/// A type for an array of elements.
 #[derive(Debug, Default, Clone)]
 pub struct ArrayType<'input> {
-    pub ty: TypeOffset,
-    pub count: Size,
-    pub byte_size: Size,
-    pub phantom: marker::PhantomData<&'input str>,
+    pub(crate) ty: TypeOffset,
+    pub(crate) count: Size,
+    pub(crate) byte_size: Size,
+    pub(crate) phantom: marker::PhantomData<&'input str>,
 }
 
 impl<'input> ArrayType<'input> {
-    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    /// The type of the elements in the array.
+    pub fn element_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size.get()
-        } else if let (Some(ty), Some(count)) = (self.ty(hash), self.count.get()) {
+        } else if let (Some(ty), Some(count)) = (self.element_type(hash), self.count.get()) {
             ty.byte_size(hash).map(|v| v * count)
         } else {
             None
         }
     }
 
+    /// The number of elements in the array.
     pub fn count(&self, hash: &FileHash) -> Option<u64> {
         if self.count.is_some() {
             self.count.get()
-        } else if let (Some(ty), Some(byte_size)) = (self.ty(hash), self.byte_size.get()) {
+        } else if let (Some(ty), Some(byte_size)) = (self.element_type(hash), self.byte_size.get())
+        {
             ty.byte_size(hash).map(|v| byte_size / v)
         } else {
             None
@@ -608,6 +824,9 @@ impl<'input> ArrayType<'input> {
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Array types are considered equal if the element identifiers and counts are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(
@@ -616,7 +835,7 @@ impl<'input> ArrayType<'input> {
         hash_b: &FileHash,
         b: &ArrayType,
     ) -> cmp::Ordering {
-        match (a.ty(hash_a), b.ty(hash_b)) {
+        match (a.element_type(hash_a), b.element_type(hash_b)) {
             (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
@@ -635,23 +854,35 @@ impl<'input> ArrayType<'input> {
     }
 }
 
+/// A function type.
 #[derive(Debug, Default, Clone)]
 pub struct FunctionType<'input> {
-    pub parameters: Vec<Parameter<'input>>,
-    pub return_type: TypeOffset,
-    pub byte_size: Size,
+    pub(crate) parameters: Vec<Parameter<'input>>,
+    pub(crate) return_type: TypeOffset,
+    pub(crate) byte_size: Size,
 }
 
 impl<'input> FunctionType<'input> {
-    pub fn byte_size(&self) -> Option<u64> {
-        self.byte_size.get()
+    /// The parameters of the function.
+    pub fn parameters(&self) -> &[Parameter<'input>] {
+        &self.parameters
     }
 
+    /// The return type of the function.
     pub fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.return_type)
     }
 
+    /// The size in bytes of an instance of this type.
+    pub fn byte_size(&self) -> Option<u64> {
+        self.byte_size.get()
+    }
+
     /// Compare the identifying information of two types.
+    ///
+    /// Function types are considered equal if they have the same parameter types and
+    /// return types. Parameter names are ignored.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(
@@ -692,52 +923,69 @@ impl<'input> FunctionType<'input> {
     }
 }
 
+/// An unspecified type.
 #[derive(Debug, Default, Clone)]
 pub struct UnspecifiedType<'input> {
-    pub namespace: Option<Rc<Namespace<'input>>>,
-    pub name: Option<&'input str>,
+    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) name: Option<&'input str>,
 }
 
 impl<'input> UnspecifiedType<'input> {
+    /// The namespace of the type.
+    pub fn namespace(&self) -> Option<&Namespace> {
+        self.namespace.as_ref().map(|x| &**x)
+    }
+
+    /// The name of the type.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Unspecified types are considered equal if they have the same name.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(a: &UnspecifiedType, b: &UnspecifiedType) -> cmp::Ordering {
-        Namespace::cmp_ns_and_name(&a.namespace, a.name(), &b.namespace, b.name())
+        Namespace::cmp_ns_and_name(a.namespace(), a.name(), b.namespace(), b.name())
     }
 }
 
+/// A type for a pointer to a member of a containing type.
 #[derive(Debug, Default, Clone)]
 pub struct PointerToMemberType {
-    pub ty: TypeOffset,
-    pub containing_ty: TypeOffset,
-    pub byte_size: Size,
+    pub(crate) ty: TypeOffset,
+    pub(crate) containing_ty: TypeOffset,
+    pub(crate) byte_size: Size,
     // TODO: hack
-    pub address_size: Option<u64>,
+    pub(crate) address_size: Option<u64>,
 }
 
 impl PointerToMemberType {
-    pub fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+    /// The type of the member.
+    pub fn member_type<'a, 'input>(
+        &self,
+        hash: &'a FileHash<'input>,
+    ) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
-    pub fn containing_ty<'a, 'input>(
+    /// The containing type.
+    pub fn containing_type<'a, 'input>(
         &self,
         hash: &'a FileHash<'input>,
     ) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.containing_ty)
     }
 
+    /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             return self.byte_size.get();
         }
         // TODO: this probably depends on the ABI
-        self.ty(hash).and_then(|ty| {
+        self.member_type(hash).and_then(|ty| {
             if ty.is_function(hash) {
                 self.address_size.map(|v| v * 2)
             } else {
@@ -747,6 +995,10 @@ impl PointerToMemberType {
     }
 
     /// Compare the identifying information of two types.
+    ///
+    /// Pointer to member types are considered equal if both the member type and containing
+    /// type are equal.
+    ///
     /// This can be used to sort, and to determine if two types refer to the same definition
     /// (even if there are differences in the definitions).
     pub fn cmp_id(
@@ -755,7 +1007,7 @@ impl PointerToMemberType {
         hash_b: &FileHash,
         b: &PointerToMemberType,
     ) -> cmp::Ordering {
-        match (a.containing_ty(hash_a), b.containing_ty(hash_b)) {
+        match (a.containing_type(hash_a), b.containing_type(hash_b)) {
             (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
@@ -770,7 +1022,7 @@ impl PointerToMemberType {
             }
             (None, None) => {}
         }
-        match (a.ty(hash_a), b.ty(hash_b)) {
+        match (a.member_type(hash_a), b.member_type(hash_b)) {
             (Some(ref ty_a), Some(ref ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {

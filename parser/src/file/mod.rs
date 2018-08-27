@@ -47,6 +47,7 @@ impl StringCache {
 
 pub use object::Machine;
 
+/// The parsed debuginfo for a single file.
 pub struct File<'input> {
     pub(crate) path: &'input str,
     pub(crate) machine: Machine,
@@ -58,20 +59,24 @@ pub struct File<'input> {
 }
 
 impl<'input> File<'input> {
-    pub fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
+    pub(crate) fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
         self.debug_info.get_type(offset)
     }
 
-    pub fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
+    pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
         self.debug_info.get_enumerators(offset)
     }
 
-    pub fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
+    pub(crate) fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
         self.debug_info
             .get_function_details(offset)
             .unwrap_or(FunctionDetails::default())
     }
 
+    /// Parse the file with the given path.
+    ///
+    /// `cb` is a callback function that is called with the parsed File.
+    /// It requires a callback so that memory management is simplified.
     pub fn parse<Cb>(path: &str, cb: Cb) -> Result<()>
     where
         Cb: FnOnce(&File) -> Result<()>,
@@ -112,7 +117,7 @@ impl<'input> File<'input> {
         for segment in object.segments() {
             segments.push(Segment {
                 address: segment.address(),
-                data: segment.data(),
+                bytes: segment.data(),
             });
         }
 
@@ -150,9 +155,9 @@ impl<'input> File<'input> {
             }
 
             // TODO: handle SymbolKind::File
-            let ty = match symbol.kind() {
-                object::SymbolKind::Text => SymbolType::Function,
-                object::SymbolKind::Data | object::SymbolKind::Unknown => SymbolType::Variable,
+            let kind = match symbol.kind() {
+                object::SymbolKind::Text => SymbolKind::Function,
+                object::SymbolKind::Data | object::SymbolKind::Unknown => SymbolKind::Variable,
                 _ => continue,
             };
 
@@ -160,7 +165,7 @@ impl<'input> File<'input> {
 
             symbols.push(Symbol {
                 name,
-                ty,
+                kind,
                 address,
                 size,
             });
@@ -232,8 +237,8 @@ impl<'input> File<'input> {
                 begin: symbol.address,
                 end: symbol.address + symbol.size,
             });
-            match symbol.ty {
-                SymbolType::Variable => {
+            match symbol.kind() {
+                SymbolKind::Variable => {
                     unit.variables.push(Variable {
                         name: symbol.name.clone(),
                         linkage_name: symbol.name.clone(),
@@ -242,7 +247,7 @@ impl<'input> File<'input> {
                         ..Default::default()
                     });
                 }
-                SymbolType::Function => {
+                SymbolKind::Function => {
                     unit.functions.push(Function {
                         name: symbol.name.clone(),
                         linkage_name: symbol.name.clone(),
@@ -299,26 +304,34 @@ impl<'input> File<'input> {
         }
     }
 
+    /// The file path.
     pub fn path(&self) -> &'input str {
         self.path
     }
 
+    /// The machine type that the file contains debuginfo for.
     pub fn machine(&self) -> Machine {
         self.machine
     }
 
+    /// A list of segments in the file.
     pub fn segments(&self) -> &[Segment<'input>] {
         &self.segments
     }
 
+    /// A list of sections in the file.
     pub fn sections(&self) -> &[Section<'input>] {
         &self.sections
     }
 
+    /// A list of compilation units in the file.
     pub fn units(&self) -> &[Unit<'input>] {
         &self.units
     }
 
+    /// A list of address ranges covered by the compilation units.
+    ///
+    /// This includes both `Unit::ranges` and `Unit::unknown_ranges`.
     pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
         for unit in &self.units {
@@ -350,6 +363,7 @@ impl<'input> File<'input> {
         ranges.subtract(&unit_ranges)
     }
 
+    /// The total size of functions in all compilation units.
     pub fn function_size(&self) -> u64 {
         let mut size = 0;
         for unit in &self.units {
@@ -358,6 +372,7 @@ impl<'input> File<'input> {
         size
     }
 
+    /// The total size of variables in all compilation units.
     pub fn variable_size(&self, hash: &FileHash) -> u64 {
         let mut size = 0;
         for unit in &self.units {
@@ -367,19 +382,22 @@ impl<'input> File<'input> {
     }
 }
 
+/// An index of functions and types within a file.
 pub struct FileHash<'input> {
+    /// The file being indexed.
     pub file: &'input File<'input>,
-    // All functions by address.
+    /// All functions by address.
     pub functions_by_address: HashMap<u64, &'input Function<'input>>,
-    // All functions by offset.
+    /// All functions by offset.
     pub functions_by_offset: HashMap<FunctionOffset, &'input Function<'input>>,
-    // All types by offset.
+    /// All types by offset.
     pub types: HashMap<TypeOffset, &'input Type<'input>>,
     // The type corresponding to `TypeOffset::none()`.
     pub(crate) void: Type<'input>,
 }
 
 impl<'input> FileHash<'input> {
+    /// Create a new `FileHash` for the given `File`.
     pub fn new(file: &'input File<'input>) -> Self {
         FileHash {
             file,
@@ -429,60 +447,88 @@ impl<'input> FileHash<'input> {
     }
 }
 
+/// A loadable range of bytes.
 #[derive(Debug)]
 pub struct Segment<'input> {
+    /// The address that the bytes should be loaded at.
     pub address: u64,
-    pub data: &'input [u8],
+    /// The bytes, which may be code or data.
+    pub bytes: &'input [u8],
 }
 
+/// A named section.
 #[derive(Debug)]
 pub struct Section<'input> {
-    pub name: Option<Cow<'input, str>>,
-    pub segment: Option<Cow<'input, str>>,
-    pub address: Option<u64>,
-    pub size: u64,
+    pub(crate) name: Option<Cow<'input, str>>,
+    pub(crate) segment: Option<Cow<'input, str>>,
+    pub(crate) address: Option<u64>,
+    pub(crate) size: u64,
 }
 
 impl<'input> Section<'input> {
+    /// The name of this section.
     pub fn name(&self) -> Option<&str> {
         self.name.as_ref().map(Cow::deref)
     }
 
+    /// The name of the segment containing this section, if applicable.
     pub fn segment(&self) -> Option<&str> {
         self.segment.as_ref().map(Cow::deref)
     }
 
+    /// The address range covered by this section if it is loadable.
     pub fn address(&self) -> Option<Range> {
         self.address.map(|address| Range {
             begin: address,
             end: address + self.size,
         })
     }
+
+    /// The size of the section.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
 }
 
+/// A symbol kind.
 #[derive(Debug, Clone, Copy)]
-pub enum SymbolType {
+pub enum SymbolKind {
+    /// The symbol is a variable.
     Variable,
+    /// The symbol is a function.
     Function,
 }
 
+/// A symbol.
 #[derive(Debug, Clone)]
 pub struct Symbol<'input> {
-    pub name: Option<&'input str>,
-    pub ty: SymbolType,
-    pub address: u64,
-    pub size: u64,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) kind: SymbolKind,
+    pub(crate) address: u64,
+    pub(crate) size: u64,
 }
 
 impl<'input> Symbol<'input> {
+    /// The symbol name.
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
+    /// The symbol kind.
+    pub fn kind(&self) -> SymbolKind {
+        self.kind
+    }
+
+    /// The symbol address range.
     pub fn address(&self) -> Range {
         Range {
             begin: self.address,
             end: self.address + self.size,
         }
+    }
+
+    /// The symbol size range.
+    pub fn size(&self) -> u64 {
+        self.size
     }
 }
