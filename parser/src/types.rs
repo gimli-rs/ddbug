@@ -147,6 +147,7 @@ impl<'input> Type<'input> {
     }
 
     /// Return true if the type is the void type.
+    #[inline]
     pub fn is_void(&self) -> bool {
         match self.kind {
             TypeKind::Void => true,
@@ -155,21 +156,25 @@ impl<'input> Type<'input> {
     }
 
     /// The user defined id for this type.
+    #[inline]
     pub fn id(&self) -> usize {
         self.id.get()
     }
 
     /// Set a user defined id for this type.
+    #[inline]
     pub fn set_id(&self, id: usize) {
         self.id.set(id)
     }
 
     /// The debuginfo offset of this type.
+    #[inline]
     pub fn offset(&self) -> TypeOffset {
         self.offset
     }
 
     /// The kind of this type.
+    #[inline]
     pub fn kind(&self) -> &TypeKind<'input> {
         &self.kind
     }
@@ -346,16 +351,19 @@ impl<'input> TypeModifier<'input> {
     /// The name of the type.
     ///
     /// If this is `None` then the name should be derived from the type that is being modified.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The kind of this type modifier.
+    #[inline]
     pub fn kind(&self) -> TypeModifierKind {
         self.kind
     }
 
     /// The type that is being modified.
+    #[inline]
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
@@ -422,11 +430,13 @@ pub struct BaseType<'input> {
 
 impl<'input> BaseType<'input> {
     /// The name of the type.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The size in bytes of an instance of this type.
+    #[inline]
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
@@ -458,16 +468,19 @@ impl<'input> TypeDef<'input> {
     }
 
     /// The name of the type definition.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The type that the alias is being defined for.
+    #[inline]
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
     /// The source information for the type definition.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
@@ -507,21 +520,25 @@ impl<'input> StructType<'input> {
     }
 
     /// The name of the type.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The source information for the type.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
 
     /// The size in bytes of an instance of this type.
+    #[inline]
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
     /// Return true if this is a declaration.
+    #[inline]
     pub fn is_declaration(&self) -> bool {
         self.declaration
     }
@@ -532,6 +549,7 @@ impl<'input> StructType<'input> {
     }
 
     /// The members of this type.
+    #[inline]
     pub fn members(&self) -> &[Member<'input>] {
         &self.members
     }
@@ -572,21 +590,25 @@ impl<'input> UnionType<'input> {
     }
 
     /// The name of the type.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The source information for the type.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
 
     /// The size in bytes of an instance of this type.
+    #[inline]
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
 
     /// Return true if this is a declaration.
+    #[inline]
     pub fn is_declaration(&self) -> bool {
         self.declaration
     }
@@ -597,6 +619,7 @@ impl<'input> UnionType<'input> {
     }
 
     /// The members of this type.
+    #[inline]
     pub fn members(&self) -> &[Member<'input>] {
         &self.members
     }
@@ -633,11 +656,13 @@ pub struct Member<'input> {
 
 impl<'input> Member<'input> {
     /// The name of the member.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The debuginfo offset of the type of this member.
+    #[inline]
     pub fn type_offset<'a>(&self) -> TypeOffset {
         self.ty
     }
@@ -648,6 +673,7 @@ impl<'input> Member<'input> {
     }
 
     /// The offset in bits of this member.
+    #[inline]
     pub fn bit_offset(&self) -> u64 {
         self.bit_offset
     }
@@ -720,21 +746,25 @@ impl<'input> EnumerationType<'input> {
     }
 
     /// The name of the type.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The source information for the type.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
 
     /// Return true if this is a declaration.
+    #[inline]
     pub fn is_declaration(&self) -> bool {
         self.declaration
     }
 
     /// The underlying type of the enumeration.
+    #[inline]
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
@@ -864,16 +894,19 @@ pub struct FunctionType<'input> {
 
 impl<'input> FunctionType<'input> {
     /// The parameters of the function.
+    #[inline]
     pub fn parameters(&self) -> &[Parameter<'input>] {
         &self.parameters
     }
 
     /// The return type of the function.
+    #[inline]
     pub fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.return_type)
     }
 
     /// The size in bytes of an instance of this type.
+    #[inline]
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
     }
@@ -937,6 +970,7 @@ impl<'input> UnspecifiedType<'input> {
     }
 
     /// The name of the type.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
@@ -964,6 +998,7 @@ pub struct PointerToMemberType {
 
 impl PointerToMemberType {
     /// The type of the member.
+    #[inline]
     pub fn member_type<'a, 'input>(
         &self,
         hash: &'a FileHash<'input>,
@@ -972,6 +1007,7 @@ impl PointerToMemberType {
     }
 
     /// The containing type.
+    #[inline]
     pub fn containing_type<'a, 'input>(
         &self,
         hash: &'a FileHash<'input>,

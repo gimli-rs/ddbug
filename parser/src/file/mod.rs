@@ -305,26 +305,31 @@ impl<'input> File<'input> {
     }
 
     /// The file path.
+    #[inline]
     pub fn path(&self) -> &'input str {
         self.path
     }
 
     /// The machine type that the file contains debuginfo for.
+    #[inline]
     pub fn machine(&self) -> Machine {
         self.machine
     }
 
     /// A list of segments in the file.
+    #[inline]
     pub fn segments(&self) -> &[Segment<'input>] {
         &self.segments
     }
 
     /// A list of sections in the file.
+    #[inline]
     pub fn sections(&self) -> &[Section<'input>] {
         &self.sections
     }
 
     /// A list of compilation units in the file.
+    #[inline]
     pub fn units(&self) -> &[Unit<'input>] {
         &self.units
     }
@@ -485,6 +490,7 @@ impl<'input> Section<'input> {
     }
 
     /// The size of the section.
+    #[inline]
     pub fn size(&self) -> u64 {
         self.size
     }
@@ -510,16 +516,19 @@ pub struct Symbol<'input> {
 
 impl<'input> Symbol<'input> {
     /// The symbol name.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The symbol kind.
+    #[inline]
     pub fn kind(&self) -> SymbolKind {
         self.kind
     }
 
     /// The symbol address range.
+    #[inline]
     pub fn address(&self) -> Range {
         Range {
             begin: self.address,
@@ -528,6 +537,7 @@ impl<'input> Symbol<'input> {
     }
 
     /// The symbol size range.
+    #[inline]
     pub fn size(&self) -> u64 {
         self.size
     }

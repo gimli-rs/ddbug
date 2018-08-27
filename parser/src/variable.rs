@@ -55,11 +55,13 @@ pub struct Variable<'input> {
 
 impl<'input> Variable<'input> {
     /// The user defined id for this variable.
+    #[inline]
     pub fn id(&self) -> usize {
         self.id.get()
     }
 
     /// Set a user defined id for this variable.
+    #[inline]
     pub fn set_id(&self, id: usize) {
         self.id.set(id)
     }
@@ -70,11 +72,13 @@ impl<'input> Variable<'input> {
     }
 
     /// The name of the variable.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The linkage name of the variable.
+    #[inline]
     pub fn linkage_name(&self) -> Option<&str> {
         self.linkage_name
     }
@@ -82,6 +86,7 @@ impl<'input> Variable<'input> {
     /// The symbol name of the variable.
     ///
     /// This is determined from a symbol table entry with a matching address.
+    #[inline]
     pub fn symbol_name(&self) -> Option<&str> {
         self.symbol_name
     }
@@ -89,16 +94,19 @@ impl<'input> Variable<'input> {
     /// The type of the variable.
     ///
     /// Returns `None` if the type is invalid.
+    #[inline]
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
     /// The source information for the variable.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
 
     /// The address of the variable.
+    #[inline]
     pub fn address(&self) -> Option<u64> {
         self.address.get()
     }
@@ -124,6 +132,7 @@ impl<'input> Variable<'input> {
     }
 
     /// Return true if this is a declaration.
+    #[inline]
     pub fn is_declaration(&self) -> bool {
         self.declaration
     }
@@ -157,6 +166,7 @@ pub struct LocalVariable<'input> {
 
 impl<'input> LocalVariable<'input> {
     /// The name of the variable.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
@@ -164,11 +174,13 @@ impl<'input> LocalVariable<'input> {
     /// The type of the variable.
     ///
     /// Returns `None` if the type is invalid.
+    #[inline]
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
 
     /// The source information for the variable.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
@@ -176,6 +188,7 @@ impl<'input> LocalVariable<'input> {
     /// The address of the variable.
     ///
     /// This will only be known for static variables.
+    #[inline]
     pub fn address(&self) -> Address {
         self.address
     }

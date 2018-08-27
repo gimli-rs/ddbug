@@ -2597,24 +2597,28 @@ where
 }
 
 impl From<gimli::DebugInfoOffset> for FunctionOffset {
+    #[inline]
     fn from(o: gimli::DebugInfoOffset) -> FunctionOffset {
         FunctionOffset::new(o.0)
     }
 }
 
 impl From<gimli::DebugInfoOffset> for ParameterOffset {
+    #[inline]
     fn from(o: gimli::DebugInfoOffset) -> ParameterOffset {
         ParameterOffset::new(o.0)
     }
 }
 
 impl From<gimli::DebugInfoOffset> for TypeOffset {
+    #[inline]
     fn from(o: gimli::DebugInfoOffset) -> TypeOffset {
         TypeOffset::new(o.0)
     }
 }
 
 impl From<gimli::DebugInfoOffset> for VariableOffset {
+    #[inline]
     fn from(o: gimli::DebugInfoOffset) -> VariableOffset {
         VariableOffset::new(o.0)
     }

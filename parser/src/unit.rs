@@ -36,11 +36,13 @@ impl<'input> Unit<'input> {
 
     /// The source language.
     // TODO: avoid gimli dependency.
+    #[inline]
     pub fn language(&self) -> Option<gimli::DwLang> {
         self.language
     }
 
     /// The base address.
+    #[inline]
     pub fn address(&self) -> Option<u64> {
         self.low_pc
     }
@@ -106,16 +108,19 @@ impl<'input> Unit<'input> {
     }
 
     /// The types declared or defined by this unit.
+    #[inline]
     pub fn types(&self) -> &[Type<'input>] {
         &self.types
     }
 
     /// The functions declared or defined by this unit.
+    #[inline]
     pub fn functions(&self) -> &[Function<'input>] {
         &self.functions
     }
 
     /// The variables declared or defined by this unit.
+    #[inline]
     pub fn variables(&self) -> &[Variable<'input>] {
         &self.variables
     }

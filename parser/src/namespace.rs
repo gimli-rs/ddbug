@@ -39,11 +39,13 @@ impl<'input> Namespace<'input> {
     }
 
     /// The namespace name.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The namespace kind.
+    #[inline]
     pub fn kind(&self) -> NamespaceKind {
         self.kind
     }

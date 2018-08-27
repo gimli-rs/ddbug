@@ -13,21 +13,25 @@ impl<'input> Source<'input> {
     /// The directory.
     ///
     /// This may be absolute, or relative to the working directory of the unit.
+    #[inline]
     pub fn directory(&self) -> Option<&str> {
         self.directory
     }
 
     /// The file name.
+    #[inline]
     pub fn file(&self) -> Option<&str> {
         self.file
     }
 
     /// Return true if there is no file name.
+    #[inline]
     pub fn is_none(&self) -> bool {
         self.file.is_none()
     }
 
     /// Return true if there is a file name.
+    #[inline]
     pub fn is_some(&self) -> bool {
         self.file.is_some()
     }
@@ -56,6 +60,7 @@ impl<'input> Source<'input> {
     /// The source line number.
     ///
     /// 0 means unknown line number.
+    #[inline]
     pub fn line(&self) -> u32 {
         self.line
     }
@@ -63,6 +68,7 @@ impl<'input> Source<'input> {
     /// The source column number.
     ///
     /// 0 means unknown column number.
+    #[inline]
     pub fn column(&self) -> u32 {
         self.column
     }

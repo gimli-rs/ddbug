@@ -93,11 +93,13 @@ impl<'input> Function<'input> {
     }
 
     /// The user defined id for this function.
+    #[inline]
     pub fn id(&self) -> usize {
         self.id.get()
     }
 
     /// Set a user defined id for this function.
+    #[inline]
     pub fn set_id(&self, id: usize) {
         self.id.set(id)
     }
@@ -108,11 +110,13 @@ impl<'input> Function<'input> {
     }
 
     /// The name of the function.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The linkage name of the variable.
+    #[inline]
     pub fn linkage_name(&self) -> Option<&str> {
         self.linkage_name
     }
@@ -120,16 +124,19 @@ impl<'input> Function<'input> {
     /// The symbol name of the function.
     ///
     /// This is determined from a symbol table entry with a matching address.
+    #[inline]
     pub fn symbol_name(&self) -> Option<&str> {
         self.symbol_name
     }
 
     /// The source information for the function.
+    #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
 
     /// The address of the function.
+    #[inline]
     pub fn address(&self) -> Option<u64> {
         self.address.get()
     }
@@ -137,6 +144,7 @@ impl<'input> Function<'input> {
     /// The size in bytes of the function.
     ///
     /// This may exclude padding.
+    #[inline]
     pub fn size(&self) -> Option<u64> {
         self.size.get()
     }
@@ -154,16 +162,19 @@ impl<'input> Function<'input> {
     }
 
     /// Return true if this is an inlined function.
+    #[inline]
     pub fn is_inline(&self) -> bool {
         self.inline
     }
 
     /// Return true if this is a declaration.
+    #[inline]
     pub fn is_declaration(&self) -> bool {
         self.declaration
     }
 
     /// The function parameters.
+    #[inline]
     pub fn parameters(&self) -> &[Parameter<'input>] {
         &self.parameters
     }
@@ -171,6 +182,7 @@ impl<'input> Function<'input> {
     /// The return type.
     ///
     /// Returns `None` if the return type is invalid.
+    #[inline]
     pub fn return_type<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.return_type)
     }
@@ -198,11 +210,13 @@ impl<'input> Function<'input> {
 
 impl<'input> FunctionDetails<'input> {
     /// The local variables.
+    #[inline]
     pub fn variables(&self) -> &[LocalVariable<'input>] {
         &self.variables
     }
 
     /// The inlined functions.
+    #[inline]
     pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
         &self.inlined_functions
     }
@@ -241,11 +255,13 @@ pub struct Parameter<'input> {
 
 impl<'input> Parameter<'input> {
     /// The name of the parameter.
+    #[inline]
     pub fn name(&self) -> Option<&str> {
         self.name
     }
 
     /// The type of the parameter.
+    #[inline]
     pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
         Type::from_offset(hash, self.ty)
     }
@@ -299,26 +315,31 @@ pub struct InlinedFunction<'input> {
 
 impl<'input> InlinedFunction<'input> {
     /// The function that this is an inlined instance of.
+    #[inline]
     pub fn abstract_origin<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Function<'input>> {
         Function::from_offset(hash, self.abstract_origin)
     }
 
     /// The size of the inlined function.
+    #[inline]
     pub fn size(&self) -> Option<u64> {
         self.size.get()
     }
 
     /// The source information for call location.
+    #[inline]
     pub fn call_source(&self) -> &Source<'input> {
         &self.call_source
     }
 
     /// The local variables.
+    #[inline]
     pub fn variables(&self) -> &[LocalVariable<'input>] {
         &self.variables
     }
 
     /// The inlined functions within this inlined functions.
+    #[inline]
     pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
         &self.inlined_functions
     }
