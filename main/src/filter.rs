@@ -35,18 +35,14 @@ fn inline_types(unit: &Unit, hash: &FileHash) -> HashSet<TypeOffset> {
         // Assume all anonymous types are inline. We don't actually check
         // that they will be inline, but in future we could (eg for TypeDefs).
         // TODO: is this a valid assumption?
-        if ty.is_anon() {
-            if ty.offset().is_some() {
-                inline_types.insert(ty.offset());
-            }
+        if ty.is_anon() && ty.offset().is_some() {
+            inline_types.insert(ty.offset());
         }
 
         // Find all inline members.
         ty.visit_members(&mut |t| {
-            if t.is_inline(hash) {
-                if t.type_offset().is_some() {
-                    inline_types.insert(t.type_offset());
-                }
+            if t.is_inline(hash) && t.type_offset().is_some() {
+                inline_types.insert(t.type_offset());
             }
         });
     }

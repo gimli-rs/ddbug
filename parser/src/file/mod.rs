@@ -70,7 +70,7 @@ impl<'input> File<'input> {
     pub(crate) fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
         self.debug_info
             .get_function_details(offset)
-            .unwrap_or(FunctionDetails::default())
+            .unwrap_or_default()
     }
 
     /// Parse the file with the given path.
@@ -205,9 +205,9 @@ impl<'input> File<'input> {
                         &*self.symbols,
                         &mut used_symbols,
                         address,
-                        function.linkage_name().or(function.name()),
+                        function.linkage_name().or_else(|| function.name()),
                     ) {
-                        function.symbol_name = symbol.name.clone();
+                        function.symbol_name = symbol.name;
                     }
                 }
             }
@@ -218,9 +218,9 @@ impl<'input> File<'input> {
                         &*self.symbols,
                         &mut used_symbols,
                         address,
-                        variable.linkage_name().or(variable.name()),
+                        variable.linkage_name().or_else(|| variable.name()),
                     ) {
-                        variable.symbol_name = symbol.name.clone();
+                        variable.symbol_name = symbol.name;
                     }
                 }
             }
@@ -240,8 +240,8 @@ impl<'input> File<'input> {
             match symbol.kind() {
                 SymbolKind::Variable => {
                     unit.variables.push(Variable {
-                        name: symbol.name.clone(),
-                        linkage_name: symbol.name.clone(),
+                        name: symbol.name,
+                        linkage_name: symbol.name,
                         address: Address::new(symbol.address),
                         size: Size::new(symbol.size),
                         ..Default::default()
@@ -249,8 +249,8 @@ impl<'input> File<'input> {
                 }
                 SymbolKind::Function => {
                     unit.functions.push(Function {
-                        name: symbol.name.clone(),
-                        linkage_name: symbol.name.clone(),
+                        name: symbol.name,
+                        linkage_name: symbol.name,
                         address: Address::new(symbol.address),
                         size: Size::new(symbol.size),
                         ..Default::default()

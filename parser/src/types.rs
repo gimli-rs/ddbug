@@ -331,8 +331,8 @@ pub enum TypeModifierKind {
 }
 
 impl TypeModifierKind {
-    fn discriminant_value(&self) -> u8 {
-        match *self {
+    fn discriminant_value(self) -> u8 {
+        match self {
             TypeModifierKind::Pointer => 1,
             TypeModifierKind::Reference => 2,
             TypeModifierKind::Const => 3,

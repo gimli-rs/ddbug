@@ -111,7 +111,7 @@ where
                 let node = tree.root().ok()?;
                 parse_enumerators(self, node).ok()
             })
-            .unwrap_or(Vec::new())
+            .unwrap_or_default()
     }
 
     fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails> {
@@ -475,10 +475,10 @@ where
                     let variable = &mut variable.variable;
                     variable.namespace = specification.namespace.clone();
                     if variable.name.is_none() {
-                        variable.name = specification.name.clone();
+                        variable.name = specification.name;
                     }
                     if variable.linkage_name.is_none() {
-                        variable.linkage_name = specification.linkage_name.clone();
+                        variable.linkage_name = specification.linkage_name;
                     }
                     if variable.ty.is_none() {
                         variable.ty = specification.ty;
@@ -985,11 +985,7 @@ where
         }
     }
 
-    let namespace = Some(Namespace::new(
-        &ty.namespace,
-        ty.name.clone(),
-        NamespaceKind::Type,
-    ));
+    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -1086,11 +1082,7 @@ where
         }
     }
 
-    let namespace = Some(Namespace::new(
-        &ty.namespace,
-        ty.name.clone(),
-        NamespaceKind::Type,
-    ));
+    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -1327,11 +1319,7 @@ where
         }
     }
 
-    let namespace = Some(Namespace::new(
-        &ty.namespace,
-        ty.name.clone(),
-        NamespaceKind::Type,
-    ));
+    let namespace = Some(Namespace::new(&ty.namespace, ty.name, NamespaceKind::Type));
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -1784,10 +1772,10 @@ fn inherit_subprogram<'input>(
 
     function.namespace = specification.namespace.clone();
     if function.name.is_none() {
-        function.name = specification.name.clone();
+        function.name = specification.name;
     }
     if function.linkage_name.is_none() {
-        function.linkage_name = specification.linkage_name.clone();
+        function.linkage_name = specification.linkage_name;
     }
     if function.source.is_none() {
         function.source = specification.source.clone();
@@ -1822,7 +1810,7 @@ where
 {
     let namespace = Some(Namespace::new(
         &function.namespace,
-        function.name.clone(),
+        function.name,
         NamespaceKind::Function,
     ));
     while let Some(child) = iter.next()? {
@@ -2718,7 +2706,7 @@ where
 {
     match attr.value() {
         gimli::AttributeValue::Udata(val) => if val != 0 {
-            if val <= u32::MAX as u64 {
+            if val <= u64::from(u32::MAX) {
                 source.line = val as u32;
             } else {
                 debug!("large source line: {}", val);
@@ -2736,7 +2724,7 @@ where
 {
     match attr.value() {
         gimli::AttributeValue::Udata(val) => if val != 0 {
-            if val <= u32::MAX as u64 {
+            if val <= u64::from(u32::MAX) {
                 source.column = val as u32;
             } else {
                 debug!("large source column: {}", val);
