@@ -10,7 +10,7 @@ license = "Apache-2.0/MIT"
 
 [dependencies]
 fnv = "1.0"
-gimli = "0.16"
+gimli = { git = "https://github.com/gimli-rs/gimli", rev = "3015ebe0db947eeebc99cd0d463711dfe25700f6" }
 log = "0.4"
 memmap = "0.6"
 object = "0.10"

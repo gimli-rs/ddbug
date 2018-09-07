@@ -18,10 +18,34 @@ use unit::Unit;
 use variable::Variable;
 use {Address, Result, Size};
 
-pub(crate) trait DebugInfo {
-    fn get_type(&self, offset: TypeOffset) -> Option<Type>;
-    fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator>;
-    fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails>;
+pub(crate) enum DebugInfo<'input, Endian>
+where
+    Endian: gimli::Endianity + 'input,
+{
+    Dwarf(&'input dwarf::DwarfDebugInfo<'input, Endian>),
+}
+
+impl<'input, Endian> DebugInfo<'input, Endian>
+where
+    Endian: gimli::Endianity + 'input,
+{
+    fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
+        match self {
+            DebugInfo::Dwarf(dwarf) => dwarf.get_type(offset),
+        }
+    }
+
+    fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
+        match self {
+            DebugInfo::Dwarf(dwarf) => dwarf.get_enumerators(offset),
+        }
+    }
+
+    fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails<'input>> {
+        match self {
+            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset),
+        }
+    }
 }
 
 pub(crate) struct StringCache {
@@ -55,7 +79,7 @@ pub struct File<'input> {
     pub(crate) sections: Vec<Section<'input>>,
     pub(crate) symbols: Vec<Symbol<'input>>,
     pub(crate) units: Vec<Unit<'input>>,
-    pub(crate) debug_info: &'input DebugInfo,
+    debug_info: DebugInfo<'input, gimli::RunTimeEndian>,
 }
 
 impl<'input> File<'input> {

@@ -1,6 +1,5 @@
 extern crate ddbug_parser as parser;
 extern crate fnv;
-extern crate gimli;
 #[macro_use]
 extern crate log;
 extern crate marksman_escape;

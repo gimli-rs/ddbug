@@ -26,7 +26,7 @@ use {Address, Result, Size};
 
 type Reader<'input, Endian> = gimli::EndianSlice<'input, Endian>;
 
-struct DwarfDebugInfo<'input, Endian>
+pub(crate) struct DwarfDebugInfo<'input, Endian>
 where
     Endian: gimli::Endianity,
 {
@@ -86,26 +86,14 @@ where
             .and_then(|offset| self.tree(gimli::DebugInfoOffset(offset)))
     }
 
-    fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails<'input>> {
-        self.function_tree(offset).and_then(|(unit, mut tree)| {
-            let node = tree.root().ok()?;
-            parse_subprogram_details(self, unit, node).ok()
-        })
-    }
-}
-
-impl<'input, Endian> DebugInfo for DwarfDebugInfo<'input, Endian>
-where
-    Endian: gimli::Endianity,
-{
-    fn get_type(&self, offset: TypeOffset) -> Option<Type> {
+    pub(crate) fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
         self.type_tree(offset).and_then(|(unit, mut tree)| {
             let node = tree.root().ok()?;
             parse_unnamed_type(self, unit, node).ok()?
         })
     }
 
-    fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator> {
+    pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
         self.type_tree(offset)
             .and_then(|(_unit, mut tree)| {
                 let node = tree.root().ok()?;
@@ -114,8 +102,14 @@ where
             .unwrap_or_default()
     }
 
-    fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails> {
-        DwarfDebugInfo::get_function_details(self, offset)
+    pub(crate) fn get_function_details(
+        &self,
+        offset: FunctionOffset,
+    ) -> Option<FunctionDetails<'input>> {
+        self.function_tree(offset).and_then(|(unit, mut tree)| {
+            let node = tree.root().ok()?;
+            parse_subprogram_details(self, unit, node).ok()
+        })
     }
 }
 
@@ -155,7 +149,7 @@ pub(crate) fn parse<'input, 'file, Endian, Object, Cb>(
 where
     Endian: gimli::Endianity,
     Object: object::Object<'input, 'file>,
-    Cb: FnOnce(Vec<Unit>, &DebugInfo) -> Result<()>,
+    Cb: FnOnce(Vec<Unit>, DebugInfo<Endian>) -> Result<()>,
 {
     let get_section = |name| {
         object
@@ -192,7 +186,7 @@ where
     while let Some(unit_header) = unit_headers.next()? {
         units.push(parse_unit(&mut dwarf, unit_header)?);
     }
-    cb(units, &dwarf)
+    cb(units, DebugInfo::Dwarf(&dwarf))
 }
 
 fn parse_unit<'input, Endian>(
