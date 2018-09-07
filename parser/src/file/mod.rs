@@ -41,9 +41,13 @@ where
         }
     }
 
-    fn get_function_details(&self, offset: FunctionOffset) -> Option<FunctionDetails<'input>> {
+    fn get_function_details(
+        &self,
+        offset: FunctionOffset,
+        hash: &FileHash<'input>,
+    ) -> Option<FunctionDetails<'input>> {
         match self {
-            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset),
+            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash),
         }
     }
 }
@@ -91,9 +95,13 @@ impl<'input> File<'input> {
         self.debug_info.get_enumerators(offset)
     }
 
-    pub(crate) fn get_function_details(&self, offset: FunctionOffset) -> FunctionDetails<'input> {
+    pub(crate) fn get_function_details(
+        &self,
+        offset: FunctionOffset,
+        hash: &FileHash<'input>,
+    ) -> FunctionDetails<'input> {
         self.debug_info
-            .get_function_details(offset)
+            .get_function_details(offset, hash)
             .unwrap_or_default()
     }
 

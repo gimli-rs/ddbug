@@ -8,7 +8,7 @@ use std::u32;
 use gimli;
 use object;
 
-use file::{DebugInfo, StringCache};
+use file::{DebugInfo, FileHash, StringCache};
 use function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
 };
@@ -105,10 +105,11 @@ where
     pub(crate) fn get_function_details(
         &self,
         offset: FunctionOffset,
+        hash: &FileHash<'input>,
     ) -> Option<FunctionDetails<'input>> {
         self.function_tree(offset).and_then(|(unit, mut tree)| {
             let node = tree.root().ok()?;
-            parse_subprogram_details(self, unit, node).ok()
+            parse_subprogram_details(hash, self, unit, node).ok()
         })
     }
 }
@@ -268,6 +269,7 @@ where
                     | gimli::DW_AT_APPLE_optimized
                     | gimli::DW_AT_macro_info
                     | gimli::DW_AT_GNU_macros
+                    | gimli::DW_AT_GNU_pubnames
                     | gimli::DW_AT_sibling => {}
                     _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
                 }
@@ -1712,6 +1714,7 @@ where
                 | gimli::DW_AT_vtable_elem_location
                 | gimli::DW_AT_containing_type
                 | gimli::DW_AT_main_subprogram
+                | gimli::DW_AT_noreturn
                 | gimli::DW_AT_APPLE_optimized
                 | gimli::DW_AT_APPLE_omit_frame_ptr
                 | gimli::DW_AT_sibling => {}
@@ -1816,7 +1819,7 @@ where
                 // Handled in details.
             }
             gimli::DW_TAG_inlined_subroutine => {
-                parse_inlined_subroutine(unit, dwarf, dwarf_unit, subprograms, variables, child)?;
+                parse_inlined_subroutine(child)?;
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -1980,7 +1983,7 @@ where
                 // Handled in details.
             }
             gimli::DW_TAG_inlined_subroutine => {
-                parse_inlined_subroutine(unit, dwarf, dwarf_unit, subprograms, variables, child)?;
+                parse_inlined_subroutine(child)?;
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block(
@@ -2016,25 +2019,13 @@ where
     Ok(())
 }
 
+// Only checks for unknown attributes and tags.
 fn parse_inlined_subroutine<'input, 'abbrev, 'unit, 'tree, Endian>(
-    unit: &mut Unit<'input>,
-    dwarf: &DwarfDebugInfo<'input, Endian>,
-    dwarf_unit: &DwarfUnit<'input, Endian>,
-    subprograms: &mut Vec<DwarfSubprogram<'input>>,
-    variables: &mut Vec<DwarfVariable<'input>>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
 {
-    // TODO: get the namespace from the abstract origin.
-    // However, not sure if this if ever actually used in practice.
-    let namespace = None;
-
-    // TODO: handle abstract origin in all children
-    // - we should start by inheriting all children from our abstract_origin
-    // - then update the inherited children if they are pointed to by
-    //   an abstract origin in one of our children
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -2042,18 +2033,10 @@ where
                 // Handled in details.
             }
             gimli::DW_TAG_inlined_subroutine => {
-                parse_inlined_subroutine(unit, dwarf, dwarf_unit, subprograms, variables, child)?;
+                parse_inlined_subroutine(child)?;
             }
             gimli::DW_TAG_lexical_block => {
-                parse_lexical_block(
-                    unit,
-                    dwarf,
-                    dwarf_unit,
-                    subprograms,
-                    variables,
-                    &namespace,
-                    child,
-                )?;
+                parse_inlined_lexical_block(child)?;
             }
             gimli::DW_TAG_GNU_call_site => {}
             tag => {
@@ -2064,7 +2047,53 @@ where
     Ok(())
 }
 
+// Only checks for unknown attributes and tags.
+fn parse_inlined_lexical_block<'input, 'abbrev, 'unit, 'tree, Endian>(
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    {
+        let mut attrs = node.entry().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_low_pc
+                | gimli::DW_AT_high_pc
+                | gimli::DW_AT_ranges
+                | gimli::DW_AT_sibling => {}
+                _ => debug!(
+                    "unknown inlined lexical_block attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
+            }
+        }
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_inlined_subroutine => {
+                parse_inlined_subroutine(child)?;
+            }
+            gimli::DW_TAG_lexical_block => {
+                parse_inlined_lexical_block(child)?;
+            }
+            gimli::DW_TAG_formal_parameter
+            | gimli::DW_TAG_variable
+            | gimli::DW_TAG_label
+            | gimli::DW_TAG_imported_module => {}
+            tag => {
+                debug!("unknown inlined lexical_block child tag: {}", tag);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn parse_subprogram_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+    hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
@@ -2091,17 +2120,18 @@ where
 
     // FIXME: limit recursion
     let mut details = abstract_origin
-        .and_then(|offset| dwarf.get_function_details(offset))
+        .and_then(|offset| dwarf.get_function_details(offset, hash))
         .unwrap_or_else(|| FunctionDetails {
             inlined_functions: Vec::new(),
             variables: Vec::new(),
         });
 
-    parse_subprogram_children_details(dwarf, dwarf_unit, &mut details, node.children())?;
+    parse_subprogram_children_details(hash, dwarf, dwarf_unit, &mut details, node.children())?;
     Ok(details)
 }
 
 fn parse_subprogram_children_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+    hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     function: &mut FunctionDetails<'input>,
@@ -2118,12 +2148,15 @@ where
             gimli::DW_TAG_inlined_subroutine => {
                 function
                     .inlined_functions
-                    .push(parse_inlined_subroutine_details(dwarf, dwarf_unit, child)?);
+                    .push(parse_inlined_subroutine_details(
+                        hash, dwarf, dwarf_unit, child,
+                    )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
                     &mut function.inlined_functions,
                     &mut function.variables,
+                    hash,
                     dwarf,
                     dwarf_unit,
                     child,
@@ -2139,6 +2172,7 @@ where
 fn parse_lexical_block_details<'input, 'abbrev, 'unit, 'tree, Endian>(
     inlined_functions: &mut Vec<InlinedFunction<'input>>,
     local_variables: &mut Vec<LocalVariable<'input>>,
+    hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
@@ -2155,12 +2189,15 @@ where
                 parse_local_variable(local_variables, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                inlined_functions.push(parse_inlined_subroutine_details(dwarf, dwarf_unit, child)?);
+                inlined_functions.push(parse_inlined_subroutine_details(
+                    hash, dwarf, dwarf_unit, child,
+                )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
                     inlined_functions,
                     local_variables,
+                    hash,
                     dwarf,
                     dwarf_unit,
                     child,
@@ -2174,6 +2211,7 @@ where
 }
 
 fn parse_inlined_subroutine_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+    hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
@@ -2223,7 +2261,17 @@ where
         }
     }
 
-    if function.abstract_origin.is_none() {
+    if function.abstract_origin.is_some() {
+        if let Some(abstract_origin) = Function::from_offset(hash, function.abstract_origin) {
+            function.parameters = abstract_origin.parameters.clone();
+            // TODO: make sure there's no further inlined functions?
+            if let Some(details) = dwarf.get_function_details(function.abstract_origin, hash) {
+                function.variables = details.variables;
+            }
+        } else {
+            debug!("inlined_subroutine with invalid abstract origin");
+        }
+    } else {
         debug!("inlined_subroutine with no abstract origin");
     }
 
@@ -2248,10 +2296,6 @@ where
         debug!("unknown inlined_subroutine size");
     }
 
-    // TODO: handle abstract origin in all children
-    // - we should start by inheriting all children from our abstract_origin
-    // - then update the inherited children if they are pointed to by
-    //   an abstract origin in one of our children
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
@@ -2264,12 +2308,15 @@ where
             gimli::DW_TAG_inlined_subroutine => {
                 function
                     .inlined_functions
-                    .push(parse_inlined_subroutine_details(dwarf, dwarf_unit, child)?);
+                    .push(parse_inlined_subroutine_details(
+                        hash, dwarf, dwarf_unit, child,
+                    )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
                     &mut function.inlined_functions,
                     &mut function.variables,
+                    hash,
                     dwarf,
                     dwarf_unit,
                     child,

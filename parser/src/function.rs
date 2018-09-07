@@ -36,6 +36,11 @@ impl FunctionOffset {
     }
 
     #[inline]
+    pub(crate) fn is_some(self) -> bool {
+        self != Self::none()
+    }
+
+    #[inline]
     pub(crate) fn get(self) -> Option<usize> {
         if self.is_none() {
             None
@@ -189,7 +194,7 @@ impl<'input> Function<'input> {
 
     /// Extra function details.
     pub fn details(&self, hash: &FileHash<'input>) -> FunctionDetails<'input> {
-        hash.file.get_function_details(self.offset)
+        hash.file.get_function_details(self.offset, hash)
     }
 
     /// Compare the identifying information of two functions.
@@ -330,6 +335,12 @@ impl<'input> InlinedFunction<'input> {
     #[inline]
     pub fn call_source(&self) -> &Source<'input> {
         &self.call_source
+    }
+
+    /// The function parameters.
+    #[inline]
+    pub fn parameters(&self) -> &[Parameter<'input>] {
+        &self.parameters
     }
 
     /// The local variables.
