@@ -1,6 +1,6 @@
 use std::cmp;
 
-use parser::{FileHash, Function, InlinedFunction, Unit};
+use parser::{FileHash, Function, InlinedFunction, LocalVariable, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use Result;
 
@@ -28,9 +28,15 @@ impl<'input> Print for InlinedFunction<'input> {
         state.collapsed(
             |state| state.line(|w, state| print_size_and_decl(self, w, state)),
             |state| {
-                // TODO: print parameters and variables?
                 if state.options().print_source {
                     state.field("call source", |w, _state| print_call_source(self, w, unit))?;
+                }
+                if state.options().print_inlined_function_parameters {
+                    state
+                        .field_expanded("parameters", |state| state.list(unit, self.parameters()))?;
+                }
+                if state.options().print_function_variables {
+                    state.field_collapsed("variables", |state| state.list(unit, self.variables()))?;
                 }
                 state.inline(|state| state.list(unit, self.inlined_functions()))?;
                 Ok(())
@@ -43,7 +49,6 @@ impl<'input> Print for InlinedFunction<'input> {
         state.collapsed(
             |state| state.line(a, b, |w, state, x| print_size_and_decl(x, w, state)),
             |state| {
-                // TODO: diff parameters and variables?
                 if state.options().print_source {
                     state.field(
                         "call source",
@@ -51,6 +56,24 @@ impl<'input> Print for InlinedFunction<'input> {
                         (unit_b, b),
                         |w, _state, (unit, x)| print_call_source(x, w, unit),
                     )?;
+                }
+                if state.options().print_inlined_function_parameters {
+                    state.field_expanded("parameters", |state| {
+                        state.list(unit_a, a.parameters(), unit_b, b.parameters())
+                    })?;
+                }
+                if state.options().print_function_variables {
+                    let mut variables_a: Vec<_> = a.variables().iter().collect();
+                    variables_a.sort_by(|x, y| {
+                        LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y)
+                    });
+                    let mut variables_b: Vec<_> = b.variables().iter().collect();
+                    variables_b.sort_by(|x, y| {
+                        LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y)
+                    });
+                    state.field_collapsed("variables", |state| {
+                        state.list(unit_a, &variables_a, unit_b, &variables_b)
+                    })?;
                 }
                 state.inline(|state| {
                     state.list(unit_a, a.inlined_functions(), unit_b, b.inlined_functions())
