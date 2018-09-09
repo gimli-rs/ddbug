@@ -36,6 +36,7 @@ const OPT_CATEGORY_VARIABLE: &str = "variable";
 
 // Print fields
 const OPT_PRINT: &str = "print";
+const OPT_PRINT_ALL: &str = "all";
 const OPT_PRINT_ADDRESS: &str = "address";
 const OPT_PRINT_SOURCE: &str = "source";
 const OPT_PRINT_FILE_ADDRESS: &str = "file-address";
@@ -131,12 +132,14 @@ fn main() {
                 .require_delimiter(true)
                 .value_name("FIELD")
                 .possible_values(&[
+                    OPT_PRINT_ALL,
                     OPT_PRINT_ADDRESS,
                     OPT_PRINT_SOURCE,
                     OPT_PRINT_FILE_ADDRESS,
                     OPT_PRINT_UNIT_ADDRESS,
                     OPT_PRINT_FUNCTION_CALLS,
                     OPT_PRINT_FUNCTION_VARIABLES,
+                    OPT_PRINT_INLINED_FUNCTION_PARAMETERS,
                 ]),
         )
         .arg(
@@ -260,6 +263,14 @@ fn main() {
     if let Some(values) = matches.values_of(OPT_PRINT) {
         for value in values {
             match value {
+                OPT_PRINT_ALL => {
+                    options.print_file_address = true;
+                    options.print_unit_address = true;
+                    options.print_source = true;
+                    options.print_function_calls = true;
+                    options.print_function_variables = true;
+                    options.print_inlined_function_parameters = true;
+                }
                 OPT_PRINT_ADDRESS => {
                     options.print_file_address = true;
                     options.print_unit_address = true;
