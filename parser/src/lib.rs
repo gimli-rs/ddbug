@@ -24,6 +24,7 @@ extern crate gimli;
 #[macro_use]
 extern crate log;
 extern crate memmap;
+extern crate moria;
 extern crate object;
 extern crate typed_arena;
 

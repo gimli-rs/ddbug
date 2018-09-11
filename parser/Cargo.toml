@@ -13,6 +13,7 @@ fnv = "1.0"
 gimli = { git = "https://github.com/gimli-rs/gimli", rev = "3015ebe0db947eeebc99cd0d463711dfe25700f6" }
 log = "0.4"
 memmap = "0.6"
+moria = { git = "https://github.com/gimli-rs/moria", rev = "7a1c308fed84ad51338c9f0fe4016f917169d1c8" }
 object = "0.10"
 typed-arena = "1.3"
 

@@ -8,6 +8,7 @@ mod dwarf;
 use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
+use moria;
 use object::{self, Object, ObjectSection, ObjectSegment};
 use typed_arena::Arena;
 
@@ -127,23 +128,54 @@ impl<'input> File<'input> {
             }
         };
 
-        let input = &*map;
+        let object = object::File::parse(&*map)?;
+
+        if object.has_debug_symbols() {
+            File::parse_object(&object, &object, path, cb)
+        } else {
+            let debug_path = match moria::locate_debug_symbols(&object, path) {
+                Ok(debug_path) => debug_path,
+                Err(e) => {
+                    return Err(format!("unable to locate debug file: {}", e).into());
+                }
+            };
+
+            let handle = match fs::File::open(debug_path) {
+                Ok(handle) => handle,
+                Err(e) => {
+                    return Err(format!("open failed: {}", e).into());
+                }
+            };
+
+            let map = match unsafe { memmap::Mmap::map(&handle) } {
+                Ok(map) => map,
+                Err(e) => {
+                    return Err(format!("memmap failed: {}", e).into());
+                }
+            };
+
+            let debug_object = object::File::parse(&*map)?;
+            File::parse_object(&object, &debug_object, path, cb)
+        }
         /*
+        let input = &*map;
         if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
             pdb::parse(input, path, cb)
         } else {
             File::parse_object(input, path, cb)
         }
         */
-        File::parse_object(input, path, cb)
     }
 
-    fn parse_object<Cb>(input: &[u8], path: &str, cb: Cb) -> Result<()>
+    fn parse_object<Cb>(
+        object: &object::File,
+        debug_object: &object::File,
+        path: &str,
+        cb: Cb,
+    ) -> Result<()>
     where
         Cb: FnOnce(&File) -> Result<()>,
     {
-        let object = object::File::parse(input)?;
-
         let machine = object.machine();
         let mut segments = Vec::new();
         for segment in object.segments() {
@@ -173,6 +205,7 @@ impl<'input> File<'input> {
             }
         }
 
+        // TODO: symbols from debug_object too?
         let mut symbols = Vec::new();
         for symbol in object.symbols() {
             // TODO: handle relocatable objects
@@ -203,14 +236,14 @@ impl<'input> File<'input> {
             });
         }
 
-        let endian = if object.is_little_endian() {
+        let endian = if debug_object.is_little_endian() {
             gimli::RunTimeEndian::Little
         } else {
             gimli::RunTimeEndian::Big
         };
 
         let strings = &StringCache::new();
-        dwarf::parse(endian, &object, strings, |units, debug_info| {
+        dwarf::parse(endian, debug_object, strings, |units, debug_info| {
             let mut file = File {
                 path,
                 machine,
