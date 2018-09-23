@@ -44,6 +44,7 @@ const OPT_PRINT_UNIT_ADDRESS: &str = "unit-address";
 const OPT_PRINT_FUNCTION_CALLS: &str = "function-calls";
 const OPT_PRINT_FUNCTION_VARIABLES: &str = "function-variables";
 const OPT_PRINT_INLINED_FUNCTION_PARAMETERS: &str = "inlined-function-parameters";
+const OPT_PRINT_VARIABLE_LOCATIONS: &str = "variable-locations";
 
 // Print parameters
 const OPT_INLINE_DEPTH: &str = "inline-depth";
@@ -140,6 +141,7 @@ fn main() {
                     OPT_PRINT_FUNCTION_CALLS,
                     OPT_PRINT_FUNCTION_VARIABLES,
                     OPT_PRINT_INLINED_FUNCTION_PARAMETERS,
+                    OPT_PRINT_VARIABLE_LOCATIONS,
                 ]),
         )
         .arg(
@@ -270,6 +272,7 @@ fn main() {
                     options.print_function_calls = true;
                     options.print_function_variables = true;
                     options.print_inlined_function_parameters = true;
+                    options.print_variable_locations = true;
                 }
                 OPT_PRINT_ADDRESS => {
                     options.print_file_address = true;
@@ -283,6 +286,7 @@ fn main() {
                 OPT_PRINT_INLINED_FUNCTION_PARAMETERS => {
                     options.print_inlined_function_parameters = true
                 }
+                OPT_PRINT_VARIABLE_LOCATIONS => options.print_variable_locations = true,
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_PRINT, value),
                     clap::ErrorKind::InvalidValue,

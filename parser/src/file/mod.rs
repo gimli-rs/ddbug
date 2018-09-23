@@ -13,6 +13,7 @@ use object::{self, Object, ObjectSection, ObjectSegment};
 use typed_arena::Arena;
 
 use function::{Function, FunctionDetails, FunctionOffset};
+use location::Register;
 use range::{Range, RangeList};
 use types::{Enumerator, Type, TypeOffset};
 use unit::Unit;
@@ -49,6 +50,16 @@ where
     ) -> Option<FunctionDetails<'input>> {
         match self {
             DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash),
+        }
+    }
+
+    fn get_register_name(
+        &self,
+        machine: object::Machine,
+        register: Register,
+    ) -> Option<&'static str> {
+        match self {
+            DebugInfo::Dwarf(dwarf) => dwarf.get_register_name(machine, register),
         }
     }
 }
@@ -104,6 +115,10 @@ impl<'input> File<'input> {
         self.debug_info
             .get_function_details(offset, hash)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn get_register_name(&self, register: Register) -> Option<&'static str> {
+        self.debug_info.get_register_name(self.machine, register)
     }
 
     /// Parse the file with the given path.

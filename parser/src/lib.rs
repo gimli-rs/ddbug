@@ -30,6 +30,7 @@ extern crate typed_arena;
 
 mod file;
 mod function;
+mod location;
 mod namespace;
 mod range;
 mod source;
@@ -39,6 +40,7 @@ mod variable;
 
 pub use file::*;
 pub use function::*;
+pub use location::*;
 pub use namespace::*;
 pub use range::*;
 pub use source::*;

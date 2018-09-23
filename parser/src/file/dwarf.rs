@@ -12,6 +12,7 @@ use file::{DebugInfo, FileHash, StringCache};
 use function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
 };
+use location::{Location, Register};
 use namespace::{Namespace, NamespaceKind};
 use range::Range;
 use source::Source;
@@ -37,6 +38,7 @@ where
     debug_line: gimli::DebugLine<Reader<'input, Endian>>,
     debug_str: gimli::DebugStr<Reader<'input, Endian>>,
     range_lists: gimli::RangeLists<Reader<'input, Endian>>,
+    location_lists: gimli::LocationLists<Reader<'input, Endian>>,
     units: Vec<DwarfUnit<'input, Endian>>,
 }
 
@@ -112,6 +114,20 @@ where
             parse_subprogram_details(hash, self, unit, node).ok()
         })
     }
+
+    pub(crate) fn get_register_name(
+        &self,
+        machine: object::Machine,
+        register: Register,
+    ) -> Option<&'static str> {
+        let register_name = match machine {
+            object::Machine::Arm | object::Machine::Arm64 => gimli::Arm::register_name,
+            object::Machine::X86 => gimli::X86::register_name,
+            object::Machine::X86_64 => gimli::X86_64::register_name,
+            _ => return None,
+        };
+        register_name(gimli::Register(register.0))
+    }
 }
 
 struct DwarfUnit<'input, Endian>
@@ -120,6 +136,7 @@ where
 {
     header: gimli::CompilationUnitHeader<Reader<'input, Endian>>,
     abbrev: gimli::Abbreviations,
+    base_address: u64,
     line: Option<
         gimli::StateMachine<
             Reader<'input, Endian>,
@@ -170,6 +187,11 @@ where
     let debug_rnglists = get_section(".debug_rnglists");
     let debug_rnglists = gimli::DebugRngLists::new(&debug_rnglists, endian);
     let range_lists = gimli::RangeLists::new(debug_ranges, debug_rnglists)?;
+    let debug_loc = get_section(".debug_loc");
+    let debug_loc = gimli::DebugLoc::new(&debug_loc, endian);
+    let debug_loclists = get_section(".debug_loclists");
+    let debug_loclists = gimli::DebugLocLists::new(&debug_loclists, endian);
+    let location_lists = gimli::LocationLists::new(debug_loc, debug_loclists)?;
 
     let mut dwarf = DwarfDebugInfo {
         endian,
@@ -179,6 +201,7 @@ where
         debug_line,
         debug_str,
         range_lists,
+        location_lists,
         units: Vec::new(),
     };
 
@@ -201,6 +224,7 @@ where
     let mut dwarf_unit = DwarfUnit {
         header: unit_header,
         abbrev,
+        base_address: 0,
         line: None,
     };
 
@@ -246,6 +270,7 @@ where
                             // TODO: is address 0 ever valid?
                             if addr != 0 {
                                 unit.low_pc = Some(addr);
+                                dwarf_unit.base_address = addr;
                             }
                         }
                     }
@@ -309,12 +334,11 @@ where
                 }
                 dwarf_unit.line = Some(rows);
             } else if let Some(offset) = ranges {
-                let low_pc = unit.low_pc.unwrap_or(0);
                 let mut ranges = dwarf.range_lists.ranges(
                     offset,
                     dwarf_unit.header.version(),
                     dwarf_unit.header.address_size(),
-                    low_pc,
+                    dwarf_unit.base_address,
                 )?;
                 while let Some(range) = ranges.next()? {
                     // Ranges starting at 0 are probably invalid.
@@ -1708,8 +1732,10 @@ where
                 {
                     function.declaration = flag;
                 },
-                gimli::DW_AT_frame_base
-                | gimli::DW_AT_external
+                gimli::DW_AT_frame_base => {
+                    // FIXME
+                }
+                gimli::DW_AT_external
                 | gimli::DW_AT_GNU_all_call_sites
                 | gimli::DW_AT_GNU_all_tail_call_sites
                 | gimli::DW_AT_prototyped
@@ -2473,16 +2499,31 @@ where
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
                 gimli::DW_AT_location => {
                     match attr.value() {
-                        gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
-                            evaluate_variable_location(&dwarf_unit.header, expr)
-                        {
-                            variable.address = address;
-                            if size.is_some() {
-                                variable.size = size;
+                        gimli::AttributeValue::Exprloc(expr) => {
+                            evaluate_local_variable_location(
+                                &dwarf_unit.header,
+                                expr,
+                                &mut variable,
+                            );
+                        }
+                        gimli::AttributeValue::LocationListsRef(offset) => {
+                            let mut locations = dwarf.location_lists.locations(
+                                offset,
+                                dwarf_unit.header.version(),
+                                dwarf_unit.header.address_size(),
+                                dwarf_unit.base_address,
+                            )?;
+                            while let Some(location) = locations.next()? {
+                                // TODO: use location.range too
+                                evaluate_local_variable_location(
+                                    &dwarf_unit.header,
+                                    location.data,
+                                    &mut variable,
+                                );
                             }
-                        },
-                        gimli::AttributeValue::LocationListsRef(..) => {
-                            // TODO
+                            // TODO: don't do this once we use location.range
+                            variable.locations.sort_unstable();
+                            variable.locations.dedup();
                         }
                         _ => {
                             debug!("unknown DW_AT_location: {:?}", attr.value());
@@ -2540,7 +2581,7 @@ fn evaluate_member_location<'input, Endian>(
     expression: gimli::Expression<Reader<'input, Endian>>,
 ) -> Option<u64>
 where
-    Endian: gimli::Endianity + 'input,
+    Endian: gimli::Endianity,
 {
     let pieces = evaluate(unit, expression, true);
     if pieces.len() != 1 {
@@ -2562,7 +2603,7 @@ fn evaluate_variable_location<'input, Endian>(
     expression: gimli::Expression<Reader<'input, Endian>>,
 ) -> Option<(Address, Size)>
 where
-    Endian: gimli::Endianity + 'input,
+    Endian: gimli::Endianity,
 {
     let pieces = evaluate(unit, expression, false);
     let mut result = None;
@@ -2596,6 +2637,60 @@ where
     result
 }
 
+fn evaluate_local_variable_location<'input, Endian>(
+    unit: &gimli::CompilationUnitHeader<Reader<'input, Endian>>,
+    expression: gimli::Expression<Reader<'input, Endian>>,
+    variable: &mut LocalVariable<'input>,
+) where
+    Endian: gimli::Endianity,
+{
+    let mut locations = Vec::new();
+    let pieces = evaluate(unit, expression, false);
+    for piece in &*pieces {
+        match piece.location {
+            gimli::Location::Address { address } => {
+                // TODO: is address 0 ever valid?
+                if address != 0 {
+                    let address = Address::new(address);
+                    let size = match piece.size_in_bits.map(|x| (x + 7) / 8) {
+                        Some(size) => Size::new(size),
+                        None => Size::none(),
+                    };
+                    locations.push(Location::Address { address, size });
+                }
+            }
+            gimli::Location::Register { register } => {
+                locations.push(Location::Register {
+                    register: register.into(),
+                });
+            }
+            gimli::Location::Empty
+            | gimli::Location::Value { .. }
+            | gimli::Location::ImplicitPointer { .. } => {}
+            _ => debug!("unknown DW_AT_location piece: {:?}", piece),
+        }
+    }
+
+    for location in &locations {
+        if let Location::Address { address, size } = location {
+            if variable.address.is_some() {
+                // TODO: combine address ranges?
+                debug!(
+                    "unsupported DW_AT_location with multiple addresses: {:?}",
+                    pieces
+                );
+            } else {
+                variable.address = *address;
+                if size.is_some() {
+                    variable.size = *size;
+                }
+            }
+        }
+    }
+
+    variable.locations.extend(locations);
+}
+
 fn evaluate<'input, Endian>(
     unit: &gimli::CompilationUnitHeader<Reader<'input, Endian>>,
     expression: gimli::Expression<Reader<'input, Endian>>,
@@ -2619,7 +2714,7 @@ where
                 result = evaluation.resume_with_text_base(0);
             }
             Ok(_x) => {
-                //debug!("incomplete evaluation: {:?}", _x);
+                debug!("incomplete evaluation: {:?}", _x);
                 return Vec::new();
             }
             Err(e) => {
@@ -2627,6 +2722,13 @@ where
                 return Vec::new();
             }
         }
+    }
+}
+
+impl From<gimli::Register> for Register {
+    #[inline]
+    fn from(register: gimli::Register) -> Register {
+        Register(register.0)
     }
 }
 

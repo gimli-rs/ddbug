@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::usize;
 
 use file::FileHash;
+use location::{Location, Register};
 use namespace::Namespace;
 use range::Range;
 use source::Source;
@@ -162,6 +163,7 @@ pub struct LocalVariable<'input> {
     pub(crate) source: Source<'input>,
     pub(crate) address: Address,
     pub(crate) size: Size,
+    pub(crate) locations: Vec<Location>,
 }
 
 impl<'input> LocalVariable<'input> {
@@ -200,6 +202,14 @@ impl<'input> LocalVariable<'input> {
         } else {
             self.ty(hash).and_then(|t| t.byte_size(hash))
         }
+    }
+
+    /// The registers in which this variable is stored.
+    pub fn registers(&self) -> impl Iterator<Item = &Register> {
+        self.locations.iter().filter_map(|location| match location {
+            Location::Register { register } => Some(register),
+            _ => None,
+        })
     }
 
     /// Compare the identifying information of two variables.

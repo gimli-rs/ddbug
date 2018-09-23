@@ -22,6 +22,7 @@ pub(crate) mod member;
 pub(crate) mod namespace;
 pub(crate) mod parameter;
 pub(crate) mod range;
+pub(crate) mod register;
 pub(crate) mod section;
 pub(crate) mod source;
 pub(crate) mod struct_type;

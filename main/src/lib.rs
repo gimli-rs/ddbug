@@ -39,6 +39,7 @@ pub struct Options<'a> {
     pub print_function_calls: bool,
     pub print_function_variables: bool,
     pub print_inlined_function_parameters: bool,
+    pub print_variable_locations: bool,
     pub inline_depth: usize,
     pub html: bool,
 
