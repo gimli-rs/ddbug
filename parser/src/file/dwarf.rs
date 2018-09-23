@@ -1156,8 +1156,15 @@ where
                         {
                             member.bit_offset = offset;
                         },
-                        gimli::AttributeValue::LocationListsRef(..) => {
-                            // TODO
+                        gimli::AttributeValue::LocationListsRef(offset) => {
+                            if dwarf_unit.header.version() == 3 {
+                                // HACK: while gimli is technically correct, in my experience this
+                                // is more likely to be a constant. This can happen for large
+                                // structs.
+                                member.bit_offset = offset.0 as u64 * 8;
+                            } else {
+                                debug!("loclist for member: {:?}", attr.value());
+                            }
                         }
                         _ => {
                             debug!("unknown DW_AT_data_member_location: {:?}", attr.value());
@@ -2380,24 +2387,22 @@ where
                 }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
-                gimli::DW_AT_location => {
-                    match attr.value() {
-                        gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
-                            evaluate_variable_location(&dwarf_unit.header, expr)
-                        {
-                            variable.address = address;
-                            if size.is_some() {
-                                variable.size = size;
-                            }
-                        },
-                        gimli::AttributeValue::LocationListsRef(..) => {
-                            // TODO
+                gimli::DW_AT_location => match attr.value() {
+                    gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
+                        evaluate_variable_location(&dwarf_unit.header, expr)
+                    {
+                        variable.address = address;
+                        if size.is_some() {
+                            variable.size = size;
                         }
-                        _ => {
-                            debug!("unknown DW_AT_location: {:?}", attr.value());
-                        }
+                    },
+                    gimli::AttributeValue::LocationListsRef(..) => {
+                        debug!("loclist for variable: {:?}", attr.value());
                     }
-                }
+                    _ => {
+                        debug!("unknown DW_AT_location: {:?}", attr.value());
+                    }
+                },
                 gimli::DW_AT_abstract_origin
                 | gimli::DW_AT_artificial
                 | gimli::DW_AT_const_value
