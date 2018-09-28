@@ -2567,8 +2567,15 @@ where
             }
             return Ok(());
         } else {
-            // TODO: enable this once we handle variables in inlined subroutines
-            //debug!("missing variable abstract origin: 0x{:08x}", abstract_origin.0);
+            let unit_offset = offset
+                .to_unit_offset(&dwarf_unit.header)
+                .unwrap_or(gimli::UnitOffset(0));
+            debug!(
+                "missing variable abstract origin: 0x{:08x}(0x{:08x}+0x{:08x})",
+                offset.0,
+                dwarf_unit.header.offset().0,
+                unit_offset.0
+            );
         }
     }
 
