@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::usize;
 
 use file::FileHash;
-use location::{Location, Register};
+use location::{FrameLocation, Location, Piece, Register};
 use namespace::Namespace;
 use range::Range;
 use source::Source;
@@ -163,7 +163,7 @@ pub struct LocalVariable<'input> {
     pub(crate) source: Source<'input>,
     pub(crate) address: Address,
     pub(crate) size: Size,
-    pub(crate) locations: Vec<Location>,
+    pub(crate) locations: Vec<Piece>,
 }
 
 impl<'input> LocalVariable<'input> {
@@ -191,8 +191,8 @@ impl<'input> LocalVariable<'input> {
     ///
     /// This will only be known for static variables.
     #[inline]
-    pub fn address(&self) -> Address {
-        self.address
+    pub fn address(&self) -> Option<u64> {
+        self.address.get()
     }
 
     /// The size in bytes of the variable.
@@ -205,10 +205,34 @@ impl<'input> LocalVariable<'input> {
     }
 
     /// The registers in which this variable is stored.
-    pub fn registers(&self) -> impl Iterator<Item = &Register> {
-        self.locations.iter().filter_map(|location| match location {
-            Location::Register { register } => Some(register),
-            _ => None,
+    pub fn registers<'a>(&'a self) -> impl Iterator<Item = Register> + 'a {
+        self.locations.iter().filter_map(|piece| {
+            if piece.is_value {
+                return None;
+            }
+            match piece.location {
+                Location::Register { register } => Some(register),
+                _ => None,
+            }
+        })
+    }
+
+    /// The stack frame locations at which this variable is stored.
+    pub fn frame_locations<'a>(&'a self) -> impl Iterator<Item = FrameLocation> + 'a {
+        self.locations.iter().filter_map(|piece| {
+            if piece.is_value {
+                return None;
+            }
+            match piece.location {
+                // TODO: do we need to distinguish between these?
+                Location::FrameOffset { offset } | Location::CfaOffset { offset } => {
+                    Some(FrameLocation {
+                        offset,
+                        bit_size: piece.bit_size,
+                    })
+                }
+                _ => None,
+            }
         })
     }
 

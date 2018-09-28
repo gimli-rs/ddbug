@@ -24,7 +24,7 @@ impl Print for Register {
     }
 }
 
-impl<'a> DiffList for &'a Register {
+impl DiffList for Register {
     fn step_cost(&self, _state: &DiffState, _arg: &()) -> usize {
         1
     }

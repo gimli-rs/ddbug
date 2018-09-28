@@ -12,7 +12,7 @@ use file::{DebugInfo, FileHash, StringCache};
 use function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
 };
-use location::{Location, Register};
+use location::{Location, Piece, Register};
 use namespace::{Namespace, NamespaceKind};
 use range::Range;
 use source::Source;
@@ -2521,9 +2521,6 @@ where
                                     &mut variable,
                                 );
                             }
-                            // TODO: don't do this once we use location.range
-                            variable.locations.sort_unstable();
-                            variable.locations.dedup();
                         }
                         _ => {
                             debug!("unknown DW_AT_location: {:?}", attr.value());
@@ -2651,51 +2648,321 @@ fn evaluate_local_variable_location<'input, Endian>(
 ) where
     Endian: gimli::Endianity,
 {
-    let mut locations = Vec::new();
-    let pieces = evaluate(unit, expression, false);
-    for piece in &*pieces {
-        match piece.location {
-            gimli::Location::Address { address } => {
-                // TODO: is address 0 ever valid?
-                if address != 0 {
-                    let address = Address::new(address);
-                    let size = match piece.size_in_bits.map(|x| (x + 7) / 8) {
-                        Some(size) => Size::new(size),
-                        None => Size::none(),
-                    };
-                    locations.push(Location::Address { address, size });
+    let pieces = match evaluate_simple(unit, expression, false) {
+        Ok(locations) => locations,
+        Err(_e) => {
+            // This happens a lot, not sure if bugs or bad DWARF.
+            //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
+            return;
+        }
+    };
+
+    for piece in &pieces {
+        if piece.is_value {
+            continue;
+        }
+        // Can this be Literal too?
+        if let Location::Address { address } = piece.location {
+            if variable.address.is_some() {
+                if address != variable.address {
+                    // TODO: combine address ranges?
+                    debug!(
+                        "unsupported DW_AT_location with multiple addresses: {:?}",
+                        pieces
+                    );
+                }
+            } else {
+                variable.address = address;
+                if let Some(bit_size) = piece.bit_size.get() {
+                    variable.size = Size::new((bit_size + 7) / 8);
                 }
             }
-            gimli::Location::Register { register } => {
-                locations.push(Location::Register {
+        }
+    }
+
+    variable.locations.extend(pieces);
+}
+
+fn evaluate_simple<'input, Endian>(
+    unit: &gimli::CompilationUnitHeader<Reader<'input, Endian>>,
+    expression: gimli::Expression<Reader<'input, Endian>>,
+    _object_address: bool,
+) -> Result<Vec<Piece>>
+where
+    Endian: gimli::Endianity + 'input,
+{
+    let address_size = unit.address_size();
+    let addr_mask = if address_size == 8 {
+        !0u64
+    } else {
+        (1 << (8 * address_size as u64)) - 1
+    };
+    let format = unit.format();
+    let bytecode = expression.0.clone();
+    let mut bytes = expression.0;
+
+    let mut pieces = Vec::new();
+    let mut bit_offset = 0;
+    let mut add_piece = |pieces: &mut Vec<Piece>,
+                         location: Location,
+                         is_value: bool,
+                         piece_bit_offset: Option<u64>,
+                         piece_bit_size: Size| {
+        let piece_bit_offset = piece_bit_offset.unwrap_or(bit_offset);
+        if let Some(piece_bit_size) = piece_bit_size.get() {
+            bit_offset = (piece_bit_offset + piece_bit_size + 7) / 8;
+        }
+        pieces.push(Piece {
+            bit_offset: piece_bit_offset,
+            bit_size: piece_bit_size,
+            location,
+            is_value,
+        });
+    };
+
+    let mut stack = Vec::new();
+    let pop = |stack: &mut Vec<Location>| match stack.pop() {
+        Some(value) => Ok(value),
+        None => Err(gimli::Error::NotEnoughStackItems),
+    };
+
+    let mut location = None;
+    while !bytes.is_empty() {
+        match gimli::Operation::parse(&mut bytes, &bytecode, address_size, format)? {
+            gimli::Operation::Nop => {}
+            gimli::Operation::Register { register } => {
+                location = Some((
+                    Location::Register {
+                        register: register.into(),
+                    },
+                    false,
+                ));
+            }
+            gimli::Operation::ImplicitValue { .. } => {
+                // Unimplemented.
+                location = Some((Location::Other, true));
+            }
+            gimli::Operation::ImplicitPointer { .. } => {
+                // Unimplemented.
+                location = Some((Location::Other, false));
+            }
+            gimli::Operation::StackValue => {
+                location = Some((pop(&mut stack)?, true));
+            }
+            gimli::Operation::EntryValue { .. }
+            | gimli::Operation::ParameterRef { .. }
+            | gimli::Operation::TypedLiteral { .. }
+            | gimli::Operation::PushObjectAddress => {
+                // Unimplemented.
+                stack.push(Location::Other);
+            }
+            gimli::Operation::Literal { value } => {
+                stack.push(Location::Literal { value });
+            }
+            gimli::Operation::RegisterOffset {
+                register, offset, ..
+            } => {
+                stack.push(Location::RegisterOffset {
                     register: register.into(),
+                    offset,
                 });
             }
-            gimli::Location::Empty
-            | gimli::Location::Value { .. }
-            | gimli::Location::ImplicitPointer { .. } => {}
-            _ => debug!("unknown DW_AT_location piece: {:?}", piece),
-        }
-    }
-
-    for location in &locations {
-        if let Location::Address { address, size } = location {
-            if variable.address.is_some() {
-                // TODO: combine address ranges?
-                debug!(
-                    "unsupported DW_AT_location with multiple addresses: {:?}",
-                    pieces
+            gimli::Operation::FrameOffset { offset } => {
+                stack.push(Location::FrameOffset { offset });
+            }
+            gimli::Operation::CallFrameCFA => {
+                stack.push(Location::CfaOffset { offset: 0 });
+            }
+            gimli::Operation::TextRelativeOffset { offset } => {
+                stack.push(Location::Address {
+                    address: Address::new(offset),
+                });
+            }
+            gimli::Operation::TLS => {
+                let location = match pop(&mut stack)? {
+                    Location::Literal { value } => Location::TlsOffset { offset: value },
+                    Location::Other => Location::Other,
+                    location => {
+                        debug!("unsupported TLS: {:?}", location);
+                        Location::Other
+                    }
+                };
+                stack.push(location);
+            }
+            gimli::Operation::Piece {
+                size_in_bits,
+                bit_offset,
+            } => {
+                let location = stack.pop().unwrap_or(Location::Empty);
+                add_piece(
+                    &mut pieces,
+                    location,
+                    false,
+                    bit_offset,
+                    Size::new(size_in_bits),
                 );
+            }
+            gimli::Operation::Drop => {
+                pop(&mut stack)?;
+            }
+            gimli::Operation::Swap => {
+                let one = pop(&mut stack)?;
+                let two = pop(&mut stack)?;
+                stack.push(one);
+                stack.push(two);
+            }
+            gimli::Operation::Rot => {
+                let one = pop(&mut stack)?;
+                let two = pop(&mut stack)?;
+                let three = pop(&mut stack)?;
+                stack.push(one);
+                stack.push(three);
+                stack.push(two);
+            }
+            gimli::Operation::Pick { index } => {
+                let index = index as usize;
+                if index >= stack.len() {
+                    return Err(gimli::Error::NotEnoughStackItems.into());
+                }
+                let location = stack[stack.len() - index - 1];
+                stack.push(location);
+            }
+            gimli::Operation::PlusConstant { value: constant } => {
+                let location = match pop(&mut stack)? {
+                    Location::Literal { value } => {
+                        let value = value.wrapping_add(constant) & addr_mask;
+                        Location::Literal { value }
+                    }
+                    Location::RegisterOffset { register, offset } => {
+                        let offset = ((offset as u64).wrapping_add(constant) & addr_mask) as i64;
+                        Location::RegisterOffset { register, offset }
+                    }
+                    Location::FrameOffset { offset } => {
+                        let offset = ((offset as u64).wrapping_add(constant) & addr_mask) as i64;
+                        Location::FrameOffset { offset }
+                    }
+                    Location::CfaOffset { offset } => {
+                        let offset = ((offset as u64).wrapping_add(constant) & addr_mask) as i64;
+                        Location::CfaOffset { offset }
+                    }
+                    Location::Other => Location::Other,
+                    location => {
+                        debug!("unsupported PlusConstant: {:?}", location);
+                        Location::Other
+                    }
+                };
+                stack.push(location);
+            }
+            gimli::Operation::Plus => {
+                let one = pop(&mut stack)?;
+                let two = pop(&mut stack)?;
+                match (one, two) {
+                    (Location::Other, _) | (_, Location::Other) => Location::Other,
+                    (Location::RegisterOffset { .. }, Location::RegisterOffset { .. }) => {
+                        // Seen in practice, but we can't handle this yet.
+                        Location::Other
+                    }
+                    location => {
+                        debug!("unsupported Plus: {:?}", location);
+                        Location::Other
+                    }
+                };
+            }
+            gimli::Operation::Minus => {
+                let one = pop(&mut stack)?;
+                let two = pop(&mut stack)?;
+                match (one, two) {
+                    (Location::Other, _) | (_, Location::Other) => Location::Other,
+                    (Location::RegisterOffset { .. }, Location::RegisterOffset { .. }) => {
+                        // Seen in practice, but we can't handle this yet.
+                        Location::Other
+                    }
+                    location => {
+                        debug!("unsupported Minus: {:?}", location);
+                        Location::Other
+                    }
+                };
+            }
+            gimli::Operation::Neg
+            | gimli::Operation::Not
+            | gimli::Operation::Abs
+            | gimli::Operation::Convert { .. }
+            | gimli::Operation::Reinterpret { .. } => {
+                // Unimplemented unary operations.
+                pop(&mut stack)?;
+                stack.push(Location::Other);
+            }
+            gimli::Operation::Mul
+            | gimli::Operation::Div
+            | gimli::Operation::Mod
+            | gimli::Operation::Shl
+            | gimli::Operation::Shr
+            | gimli::Operation::Shra
+            | gimli::Operation::And
+            | gimli::Operation::Or
+            | gimli::Operation::Xor
+            | gimli::Operation::Eq
+            | gimli::Operation::Ne
+            | gimli::Operation::Gt
+            | gimli::Operation::Ge
+            | gimli::Operation::Lt
+            | gimli::Operation::Le => {
+                // Unimplemented binary operations.
+                pop(&mut stack)?;
+                pop(&mut stack)?;
+                stack.push(Location::Other);
+            }
+            gimli::Operation::Deref { space, .. } => {
+                // Unimplemented.
+                pop(&mut stack)?;
+                if space {
+                    pop(&mut stack)?;
+                }
+                stack.push(Location::Other);
+            }
+            gimli::Operation::Bra { .. }
+            | gimli::Operation::Skip { .. }
+            | gimli::Operation::Call { .. } => {
+                // Unimplemented.
+                // We can't even push Location::Other for Bra.
+                // Skip and Call could be implemented if needed.
+                return Ok(pieces);
+            }
+        }
+        if let Some((location, is_value)) = location {
+            if bytes.is_empty() {
+                if !pieces.is_empty() {
+                    return Err(gimli::Error::InvalidPiece.into());
+                }
+                add_piece(&mut pieces, location, is_value, Some(0), Size::none());
             } else {
-                variable.address = *address;
-                if size.is_some() {
-                    variable.size = *size;
+                match gimli::Operation::parse(&mut bytes, &bytecode, address_size, format)? {
+                    gimli::Operation::Piece {
+                        size_in_bits,
+                        bit_offset,
+                    } => {
+                        add_piece(
+                            &mut pieces,
+                            location,
+                            is_value,
+                            bit_offset,
+                            Size::new(size_in_bits),
+                        );
+                    }
+                    _ => {
+                        return Err(gimli::Error::InvalidPiece.into());
+                    }
                 }
             }
         }
+        location = None;
     }
-
-    variable.locations.extend(locations);
+    if pieces.is_empty() {
+        if let Some(location) = stack.pop() {
+            add_piece(&mut pieces, location, false, Some(0), Size::none());
+        }
+    }
+    Ok(pieces)
 }
 
 fn evaluate<'input, Endian>(
@@ -2718,6 +2985,7 @@ where
                 return evaluation.result();
             }
             Ok(gimli::EvaluationResult::RequiresTextBase) => {
+                // This is actually the relocation offset, so use 0.
                 result = evaluation.resume_with_text_base(0);
             }
             Ok(_x) => {

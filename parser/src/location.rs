@@ -12,13 +12,38 @@ impl Register {
     }
 }
 
+/// A location within the stack frame.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FrameLocation {
+    /// The offset from the frame pointer.
+    pub offset: i64,
+    /// The size of the value in bits.
+    pub bit_size: Size,
+}
+
+/// A piece of a value.
+// TODO: include the address ranges for which this piece is valid
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Piece {
+    /// The offset of the piece.
+    pub bit_offset: u64,
+    /// The size of the piece. If none, then the piece is the complete value.
+    pub bit_size: Size,
+    /// The location of the piece.
+    pub location: Location,
+    /// If `true`, then the piece does not have a location.
+    /// Instead, `location` is the value of the piece.
+    pub is_value: bool,
+}
+
 /// A value location.
-// TODO: include the address ranges for which this location is valid
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Location {
-    /// The value is a constant.
-    Constant {
-        /// The constant value.
+pub(crate) enum Location {
+    /// The value has been optimized away.
+    Empty,
+    /// A literal address or value.
+    Literal {
+        /// The literal address or value.
         value: u64,
     },
     /// The value is stored in a register.
@@ -31,22 +56,28 @@ pub enum Location {
         /// The register number.
         register: Register,
         /// The offset.
-        offset: usize,
-        /// The size.
-        size: Size,
+        offset: i64,
+    },
+    /// The value is stored in memory at an offset from the frame base.
+    FrameOffset {
+        /// The offset.
+        offset: i64,
     },
     /// The value is stored in memory at an offset from the CFA.
     CfaOffset {
         /// The offset.
-        offset: usize,
-        /// The size.
-        size: Size,
+        offset: i64,
     },
-    /// The value is stored in memory at a fixed address.
+    /// The value is stored in memory at an address. This address may need relocation.
     Address {
-        /// The address.
+        /// The offset.
         address: Address,
-        /// The size.
-        size: Size,
     },
+    /// The value is stored in memory at an offset within TLS.
+    TlsOffset {
+        /// The offset.
+        offset: u64,
+    },
+    /// The value is more complex than any of the above variants.
+    Other,
 }
