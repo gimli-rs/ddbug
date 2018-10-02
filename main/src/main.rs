@@ -43,6 +43,7 @@ const OPT_PRINT_FILE_ADDRESS: &str = "file-address";
 const OPT_PRINT_UNIT_ADDRESS: &str = "unit-address";
 const OPT_PRINT_FUNCTION_CALLS: &str = "function-calls";
 const OPT_PRINT_FUNCTION_VARIABLES: &str = "function-variables";
+const OPT_PRINT_FUNCTION_STACK_FRAME: &str = "function-stack-frame";
 const OPT_PRINT_INLINED_FUNCTION_PARAMETERS: &str = "inlined-function-parameters";
 const OPT_PRINT_VARIABLE_LOCATIONS: &str = "variable-locations";
 
@@ -140,6 +141,7 @@ fn main() {
                     OPT_PRINT_UNIT_ADDRESS,
                     OPT_PRINT_FUNCTION_CALLS,
                     OPT_PRINT_FUNCTION_VARIABLES,
+                    OPT_PRINT_FUNCTION_STACK_FRAME,
                     OPT_PRINT_INLINED_FUNCTION_PARAMETERS,
                     OPT_PRINT_VARIABLE_LOCATIONS,
                 ]),
@@ -271,6 +273,7 @@ fn main() {
                     options.print_source = true;
                     options.print_function_calls = true;
                     options.print_function_variables = true;
+                    options.print_function_stack_frame = true;
                     options.print_inlined_function_parameters = true;
                     options.print_variable_locations = true;
                 }
@@ -283,6 +286,7 @@ fn main() {
                 OPT_PRINT_UNIT_ADDRESS => options.print_unit_address = true,
                 OPT_PRINT_FUNCTION_CALLS => options.print_function_calls = true,
                 OPT_PRINT_FUNCTION_VARIABLES => options.print_function_variables = true,
+                OPT_PRINT_FUNCTION_STACK_FRAME => options.print_function_stack_frame = true,
                 OPT_PRINT_INLINED_FUNCTION_PARAMETERS => {
                     options.print_inlined_function_parameters = true
                 }

@@ -169,8 +169,16 @@ pub struct LocalVariable<'input> {
 impl<'input> LocalVariable<'input> {
     /// The name of the variable.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The type offset of the variable.
+    ///
+    /// A type offset is unique for all types in a file.
+    #[inline]
+    pub fn type_offset<'a>(&self) -> TypeOffset {
+        self.ty
     }
 
     /// The type of the variable.

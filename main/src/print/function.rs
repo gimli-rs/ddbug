@@ -1,7 +1,9 @@
 use std::cmp;
 
 use code::{Call, CodeRegion};
-use parser::{FileHash, Function, LocalVariable, Parameter, Unit};
+use parser::{
+    FileHash, Function, FunctionDetails, LocalVariable, Parameter, Type, TypeOffset, Unit,
+};
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use {Options, Result, Sort};
 
@@ -109,6 +111,10 @@ impl<'input> Print for Function<'input> {
                         state.list(unit, details.variables())
                     })?;
                 }
+                if state.options().print_function_stack_frame {
+                    let variables = frame_variables(&details, state.hash());
+                    state.field_collapsed("stack frame", |state| state.list(&(), &variables))?;
+                }
                 state.inline(|state| {
                     state.field_collapsed("inlined functions", |state| {
                         state.list(unit, details.inlined_functions())
@@ -182,6 +188,13 @@ impl<'input> Print for Function<'input> {
                     });
                     state.field_collapsed("variables", |state| {
                         state.list(unit_a, &variables_a, unit_b, &variables_b)
+                    })?;
+                }
+                if state.options().print_function_stack_frame {
+                    let variables_a = frame_variables(&details_a, state.hash_a());
+                    let variables_b = frame_variables(&details_b, state.hash_b());
+                    state.field_collapsed("stack frame", |state| {
+                        state.ord_list(&(), &variables_a, &(), &variables_b)
                     })?;
                 }
                 state.inline(|state| {
@@ -328,4 +341,119 @@ fn calls(f: &Function, code: Option<&CodeRegion>) -> Vec<Call> {
         return code.calls(range);
     }
     Vec::new()
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct FrameVariable<'input> {
+    prev_offset: Option<i64>,
+    offset: i64,
+    size: Option<u64>,
+    name: Option<&'input str>,
+    ty: TypeOffset,
+}
+
+// Ignore prev_offset for ordering.
+impl<'input> Ord for FrameVariable<'input> {
+    fn cmp(&self, other: &FrameVariable<'input>) -> cmp::Ordering {
+        self.offset
+            .cmp(&other.offset)
+            .then_with(|| self.size.cmp(&other.size))
+            .then_with(|| self.name.cmp(&other.name))
+            .then_with(|| self.ty.cmp(&other.ty))
+    }
+}
+
+impl<'input> PartialOrd for FrameVariable<'input> {
+    fn partial_cmp(&self, other: &FrameVariable<'input>) -> Option<cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn print_frame_unknown(variable: &FrameVariable, w: &mut ValuePrinter) -> Result<()> {
+    if let Some(offset) = variable.prev_offset {
+        if offset < variable.offset {
+            write!(w, "{}[{}]\t<unknown>", offset, variable.offset - offset)?;
+        }
+    }
+    Ok(())
+}
+
+fn print_frame_variable(
+    variable: &FrameVariable,
+    w: &mut ValuePrinter,
+    hash: &FileHash,
+) -> Result<()> {
+    write!(w, "{}", variable.offset)?;
+    match variable.size {
+        Some(size) => {
+            write!(w, "[{}]", size)?;
+        }
+        None => {
+            debug!("no size for {:?}", variable);
+            write!(w, "[??]")?;
+        }
+    }
+    write!(w, "\t{}: ", variable.name.unwrap_or("<anon>"))?;
+    print::types::print_ref(Type::from_offset(hash, variable.ty), w, hash)?;
+    Ok(())
+}
+
+fn frame_variables<'input>(
+    f: &FunctionDetails<'input>,
+    hash: &FileHash<'input>,
+) -> Vec<FrameVariable<'input>> {
+    let mut frame_variables = Vec::new();
+    for variable in f.variables() {
+        add_variable_frame_locations(variable, hash, &mut frame_variables);
+    }
+
+    frame_variables.sort_unstable();
+    frame_variables.dedup();
+
+    let mut prev_offset = None;
+    for variable in &mut frame_variables {
+        variable.prev_offset = prev_offset;
+        prev_offset = variable.size.map(|size| variable.offset + size as i64);
+    }
+
+    frame_variables
+}
+
+fn add_variable_frame_locations<'input>(
+    v: &LocalVariable<'input>,
+    hash: &FileHash<'input>,
+    variables: &mut Vec<FrameVariable<'input>>,
+) {
+    let size = v.byte_size(hash);
+    let name = v.name();
+    let ty = v.type_offset();
+    for location in v.frame_locations() {
+        let offset = location.offset;
+        let size = if let Some(bit_size) = location.bit_size.get() {
+            Some((bit_size + 7) / 8)
+        } else {
+            size
+        };
+        variables.push(FrameVariable {
+            prev_offset: None,
+            offset,
+            size,
+            name,
+            ty,
+        });
+    }
+}
+
+impl<'input> Print for FrameVariable<'input> {
+    type Arg = ();
+
+    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
+        state.line(|w, _hash| print_frame_unknown(self, w))?;
+        state.line(|w, hash| print_frame_variable(self, w, hash))
+    }
+
+    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
+        state.line(a, b, |w, _hash, x| print_frame_unknown(x, w))?;
+        state.line(a, b, |w, hash, x| print_frame_variable(x, w, hash))
+    }
 }
