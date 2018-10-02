@@ -1934,10 +1934,35 @@ where
                 gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     parameter.ty = offset;
                 },
+                gimli::DW_AT_location => {
+                    match attr.value() {
+                        gimli::AttributeValue::Exprloc(expr) => {
+                            evaluate_parameter_location(&dwarf_unit.header, expr, &mut parameter);
+                        }
+                        gimli::AttributeValue::LocationListsRef(offset) => {
+                            let mut locations = dwarf.location_lists.locations(
+                                offset,
+                                dwarf_unit.header.version(),
+                                dwarf_unit.header.address_size(),
+                                dwarf_unit.base_address,
+                            )?;
+                            while let Some(location) = locations.next()? {
+                                // TODO: use location.range too
+                                evaluate_parameter_location(
+                                    &dwarf_unit.header,
+                                    location.data,
+                                    &mut parameter,
+                                );
+                            }
+                        }
+                        _ => {
+                            debug!("unknown DW_AT_location: {:?}", attr.value());
+                        }
+                    }
+                }
                 gimli::DW_AT_decl_file
                 | gimli::DW_AT_decl_line
                 | gimli::DW_AT_decl_column
-                | gimli::DW_AT_location
                 | gimli::DW_AT_artificial
                 | gimli::DW_AT_const_value
                 | gimli::DW_AT_sibling => {}
@@ -2681,6 +2706,25 @@ fn evaluate_local_variable_location<'input, Endian>(
     }
 
     variable.locations.extend(pieces);
+}
+
+fn evaluate_parameter_location<'input, Endian>(
+    unit: &gimli::CompilationUnitHeader<Reader<'input, Endian>>,
+    expression: gimli::Expression<Reader<'input, Endian>>,
+    parameter: &mut Parameter<'input>,
+) where
+    Endian: gimli::Endianity,
+{
+    let pieces = match evaluate_simple(unit, expression, false) {
+        Ok(locations) => locations,
+        Err(_e) => {
+            // This happens a lot, not sure if bugs or bad DWARF.
+            //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
+            return;
+        }
+    };
+
+    parameter.locations.extend(pieces);
 }
 
 fn evaluate_simple<'input, Endian>(

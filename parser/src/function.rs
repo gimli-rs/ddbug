@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::usize;
 
 use file::FileHash;
+use location::{self, FrameLocation, Piece, Register};
 use namespace::Namespace;
 use range::Range;
 use source::Source;
@@ -256,13 +257,23 @@ pub struct Parameter<'input> {
     pub(crate) offset: ParameterOffset,
     pub(crate) name: Option<&'input str>,
     pub(crate) ty: TypeOffset,
+    // TODO: move this to ParameterDetails
+    pub(crate) locations: Vec<Piece>,
 }
 
 impl<'input> Parameter<'input> {
     /// The name of the parameter.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The type offset of the parameter.
+    ///
+    /// A type offset is unique for all types in a file.
+    #[inline]
+    pub fn type_offset<'a>(&self) -> TypeOffset {
+        self.ty
     }
 
     /// The type of the parameter.
@@ -274,6 +285,16 @@ impl<'input> Parameter<'input> {
     /// The size in bytes of the parameter.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
+    }
+
+    /// The registers in which this parameter is stored.
+    pub fn registers<'a>(&'a self) -> impl Iterator<Item = Register> + 'a {
+        location::registers(&self.locations)
+    }
+
+    /// The stack frame locations at which this parameter is stored.
+    pub fn frame_locations<'a>(&'a self) -> impl Iterator<Item = FrameLocation> + 'a {
+        location::frame_locations(&self.locations)
     }
 
     /// Compare the identifying information of two parameters.

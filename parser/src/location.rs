@@ -81,3 +81,35 @@ pub(crate) enum Location {
     /// The value is more complex than any of the above variants.
     Other,
 }
+
+pub(crate) fn registers<'a>(locations: &'a [Piece]) -> impl Iterator<Item = Register> + 'a {
+    locations.iter().filter_map(|piece| {
+        if piece.is_value {
+            return None;
+        }
+        match piece.location {
+            Location::Register { register } => Some(register),
+            _ => None,
+        }
+    })
+}
+
+pub(crate) fn frame_locations<'a>(
+    locations: &'a [Piece],
+) -> impl Iterator<Item = FrameLocation> + 'a {
+    locations.iter().filter_map(|piece| {
+        if piece.is_value {
+            return None;
+        }
+        match piece.location {
+            // TODO: do we need to distinguish between these?
+            Location::FrameOffset { offset } | Location::CfaOffset { offset } => {
+                Some(FrameLocation {
+                    offset,
+                    bit_size: piece.bit_size,
+                })
+            }
+            _ => None,
+        }
+    })
+}

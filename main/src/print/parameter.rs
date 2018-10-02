@@ -25,7 +25,16 @@ impl<'input> Print for Parameter<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, state: &mut PrintState, _unit: &Unit) -> Result<()> {
-        state.line(|w, state| print_size_and_decl(self, w, state))
+        state.collapsed(
+            |state| state.line(|w, state| print_size_and_decl(self, w, state)),
+            |state| {
+                if state.options().print_variable_locations {
+                    print::register::print_list(state, self.registers().collect())?;
+                    print::frame_location::print_list(state, self.frame_locations().collect())?;
+                }
+                Ok(())
+            },
+        )
     }
 
     fn diff(
@@ -35,7 +44,24 @@ impl<'input> Print for Parameter<'input> {
         _unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        state.line(a, b, |w, state, x| print_size_and_decl(x, w, state))
+        state.collapsed(
+            |state| state.line(a, b, |w, state, x| print_size_and_decl(x, w, state)),
+            |state| {
+                if state.options().print_variable_locations {
+                    print::register::diff_list(
+                        state,
+                        a.registers().collect(),
+                        b.registers().collect(),
+                    )?;
+                    print::frame_location::diff_list(
+                        state,
+                        a.frame_locations().collect(),
+                        b.frame_locations().collect(),
+                    )?;
+                }
+                Ok(())
+            },
+        )
     }
 }
 

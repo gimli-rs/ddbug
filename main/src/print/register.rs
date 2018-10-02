@@ -4,6 +4,28 @@ use parser::{FileHash, Register};
 use print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
+pub(crate) fn print_list(state: &mut PrintState, mut registers: Vec<Register>) -> Result<()> {
+    registers.sort_unstable();
+    registers.dedup();
+    state.field_collapsed("registers", |state| state.list(&(), &registers))?;
+    Ok(())
+}
+
+pub(crate) fn diff_list(
+    state: &mut DiffState,
+    mut registers_a: Vec<Register>,
+    mut registers_b: Vec<Register>,
+) -> Result<()> {
+    registers_a.sort_unstable();
+    registers_a.dedup();
+    registers_b.sort_unstable();
+    registers_b.dedup();
+    state.field_collapsed("registers", |state| {
+        state.list(&(), &registers_a, &(), &registers_b)
+    })?;
+    Ok(())
+}
+
 pub(crate) fn print(register: &Register, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     match register.name(hash) {
         Some(name) => write!(w, "{}", name)?,

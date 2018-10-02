@@ -112,7 +112,7 @@ impl<'input> Print for Function<'input> {
                     })?;
                 }
                 if state.options().print_function_stack_frame {
-                    let variables = frame_variables(&details, state.hash());
+                    let variables = frame_variables(self, &details, state.hash());
                     state.field_collapsed("stack frame", |state| state.list(&(), &variables))?;
                 }
                 state.inline(|state| {
@@ -191,8 +191,8 @@ impl<'input> Print for Function<'input> {
                     })?;
                 }
                 if state.options().print_function_stack_frame {
-                    let variables_a = frame_variables(&details_a, state.hash_a());
-                    let variables_b = frame_variables(&details_b, state.hash_b());
+                    let variables_a = frame_variables(a, &details_a, state.hash_a());
+                    let variables_b = frame_variables(b, &details_b, state.hash_b());
                     state.field_collapsed("stack frame", |state| {
                         state.ord_list(&(), &variables_a, &(), &variables_b)
                     })?;
@@ -399,13 +399,18 @@ fn print_frame_variable(
 }
 
 fn frame_variables<'input>(
-    f: &FunctionDetails<'input>,
+    function: &Function<'input>,
+    details: &FunctionDetails<'input>,
     hash: &FileHash<'input>,
 ) -> Vec<FrameVariable<'input>> {
     let mut frame_variables = Vec::new();
-    for variable in f.variables() {
+    for parameter in function.parameters() {
+        add_parameter_frame_locations(parameter, hash, &mut frame_variables);
+    }
+    for variable in details.variables() {
         add_variable_frame_locations(variable, hash, &mut frame_variables);
     }
+    // FIXME: inlined_functions
 
     frame_variables.sort_unstable();
     frame_variables.dedup();
@@ -417,6 +422,31 @@ fn frame_variables<'input>(
     }
 
     frame_variables
+}
+
+fn add_parameter_frame_locations<'input>(
+    parameter: &Parameter<'input>,
+    hash: &FileHash<'input>,
+    variables: &mut Vec<FrameVariable<'input>>,
+) {
+    let size = parameter.byte_size(hash);
+    let name = parameter.name();
+    let ty = parameter.type_offset();
+    for location in parameter.frame_locations() {
+        let offset = location.offset;
+        let size = if let Some(bit_size) = location.bit_size.get() {
+            Some((bit_size + 7) / 8)
+        } else {
+            size
+        };
+        variables.push(FrameVariable {
+            prev_offset: None,
+            offset,
+            size,
+            name,
+            ty,
+        });
+    }
 }
 
 fn add_variable_frame_locations<'input>(
