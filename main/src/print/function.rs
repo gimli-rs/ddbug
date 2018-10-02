@@ -2,7 +2,8 @@ use std::cmp;
 
 use code::{Call, CodeRegion};
 use parser::{
-    FileHash, Function, FunctionDetails, LocalVariable, Parameter, Type, TypeOffset, Unit,
+    FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable, Parameter, Type,
+    TypeOffset, Unit,
 };
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use {Options, Result, Sort};
@@ -410,7 +411,9 @@ fn frame_variables<'input>(
     for variable in details.variables() {
         add_variable_frame_locations(variable, hash, &mut frame_variables);
     }
-    // FIXME: inlined_functions
+    for inlined_function in details.inlined_functions() {
+        add_inlined_function_frame_locations(inlined_function, hash, &mut frame_variables);
+    }
 
     frame_variables.sort_unstable();
     frame_variables.dedup();
@@ -422,6 +425,22 @@ fn frame_variables<'input>(
     }
 
     frame_variables
+}
+
+fn add_inlined_function_frame_locations<'input>(
+    inlined_function: &InlinedFunction<'input>,
+    hash: &FileHash<'input>,
+    variables: &mut Vec<FrameVariable<'input>>,
+) {
+    for parameter in inlined_function.parameters() {
+        add_parameter_frame_locations(parameter, hash, variables);
+    }
+    for variable in inlined_function.variables() {
+        add_variable_frame_locations(variable, hash, variables);
+    }
+    for inlined_function in inlined_function.inlined_functions() {
+        add_inlined_function_frame_locations(inlined_function, hash, variables);
+    }
 }
 
 fn add_parameter_frame_locations<'input>(
