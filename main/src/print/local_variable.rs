@@ -31,7 +31,7 @@ impl<'input> Print for LocalVariable<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, state: &mut PrintState, _unit: &Unit) -> Result<()> {
-        state.collapsed(
+        state.expanded(
             |state| state.line(|w, state| print_size_and_decl(self, w, state)),
             |state| {
                 if state.options().print_variable_locations {
@@ -51,7 +51,7 @@ impl<'input> Print for LocalVariable<'input> {
         _unit_b: &Unit,
         b: &Self,
     ) -> Result<()> {
-        state.collapsed(
+        state.expanded(
             |state| state.line(a, b, |w, state, x| print_size_and_decl(x, w, state)),
             |state| {
                 if state.options().print_variable_locations {

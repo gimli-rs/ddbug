@@ -7,7 +7,7 @@ use Result;
 pub(crate) fn print_list(state: &mut PrintState, mut registers: Vec<Register>) -> Result<()> {
     registers.sort_unstable();
     registers.dedup();
-    state.field_collapsed("registers", |state| state.list(&(), &registers))?;
+    state.field_expanded("registers", |state| state.list(&(), &registers))?;
     Ok(())
 }
 
@@ -20,7 +20,7 @@ pub(crate) fn diff_list(
     registers_a.dedup();
     registers_b.sort_unstable();
     registers_b.dedup();
-    state.field_collapsed("registers", |state| {
+    state.field_expanded("registers", |state| {
         state.list(&(), &registers_a, &(), &registers_b)
     })?;
     Ok(())
