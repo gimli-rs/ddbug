@@ -1956,7 +1956,7 @@ where
                             }
                         }
                         _ => {
-                            debug!("unknown DW_AT_location: {:?}", attr.value());
+                            debug!("unknown parameter DW_AT_location: {:?}", attr.value());
                         }
                     }
                 }
@@ -1994,10 +1994,20 @@ where
             if parameter.ty.is_some() {
                 p.ty = parameter.ty;
             }
+            if !parameter.locations.is_empty() {
+                p.locations = parameter.locations;
+            }
             return Ok(());
         } else {
-            // TODO: enable this once we handle parameters in inlined subroutines
-            //debug!("missing parameter abstract origin: 0x{:08x}", abstract_origin.0);
+            let unit_offset = offset
+                .to_unit_offset(&dwarf_unit.header)
+                .unwrap_or(gimli::UnitOffset(0));
+            debug!(
+                "missing parameter abstract origin: 0x{:08x}(0x{:08x}+0x{:08x})",
+                offset.0,
+                dwarf_unit.header.offset().0,
+                unit_offset.0
+            );
         }
     }
 
@@ -2451,7 +2461,7 @@ where
                         debug!("loclist for variable: {:?}", attr.value());
                     }
                     _ => {
-                        debug!("unknown DW_AT_location: {:?}", attr.value());
+                        debug!("unknown variable DW_AT_location: {:?}", attr.value());
                     }
                 },
                 gimli::DW_AT_abstract_origin
@@ -2548,7 +2558,7 @@ where
                             }
                         }
                         _ => {
-                            debug!("unknown DW_AT_location: {:?}", attr.value());
+                            debug!("unknown local variable DW_AT_location: {:?}", attr.value());
                         }
                     }
                 }
@@ -2584,8 +2594,17 @@ where
             if variable.ty.is_some() {
                 v.ty = variable.ty;
             }
+            if variable.source.is_some() {
+                v.source = variable.source;
+            }
             if variable.address.is_some() {
                 v.address = variable.address;
+            }
+            if variable.size.is_some() {
+                v.size = variable.size;
+            }
+            if !variable.locations.is_empty() {
+                v.locations = variable.locations;
             }
             return Ok(());
         } else {
