@@ -2825,6 +2825,7 @@ where
             gimli::Operation::RegisterOffset {
                 register, offset, ..
             } => {
+                // TODO: compare this against CFA, and push CfaOffset instead if it matches
                 stack.push(Location::RegisterOffset {
                     register: register.into(),
                     offset,
