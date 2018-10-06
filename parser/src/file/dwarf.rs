@@ -2836,9 +2836,9 @@ where
             gimli::Operation::CallFrameCFA => {
                 stack.push(Location::CfaOffset { offset: 0 });
             }
-            gimli::Operation::TextRelativeOffset { offset } => {
+            gimli::Operation::Address { address } => {
                 stack.push(Location::Address {
-                    address: Address::new(offset),
+                    address: Address::new(address),
                 });
             }
             gimli::Operation::TLS => {
@@ -3047,9 +3047,8 @@ where
             Ok(gimli::EvaluationResult::Complete) => {
                 return evaluation.result();
             }
-            Ok(gimli::EvaluationResult::RequiresTextBase) => {
-                // This is actually the relocation offset, so use 0.
-                result = evaluation.resume_with_text_base(0);
+            Ok(gimli::EvaluationResult::RequiresRelocatedAddress(address)) => {
+                result = evaluation.resume_with_relocated_address(address);
             }
             Ok(_x) => {
                 debug!("incomplete evaluation: {:?}", _x);

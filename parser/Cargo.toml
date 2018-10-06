@@ -10,7 +10,7 @@ license = "Apache-2.0/MIT"
 
 [dependencies]
 fnv = "1.0"
-gimli = { git = "https://github.com/gimli-rs/gimli", rev = "2e3e14d0faa5a059f117d620484b4a7daf371c0d" }
+gimli = { git = "https://github.com/gimli-rs/gimli", rev = "3d15ab86ad6432e3e8dd8bf5c989c4fa63ef4dbd" }
 log = "0.4"
 memmap = "0.6"
 moria = { git = "https://github.com/gimli-rs/moria", rev = "7a1c308fed84ad51338c9f0fe4016f917169d1c8" }
