@@ -2765,20 +2765,19 @@ where
     let mut bytes = expression.0;
 
     let mut pieces = Vec::new();
-    let mut bit_offset = 0;
+    let mut next_bit_offset = 0;
     let mut add_piece = |pieces: &mut Vec<Piece>,
                          location: Location,
+                         location_offset: u64,
                          is_value: bool,
-                         piece_bit_offset: Option<u64>,
-                         piece_bit_size: Size| {
-        let piece_bit_offset = piece_bit_offset.unwrap_or(bit_offset);
-        if let Some(piece_bit_size) = piece_bit_size.get() {
-            bit_offset = (piece_bit_offset + piece_bit_size + 7) / 8;
-        }
+                         bit_size: Size| {
+        let bit_offset = next_bit_offset;
+        next_bit_offset += bit_size.get().unwrap_or(0);
         pieces.push(Piece {
-            bit_offset: piece_bit_offset,
-            bit_size: piece_bit_size,
+            bit_offset,
+            bit_size,
             location,
+            location_offset,
             is_value,
         });
     };
@@ -2861,8 +2860,8 @@ where
                 add_piece(
                     &mut pieces,
                     location,
+                    bit_offset.unwrap_or(0),
                     false,
-                    bit_offset,
                     Size::new(size_in_bits),
                 );
             }
@@ -2998,7 +2997,7 @@ where
                 if !pieces.is_empty() {
                     return Err(gimli::Error::InvalidPiece.into());
                 }
-                add_piece(&mut pieces, location, is_value, Some(0), Size::none());
+                add_piece(&mut pieces, location, 0, is_value, Size::none());
             } else {
                 match gimli::Operation::parse(&mut bytes, &bytecode, address_size, format)? {
                     gimli::Operation::Piece {
@@ -3008,8 +3007,8 @@ where
                         add_piece(
                             &mut pieces,
                             location,
+                            bit_offset.unwrap_or(0),
                             is_value,
-                            bit_offset,
                             Size::new(size_in_bits),
                         );
                     }
@@ -3023,7 +3022,7 @@ where
     }
     if pieces.is_empty() {
         if let Some(location) = stack.pop() {
-            add_piece(&mut pieces, location, false, Some(0), Size::none());
+            add_piece(&mut pieces, location, 0, false, Size::none());
         }
     }
     Ok(pieces)

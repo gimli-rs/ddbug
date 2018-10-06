@@ -25,12 +25,14 @@ pub struct FrameLocation {
 // TODO: include the address ranges for which this piece is valid
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Piece {
-    /// The offset of the piece.
+    /// The offset of the piece within the containing object.
     pub bit_offset: u64,
     /// The size of the piece. If none, then the piece is the complete value.
     pub bit_size: Size,
     /// The location of the piece.
     pub location: Location,
+    /// The offset of the piece within the location.
+    pub location_offset: u64,
     /// If `true`, then the piece does not have a location.
     /// Instead, `location` is the value of the piece.
     pub is_value: bool,
