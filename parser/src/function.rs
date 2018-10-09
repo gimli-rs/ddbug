@@ -9,7 +9,7 @@ use location::{self, FrameLocation, Piece, Register};
 use namespace::Namespace;
 use range::Range;
 use source::Source;
-use types::{Type, TypeOffset};
+use types::{ParameterType, Type, TypeOffset};
 use variable::LocalVariable;
 use {Address, Size};
 
@@ -72,7 +72,7 @@ pub struct Function<'input> {
     pub(crate) size: Size,
     pub(crate) inline: bool,
     pub(crate) declaration: bool,
-    pub(crate) parameters: Vec<Parameter<'input>>,
+    pub(crate) parameters: Vec<ParameterType<'input>>,
     pub(crate) return_type: TypeOffset,
 }
 
@@ -81,6 +81,7 @@ pub struct Function<'input> {
 /// These are kept separate from `Function` so that they can be loaded only when needed.
 #[derive(Debug, Default)]
 pub struct FunctionDetails<'input> {
+    pub(crate) parameters: Vec<Parameter<'input>>,
     pub(crate) variables: Vec<LocalVariable<'input>>,
     pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
 }
@@ -179,9 +180,9 @@ impl<'input> Function<'input> {
         self.declaration
     }
 
-    /// The function parameters.
+    /// The function parameter types.
     #[inline]
-    pub fn parameters(&self) -> &[Parameter<'input>] {
+    pub fn parameters(&self) -> &[ParameterType<'input>] {
         &self.parameters
     }
 
@@ -215,6 +216,12 @@ impl<'input> Function<'input> {
 }
 
 impl<'input> FunctionDetails<'input> {
+    /// The function parameters.
+    #[inline]
+    pub fn parameters(&self) -> &[Parameter<'input>] {
+        &self.parameters
+    }
+
     /// The local variables.
     #[inline]
     pub fn variables(&self) -> &[LocalVariable<'input>] {

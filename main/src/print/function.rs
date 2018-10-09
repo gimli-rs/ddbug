@@ -2,8 +2,8 @@ use std::cmp;
 
 use code::{Call, CodeRegion};
 use parser::{
-    FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable, Parameter, Type,
-    TypeOffset, Unit,
+    FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable, Parameter, ParameterType,
+    Type, TypeOffset, Unit,
 };
 use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use {Options, Result, Sort};
@@ -105,15 +105,15 @@ impl<'input> Print for Function<'input> {
                 state.field_expanded("return type", |state| {
                     state.line(|w, state| print_return_type(self, w, state))
                 })?;
-                state.field_expanded("parameters", |state| state.list(unit, self.parameters()))?;
                 let details = self.details(state.hash());
+                state.field_expanded("parameters", |state| state.list(unit, details.parameters()))?;
                 if state.options().print_function_variables {
                     state.field_collapsed("variables", |state| {
                         state.list(unit, details.variables())
                     })?;
                 }
                 if state.options().print_function_stack_frame {
-                    let variables = frame_variables(self, &details, state.hash());
+                    let variables = frame_variables(&details, state.hash());
                     state.field_collapsed("stack frame", |state| state.list(&(), &variables))?;
                 }
                 state.inline(|state| {
@@ -173,11 +173,16 @@ impl<'input> Print for Function<'input> {
                 state.field_expanded("return type", |state| {
                     state.line(a, b, |w, state, x| print_return_type(x, w, state))
                 })?;
-                state.field_expanded("parameters", |state| {
-                    state.list(unit_a, a.parameters(), unit_b, b.parameters())
-                })?;
                 let details_a = a.details(state.hash_a());
                 let details_b = b.details(state.hash_b());
+                state.field_expanded("parameters", |state| {
+                    state.list(
+                        unit_a,
+                        details_a.parameters(),
+                        unit_b,
+                        details_b.parameters(),
+                    )
+                })?;
                 if state.options().print_function_variables {
                     let mut variables_a: Vec<_> = details_a.variables().iter().collect();
                     variables_a.sort_by(|x, y| {
@@ -192,8 +197,8 @@ impl<'input> Print for Function<'input> {
                     })?;
                 }
                 if state.options().print_function_stack_frame {
-                    let variables_a = frame_variables(a, &details_a, state.hash_a());
-                    let variables_b = frame_variables(b, &details_b, state.hash_b());
+                    let variables_a = frame_variables(&details_a, state.hash_a());
+                    let variables_b = frame_variables(&details_b, state.hash_b());
                     state.field_collapsed("stack frame", |state| {
                         state.ord_list(&(), &variables_a, &(), &variables_b)
                     })?;
@@ -251,7 +256,7 @@ impl<'input> SortList for Function<'input> {
         }
 
         for (parameter_a, parameter_b) in a.parameters().iter().zip(b.parameters().iter()) {
-            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
+            let ord = ParameterType::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -400,12 +405,11 @@ fn print_frame_variable(
 }
 
 fn frame_variables<'input>(
-    function: &Function<'input>,
     details: &FunctionDetails<'input>,
     hash: &FileHash<'input>,
 ) -> Vec<FrameVariable<'input>> {
     let mut frame_variables = Vec::new();
-    for parameter in function.parameters() {
+    for parameter in details.parameters() {
         add_parameter_frame_locations(parameter, hash, &mut frame_variables);
     }
     for variable in details.variables() {

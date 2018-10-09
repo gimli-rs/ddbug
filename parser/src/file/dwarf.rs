@@ -17,9 +17,9 @@ use namespace::{Namespace, NamespaceKind};
 use range::Range;
 use source::Source;
 use types::{
-    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member, PointerToMemberType,
-    StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType,
-    UnspecifiedType,
+    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member, ParameterType,
+    PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind,
+    TypeOffset, UnionType, UnspecifiedType,
 };
 use unit::Unit;
 use variable::{LocalVariable, Variable, VariableOffset};
@@ -1552,7 +1552,7 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_formal_parameter => {
-                parse_parameter(&mut function.parameters, dwarf, dwarf_unit, child)?;
+                parse_parameter_type(&mut function.parameters, dwarf, dwarf_unit, child)?;
             }
             tag => {
                 debug!("unknown subroutine child tag: {}", tag);
@@ -1854,7 +1854,7 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_formal_parameter => {
-                parse_parameter(&mut function.parameters, dwarf, dwarf_unit, child)?;
+                parse_parameter_type(&mut function.parameters, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_variable => {
                 // Handled in details.
@@ -1907,6 +1907,91 @@ where
             }
         }
     }
+    Ok(())
+}
+
+fn parse_parameter_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+    parameters: &mut Vec<ParameterType<'input>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut parameter = ParameterType::default();
+    let offset = node.entry().offset();
+    let offset = offset.to_debug_info_offset(&dwarf_unit.header);
+    parameter.offset = offset.into();
+    let mut abstract_origin = None;
+
+    {
+        let mut attrs = node.entry().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_abstract_origin => {
+                    if let Some(offset) = parse_parameter_offset(dwarf_unit, &attr) {
+                        abstract_origin = Some(offset);
+                    }
+                }
+                gimli::DW_AT_name => {
+                    parameter.name = attr
+                        .string_value(&dwarf.debug_str)
+                        .map(|r| dwarf.strings.get(r.slice()));
+                }
+                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    parameter.ty = offset;
+                },
+                gimli::DW_AT_location
+                | gimli::DW_AT_decl_file
+                | gimli::DW_AT_decl_line
+                | gimli::DW_AT_decl_column
+                | gimli::DW_AT_artificial
+                | gimli::DW_AT_const_value
+                | gimli::DW_AT_sibling => {}
+                _ => debug!(
+                    "unknown parameter attribute: {} {:?}",
+                    attr.name(),
+                    attr.value()
+                ),
+            }
+        }
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            tag => {
+                debug!("unknown parameter child tag: {}", tag);
+            }
+        }
+    }
+
+    if let Some(abstract_origin) = abstract_origin {
+        // TODO: use a hash?
+        if let Some(index) = parameters.iter().position(|x| x.offset == abstract_origin) {
+            let p = &mut parameters[index];
+            if parameter.name.is_some() {
+                p.name = parameter.name;
+            }
+            if parameter.ty.is_some() {
+                p.ty = parameter.ty;
+            }
+            return Ok(());
+        } else {
+            let unit_offset = offset
+                .to_unit_offset(&dwarf_unit.header)
+                .unwrap_or(gimli::UnitOffset(0));
+            debug!(
+                "missing parameter abstract origin: 0x{:08x}(0x{:08x}+0x{:08x})",
+                offset.0,
+                dwarf_unit.header.offset().0,
+                unit_offset.0
+            );
+        }
+    }
+
+    parameters.push(parameter);
     Ok(())
 }
 
@@ -2198,8 +2283,9 @@ where
     let mut details = abstract_origin
         .and_then(|offset| dwarf.get_function_details(offset, hash))
         .unwrap_or_else(|| FunctionDetails {
-            inlined_functions: Vec::new(),
+            parameters: Vec::new(),
             variables: Vec::new(),
+            inlined_functions: Vec::new(),
         });
 
     parse_subprogram_children_details(hash, dwarf, dwarf_unit, &mut details, node.children())?;
@@ -2218,6 +2304,9 @@ where
 {
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
+            gimli::DW_TAG_formal_parameter => {
+                parse_parameter(&mut function.parameters, dwarf, dwarf_unit, child)?;
+            }
             gimli::DW_TAG_variable => {
                 parse_local_variable(&mut function.variables, dwarf, dwarf_unit, child)?;
             }
@@ -2338,11 +2427,11 @@ where
     }
 
     if function.abstract_origin.is_some() {
-        if let Some(abstract_origin) = Function::from_offset(hash, function.abstract_origin) {
-            function.parameters = abstract_origin.parameters.clone();
-            // TODO: make sure there's no further inlined functions?
-            if let Some(details) = dwarf.get_function_details(function.abstract_origin, hash) {
-                function.variables = details.variables;
+        if let Some(details) = dwarf.get_function_details(function.abstract_origin, hash) {
+            function.parameters = details.parameters;
+            function.variables = details.variables;
+            if !function.inlined_functions.is_empty() {
+                debug!("abstract origin with inlined functions");
             }
         } else {
             debug!("inlined_subroutine with invalid abstract origin");

@@ -83,7 +83,10 @@ fn print_ref_function(ty: &FunctionType, w: &mut ValuePrinter, hash: &FileHash) 
         } else {
             write!(w, ", ")?;
         }
-        print::parameter::print_decl(parameter, w, hash)?;
+        if let Some(name) = parameter.name() {
+            write!(w, "{}: ", name)?;
+        }
+        print_ref(parameter.ty(hash), w, hash)?;
     }
     write!(w, ")")?;
 

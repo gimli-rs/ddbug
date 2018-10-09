@@ -6,7 +6,7 @@ use std::rc::Rc;
 use std::usize;
 
 use file::FileHash;
-use function::Parameter;
+use function::ParameterOffset;
 use namespace::Namespace;
 use source::Source;
 use Size;
@@ -887,7 +887,7 @@ impl<'input> ArrayType<'input> {
 /// A function type.
 #[derive(Debug, Default, Clone)]
 pub struct FunctionType<'input> {
-    pub(crate) parameters: Vec<Parameter<'input>>,
+    pub(crate) parameters: Vec<ParameterType<'input>>,
     pub(crate) return_type: TypeOffset,
     pub(crate) byte_size: Size,
 }
@@ -895,7 +895,7 @@ pub struct FunctionType<'input> {
 impl<'input> FunctionType<'input> {
     /// The parameters of the function.
     #[inline]
-    pub fn parameters(&self) -> &[Parameter<'input>] {
+    pub fn parameters(&self) -> &[ParameterType<'input>] {
         &self.parameters
     }
 
@@ -925,7 +925,7 @@ impl<'input> FunctionType<'input> {
         b: &FunctionType,
     ) -> cmp::Ordering {
         for (parameter_a, parameter_b) in a.parameters.iter().zip(b.parameters.iter()) {
-            let ord = Parameter::cmp_type(hash_a, parameter_a, hash_b, parameter_b);
+            let ord = ParameterType::cmp_id(hash_a, parameter_a, hash_b, parameter_b);
             if ord != cmp::Ordering::Equal {
                 return ord;
             }
@@ -953,6 +953,46 @@ impl<'input> FunctionType<'input> {
         }
 
         cmp::Ordering::Equal
+    }
+}
+
+/// The type of a function parameter.
+#[derive(Debug, Default, Clone)]
+pub struct ParameterType<'input> {
+    pub(crate) offset: ParameterOffset,
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: TypeOffset,
+}
+
+impl<'input> ParameterType<'input> {
+    /// The name of the parameter.
+    #[inline]
+    pub fn name(&self) -> Option<&'input str> {
+        self.name
+    }
+
+    /// The type of the parameter.
+    #[inline]
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        Type::from_offset(hash, self.ty)
+    }
+
+    /// Compare the identifying information of two types.
+    ///
+    /// Parameters are considered equal if they have the same types.
+    /// Parameter names are ignored.
+    pub fn cmp_id(
+        hash_a: &FileHash,
+        a: &ParameterType,
+        hash_b: &FileHash,
+        b: &ParameterType,
+    ) -> cmp::Ordering {
+        match (a.ty(hash_a), b.ty(hash_b)) {
+            (Some(ref ty_a), Some(ref ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
+            (Some(_), None) => cmp::Ordering::Less,
+            (None, Some(_)) => cmp::Ordering::Greater,
+            (None, None) => cmp::Ordering::Equal,
+        }
     }
 }
 
