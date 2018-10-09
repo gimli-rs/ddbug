@@ -402,6 +402,8 @@ where
     Endian: gimli::Endianity,
 {
     // Convert functions to BTreeMap
+    // TODO: it'd be cleaner if parse_subprogram() added functions to a BTreeMap initially,
+    // so that we didn't have to keep updating it.
     let mut functions = BTreeMap::new();
     for function in unit.functions.drain(..) {
         functions.insert(function.offset, function);
@@ -434,6 +436,9 @@ where
                 )?;
                 let offset = subprogram.offset.to_debug_info_offset(&dwarf_unit.header);
                 functions.insert(offset.into(), subprogram.function);
+                for function in unit.functions.drain(..) {
+                    functions.insert(function.offset, function);
+                }
                 progress = true;
             } else {
                 subprograms.push(subprogram);
@@ -461,8 +466,11 @@ where
                 )?;
                 let offset = subprogram.offset.to_debug_info_offset(&dwarf_unit.header);
                 functions.insert(offset.into(), subprogram.function);
+                for function in unit.functions.drain(..) {
+                    functions.insert(function.offset, function);
+                }
             }
-            break;
+            // And keep going, because parse_subprogram_children() may have added more.
         }
     }
 
