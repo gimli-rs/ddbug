@@ -391,6 +391,7 @@ where
     Ok(unit)
 }
 
+#[inline(never)]
 fn fixup_subprogram_specifications<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
@@ -478,6 +479,7 @@ where
     Ok(())
 }
 
+#[inline(never)]
 fn fixup_variable_specifications<'input, Endian>(
     unit: &mut Unit<'input>,
     _dwarf: &DwarfDebugInfo<'input, Endian>,
