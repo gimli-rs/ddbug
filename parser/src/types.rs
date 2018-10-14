@@ -561,6 +561,46 @@ impl<'input> StructType<'input> {
         }
     }
 
+    /// The layout of members of this type.
+    pub fn layout<'me>(&'me self, hash: &FileHash) -> Vec<MemberLayout<'input, 'me>> {
+        let mut members: Vec<_> = self
+            .members
+            .iter()
+            .map(|member| MemberLayout {
+                bit_offset: member.bit_offset(),
+                bit_size: member.bit_size(hash).into(),
+                member: Some(member),
+            })
+            .collect();
+        members.sort_by(|a, b| {
+            a.bit_offset
+                .cmp(&b.bit_offset)
+                .then_with(|| a.bit_size.cmp(&b.bit_size))
+        });
+
+        let mut next_bit_offset = self.byte_size().map(|v| v * 8);
+        let mut layout = Vec::new();
+        for member in members.into_iter().rev() {
+            if let (Some(bit_size), Some(next_bit_offset)) =
+                (member.bit_size.get(), next_bit_offset)
+            {
+                let bit_offset = member.bit_offset + bit_size;
+                if next_bit_offset > bit_offset {
+                    let bit_size = next_bit_offset - bit_offset;
+                    layout.push(MemberLayout {
+                        bit_offset,
+                        bit_size: Size::new(bit_size),
+                        member: None,
+                    });
+                }
+            }
+            next_bit_offset = Some(member.bit_offset);
+            layout.push(member);
+        }
+        layout.reverse();
+        layout
+    }
+
     /// Compare the identifying information of two types.
     ///
     /// Structs are considered equal if their names are equal.
@@ -650,8 +690,6 @@ pub struct Member<'input> {
     // Defaults to 0, so always present.
     pub(crate) bit_offset: u64,
     pub(crate) bit_size: Size,
-    // Redundant, but simplifies code.
-    pub(crate) next_bit_offset: Size,
 }
 
 impl<'input> Member<'input> {
@@ -701,30 +739,19 @@ impl<'input> Member<'input> {
             false
         }
     }
-
-    /// The size in bits of the padding that follows this member.
-    pub fn padding(&self, bit_size: Option<u64>) -> Option<Padding> {
-        if let (Some(bit_size), Some(next_bit_offset)) = (bit_size, self.next_bit_offset.get()) {
-            let bit_offset = self.bit_offset + bit_size;
-            if next_bit_offset > bit_offset {
-                let bit_size = next_bit_offset - bit_offset;
-                return Some(Padding {
-                    bit_offset,
-                    bit_size,
-                });
-            }
-        }
-        None
-    }
 }
 
-/// The padding after a struct or union member.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Padding {
-    /// The offset in bits of the padding within the struct or union.
+/// The layout of an item (member or padding) within a struct.
+pub struct MemberLayout<'input, 'member>
+where
+    'input: 'member,
+{
+    /// The offset in bits of the item within the struct.
     pub bit_offset: u64,
-    /// The size in bits of the padding.
-    pub bit_size: u64,
+    /// The size in bits of the item.
+    pub bit_size: Size,
+    /// The member, or `None` if this is padding.
+    pub member: Option<&'member Member<'input>>,
 }
 
 /// An enumeration type.

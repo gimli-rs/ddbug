@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp;
 use std::ops::Deref;
 
-use parser::{FileHash, Member, Type, Unit};
+use parser::{FileHash, Member, MemberLayout, Type, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
@@ -28,20 +28,13 @@ fn print_name(
     Ok(())
 }
 
-fn print_padding(
-    member: &Member,
-    w: &mut ValuePrinter,
-    _hash: &FileHash,
-    bit_size: Option<u64>,
-) -> Result<()> {
-    if let Some(padding) = member.padding(bit_size) {
-        write!(
-            w,
-            "{}[{}]\t<padding>",
-            format_bit(padding.bit_offset),
-            format_bit(padding.bit_size)
-        )?;
-    }
+fn print_padding(layout: &MemberLayout, w: &mut ValuePrinter) -> Result<()> {
+    write!(
+        w,
+        "{}[{}]\t<padding>",
+        format_bit(layout.bit_offset),
+        format_bit(layout.bit_size.get().unwrap_or(0))
+    )?;
     Ok(())
 }
 
@@ -60,8 +53,7 @@ impl<'input> Print for Member<'input> {
         state.expanded(
             |state| state.line(|w, state| print_name(self, w, state, bit_size)),
             |state| print::types::print_members(state, unit, ty),
-        )?;
-        state.line(|w, state| print_padding(self, w, state, bit_size))
+        )
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
@@ -88,12 +80,6 @@ impl<'input> Print for Member<'input> {
                 )
             },
             |state| print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b),
-        )?;
-
-        state.line(
-            (a, bit_size_a),
-            (b, bit_size_b),
-            |w, state, (x, bit_size)| print_padding(x, w, state, bit_size),
         )
     }
 }
@@ -121,6 +107,45 @@ impl<'input> DiffList for Member<'input> {
             }
         }
         cost
+    }
+}
+
+impl<'input, 'member> Print for MemberLayout<'input, 'member> {
+    type Arg = Unit<'input>;
+
+    fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        if let Some(member) = self.member {
+            member.print(state, unit)?;
+        } else {
+            state.line(|w, _hash| print_padding(self, w))?;
+        }
+        Ok(())
+    }
+
+    fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
+        match (a.member, b.member) {
+            (Some(a), Some(b)) => Member::diff(state, unit_a, a, unit_b, b),
+            (Some(_), None) | (None, Some(_)) => {
+                state.block((unit_a, a), (unit_b, b), |state, (unit, x)| {
+                    MemberLayout::print(x, state, unit)
+                })
+            }
+            (None, None) => state.line(a, b, |w, _hash, x| print_padding(x, w)),
+        }
+    }
+}
+
+impl<'input, 'member> DiffList for MemberLayout<'input, 'member> {
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
+        1
+    }
+
+    fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
+        match (a.member, b.member) {
+            (Some(a), Some(b)) => Member::diff_cost(state, unit_a, a, unit_b, b),
+            (Some(_), None) | (None, Some(_)) => 2,
+            (None, None) => 0,
+        }
     }
 }
 

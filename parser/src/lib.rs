@@ -213,6 +213,15 @@ mod size {
             Size::none()
         }
     }
+
+    impl From<Option<u64>> for Size {
+        fn from(size: Option<u64>) -> Size {
+            match size {
+                Some(size) => Size::new(size),
+                None => Size::none(),
+            }
+        }
+    }
 }
 
 pub use size::Size;

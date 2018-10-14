@@ -1052,15 +1052,6 @@ where
             }
         }
     }
-    ty.members.sort_by_key(|v| v.bit_offset);
-    let mut bit_offset = match ty.byte_size.get() {
-        Some(v) => Size::new(v * 8),
-        None => Size::none(),
-    };
-    for member in ty.members.iter_mut().rev() {
-        member.next_bit_offset = bit_offset;
-        bit_offset = Size::new(member.bit_offset);
-    }
     Ok(ty)
 }
 

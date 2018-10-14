@@ -83,7 +83,8 @@ fn print_declaration(ty: &StructType, w: &mut ValuePrinter, _hash: &FileHash) ->
 }
 
 pub(crate) fn print_members(ty: &StructType, state: &mut PrintState, unit: &Unit) -> Result<()> {
-    state.list(unit, ty.members())
+    let layout = ty.layout(state.hash());
+    state.list(unit, &layout)
 }
 
 pub(crate) fn diff_members(
@@ -93,5 +94,7 @@ pub(crate) fn diff_members(
     unit_b: &Unit,
     b: &StructType,
 ) -> Result<()> {
-    state.list(unit_a, a.members(), unit_b, b.members())
+    let layout_a = a.layout(state.hash_a());
+    let layout_b = b.layout(state.hash_b());
+    state.list(unit_a, &layout_a, unit_b, &layout_b)
 }
