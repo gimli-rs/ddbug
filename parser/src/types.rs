@@ -728,9 +728,11 @@ impl<'input> Member<'input> {
     /// Return true if this member defines an inline type.
     pub fn is_inline(&self, hash: &FileHash) -> bool {
         match self.name() {
-            Some(s) => if s.starts_with("RUST$ENCODED$ENUM$") {
-                return true;
-            },
+            Some(s) => {
+                if s.starts_with("RUST$ENCODED$ENUM$") {
+                    return true;
+                }
+            }
             None => return true,
         };
         if let Some(ty) = self.ty(hash) {

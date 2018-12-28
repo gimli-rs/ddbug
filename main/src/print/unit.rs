@@ -20,7 +20,8 @@ pub(crate) fn merged_types<'a, 'input>(
     types_b.sort_by(|x, y| Type::cmp_id_for_sort(hash_b, x, hash_b, y, options));
     MergeIterator::new(types_a.into_iter(), types_b.into_iter(), |a, b| {
         Type::cmp_id(hash_a, a, hash_b, b)
-    }).collect()
+    })
+    .collect()
 }
 
 pub(crate) fn merged_functions<'a, 'input>(
@@ -69,7 +70,8 @@ pub(crate) fn merged_variables<'a, 'input>(
     variables_b.sort_by(|x, y| Variable::cmp_id_for_sort(hash_b, x, hash_b, y, options));
     MergeIterator::new(variables_a.into_iter(), variables_b.into_iter(), |a, b| {
         <Variable as SortList>::cmp_id(hash_a, a, hash_b, b, options)
-    }).collect()
+    })
+    .collect()
 }
 
 fn print_ref(unit: &Unit, w: &mut ValuePrinter) -> Result<()> {

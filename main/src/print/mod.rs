@@ -636,12 +636,16 @@ impl<'a> DiffState<'a> {
                         T::diff(self, arg_a, a, arg_b, b)?;
                     }
                 }
-                Direction::Horizontal => if let Some(a) = iter_a.next() {
-                    self.prefix_delete(|state| a.print(state, arg_a))?;
-                },
-                Direction::Vertical => if let Some(b) = iter_b.next() {
-                    self.prefix_add(|state| b.print(state, arg_b))?;
-                },
+                Direction::Horizontal => {
+                    if let Some(a) = iter_a.next() {
+                        self.prefix_delete(|state| a.print(state, arg_a))?;
+                    }
+                }
+                Direction::Vertical => {
+                    if let Some(b) = iter_b.next() {
+                        self.prefix_add(|state| b.print(state, arg_b))?;
+                    }
+                }
             }
         }
         Ok(())
@@ -701,12 +705,16 @@ impl<'a> DiffState<'a> {
                 MergeResult::Both(a, b) => {
                     self.print_if_diff(|state| T::diff(state, arg_a, a, arg_b, b))?;
                 }
-                MergeResult::Left(a) => if !self.options.ignore_deleted {
-                    self.prefix_delete(|state| a.print(state, arg_a))?;
-                },
-                MergeResult::Right(b) => if !self.options.ignore_added {
-                    self.prefix_add(|state| b.print(state, arg_b))?;
-                },
+                MergeResult::Left(a) => {
+                    if !self.options.ignore_deleted {
+                        self.prefix_delete(|state| a.print(state, arg_a))?;
+                    }
+                }
+                MergeResult::Right(b) => {
+                    if !self.options.ignore_added {
+                        self.prefix_add(|state| b.print(state, arg_b))?;
+                    }
+                }
             }
         }
         Ok(())

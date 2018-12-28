@@ -32,11 +32,13 @@ impl<'input> Print for InlinedFunction<'input> {
                     state.field("call source", |w, _state| print_call_source(self, w, unit))?;
                 }
                 if state.options().print_inlined_function_parameters {
-                    state
-                        .field_expanded("parameters", |state| state.list(unit, self.parameters()))?;
+                    state.field_expanded("parameters", |state| {
+                        state.list(unit, self.parameters())
+                    })?;
                 }
                 if state.options().print_function_variables {
-                    state.field_collapsed("variables", |state| state.list(unit, self.variables()))?;
+                    state
+                        .field_collapsed("variables", |state| state.list(unit, self.variables()))?;
                 }
                 state.inline(|state| state.list(unit, self.inlined_functions()))?;
                 Ok(())

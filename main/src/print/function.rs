@@ -106,7 +106,8 @@ impl<'input> Print for Function<'input> {
                     state.line(|w, state| print_return_type(self, w, state))
                 })?;
                 let details = self.details(state.hash());
-                state.field_expanded("parameters", |state| state.list(unit, details.parameters()))?;
+                state
+                    .field_expanded("parameters", |state| state.list(unit, details.parameters()))?;
                 if state.options().print_function_variables {
                     state.field_collapsed("variables", |state| {
                         state.list(unit, details.variables())

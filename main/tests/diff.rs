@@ -9,7 +9,8 @@ fn diff(name: &str, expect: &str) {
             let mut printer = ddbug::TextPrinter::new(&mut diff, &options);
             ddbug::diff(&mut printer, output_1, output_2, &options)
         })
-    }).unwrap();
+    })
+    .unwrap();
     let diff = String::from_utf8(diff).unwrap();
     if !equal(&diff, expect) {
         println!("\nDiff:");

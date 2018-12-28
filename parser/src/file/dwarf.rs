@@ -845,9 +845,11 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    modifier.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        modifier.ty = offset;
+                    }
+                }
                 gimli::DW_AT_byte_size => {
                     if let Some(byte_size) = attr.udata_value() {
                         modifier.byte_size = Size::new(byte_size);
@@ -939,9 +941,11 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    typedef.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        typedef.ty = offset;
+                    }
+                }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf, dwarf_unit, &attr, &mut typedef.source)
                 }
@@ -996,10 +1000,11 @@ where
                         ty.byte_size = Size::new(byte_size);
                     }
                 }
-                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
-                {
-                    ty.declaration = flag;
-                },
+                gimli::DW_AT_declaration => {
+                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                        ty.declaration = flag;
+                    }
+                }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source)
                 }
@@ -1084,10 +1089,11 @@ where
                         ty.byte_size = Size::new(byte_size);
                     }
                 }
-                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
-                {
-                    ty.declaration = flag;
-                },
+                gimli::DW_AT_declaration => {
+                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                        ty.declaration = flag;
+                    }
+                }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source)
                 }
@@ -1165,22 +1171,27 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    member.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        member.ty = offset;
+                    }
+                }
                 gimli::DW_AT_data_member_location => {
                     match attr.value() {
                         gimli::AttributeValue::Udata(v) => member.bit_offset = v * 8,
-                        gimli::AttributeValue::Sdata(v) => if v >= 0 {
-                            member.bit_offset = (v as u64) * 8;
-                        } else {
-                            debug!("DW_AT_data_member_location is negative: {}", v)
-                        },
-                        gimli::AttributeValue::Exprloc(expr) => if let Some(offset) =
-                            evaluate_member_location(&dwarf_unit.header, expr)
-                        {
-                            member.bit_offset = offset;
-                        },
+                        gimli::AttributeValue::Sdata(v) => {
+                            if v >= 0 {
+                                member.bit_offset = (v as u64) * 8;
+                            } else {
+                                debug!("DW_AT_data_member_location is negative: {}", v)
+                            }
+                        }
+                        gimli::AttributeValue::Exprloc(expr) => {
+                            if let Some(offset) = evaluate_member_location(&dwarf_unit.header, expr)
+                            {
+                                member.bit_offset = offset;
+                            }
+                        }
                         gimli::AttributeValue::LocationListsRef(offset) => {
                             if dwarf_unit.header.version() == 3 {
                                 // HACK: while gimli is technically correct, in my experience this
@@ -1196,9 +1207,11 @@ where
                         }
                     }
                 }
-                gimli::DW_AT_data_bit_offset => if let Some(bit_offset) = attr.udata_value() {
-                    member.bit_offset = bit_offset;
-                },
+                gimli::DW_AT_data_bit_offset => {
+                    if let Some(bit_offset) = attr.udata_value() {
+                        member.bit_offset = bit_offset;
+                    }
+                }
                 gimli::DW_AT_bit_offset => {
                     bit_offset = attr.udata_value();
                 }
@@ -1325,10 +1338,11 @@ where
                         ty.byte_size = Size::new(byte_size);
                     }
                 }
-                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
-                {
-                    ty.declaration = flag;
-                },
+                gimli::DW_AT_declaration => {
+                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                        ty.declaration = flag;
+                    }
+                }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source)
                 }
@@ -1409,11 +1423,13 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_const_value => if let Some(value) = attr.sdata_value() {
-                    enumerator.value = Some(value);
-                } else {
-                    debug!("unknown enumerator const_value: {:?}", attr.value());
-                },
+                gimli::DW_AT_const_value => {
+                    if let Some(value) = attr.sdata_value() {
+                        enumerator.value = Some(value);
+                    } else {
+                        debug!("unknown enumerator const_value: {:?}", attr.value());
+                    }
+                }
                 _ => debug!(
                     "unknown enumerator attribute: {} {:?}",
                     attr.name(),
@@ -1448,9 +1464,11 @@ where
         let mut attrs = node.entry().attrs();
         while let Some(attr) = attrs.next()? {
             match attr.name() {
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    array.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        array.ty = offset;
+                    }
+                }
                 gimli::DW_AT_byte_size => {
                     if let Some(byte_size) = attr.udata_value() {
                         array.byte_size = Size::new(byte_size);
@@ -1528,9 +1546,11 @@ where
         let mut attrs = node.entry().attrs();
         while let Some(attr) = attrs.next()? {
             match attr.name() {
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    function.return_type = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        function.return_type = offset;
+                    }
+                }
                 gimli::DW_AT_name | gimli::DW_AT_prototyped | gimli::DW_AT_sibling => {}
                 _ => debug!(
                     "unknown subroutine attribute: {} {:?}",
@@ -1613,9 +1633,11 @@ where
         let mut attrs = node.entry().attrs();
         while let Some(attr) = attrs.next()? {
             match attr.name() {
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    ty.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        ty.ty = offset;
+                    }
+                }
                 gimli::DW_AT_containing_type => {
                     if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                         ty.containing_ty = offset;
@@ -1699,40 +1721,49 @@ where
                 }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut function.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut function.source),
-                gimli::DW_AT_inline => if let gimli::AttributeValue::Inline(val) = attr.value() {
-                    match val {
-                        gimli::DW_INL_inlined | gimli::DW_INL_declared_inlined => {
-                            function.inline = true
+                gimli::DW_AT_inline => {
+                    if let gimli::AttributeValue::Inline(val) = attr.value() {
+                        match val {
+                            gimli::DW_INL_inlined | gimli::DW_INL_declared_inlined => {
+                                function.inline = true
+                            }
+                            _ => function.inline = false,
                         }
-                        _ => function.inline = false,
                     }
-                },
-                gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    // TODO: is address 0 ever valid?
-                    if addr != 0 {
-                        function.address = Address::new(addr);
+                }
+                gimli::DW_AT_low_pc => {
+                    if let gimli::AttributeValue::Addr(addr) = attr.value() {
+                        // TODO: is address 0 ever valid?
+                        if addr != 0 {
+                            function.address = Address::new(addr);
+                        }
                     }
-                },
+                }
                 gimli::DW_AT_high_pc => match attr.value() {
                     gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
-                    gimli::AttributeValue::Udata(val) => if val != 0 {
-                        function.size = Size::new(val);
-                    },
+                    gimli::AttributeValue::Udata(val) => {
+                        if val != 0 {
+                            function.size = Size::new(val);
+                        }
+                    }
                     _ => {}
                 },
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    function.return_type = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        function.return_type = offset;
+                    }
+                }
                 gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
                     if let Some(offset) = parse_function_offset(dwarf_unit, &attr) {
                         specification = Some(offset);
                         abstract_origin = attr.name() == gimli::DW_AT_abstract_origin;
                     }
                 }
-                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
-                {
-                    function.declaration = flag;
-                },
+                gimli::DW_AT_declaration => {
+                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                        function.declaration = flag;
+                    }
+                }
                 gimli::DW_AT_frame_base => {
                     // FIXME
                 }
@@ -1932,9 +1963,11 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    parameter.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        parameter.ty = offset;
+                    }
+                }
                 gimli::DW_AT_location
                 | gimli::DW_AT_decl_file
                 | gimli::DW_AT_decl_line
@@ -2017,9 +2050,11 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    parameter.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        parameter.ty = offset;
+                    }
+                }
                 gimli::DW_AT_location => {
                     match attr.value() {
                         gimli::AttributeValue::Exprloc(expr) => {
@@ -2391,9 +2426,11 @@ where
                         function.abstract_origin = offset;
                     }
                 }
-                gimli::DW_AT_low_pc => if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    low_pc = Some(addr);
-                },
+                gimli::DW_AT_low_pc => {
+                    if let gimli::AttributeValue::Addr(addr) = attr.value() {
+                        low_pc = Some(addr);
+                    }
+                }
                 gimli::DW_AT_high_pc => match attr.value() {
                     gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
                     gimli::AttributeValue::Udata(val) => size = Some(val),
@@ -2521,32 +2558,37 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    variable.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        variable.ty = offset;
+                    }
+                }
                 gimli::DW_AT_specification => {
                     if let Some(offset) = parse_variable_offset(dwarf_unit, &attr) {
                         specification = Some(offset);
                     }
                 }
-                gimli::DW_AT_declaration => if let gimli::AttributeValue::Flag(flag) = attr.value()
-                {
-                    variable.declaration = flag;
-                },
+                gimli::DW_AT_declaration => {
+                    if let gimli::AttributeValue::Flag(flag) = attr.value() {
+                        variable.declaration = flag;
+                    }
+                }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf, dwarf_unit, &attr, &mut variable.source)
                 }
                 gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
                 gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
                 gimli::DW_AT_location => match attr.value() {
-                    gimli::AttributeValue::Exprloc(expr) => if let Some((address, size)) =
-                        evaluate_variable_location(&dwarf_unit.header, expr)
-                    {
-                        variable.address = address;
-                        if size.is_some() {
-                            variable.size = size;
+                    gimli::AttributeValue::Exprloc(expr) => {
+                        if let Some((address, size)) =
+                            evaluate_variable_location(&dwarf_unit.header, expr)
+                        {
+                            variable.address = address;
+                            if size.is_some() {
+                                variable.size = size;
+                            }
                         }
-                    },
+                    }
                     gimli::AttributeValue::LocationListsRef(..) => {
                         debug!("loclist for variable: {:?}", attr.value());
                     }
@@ -2614,9 +2656,11 @@ where
                         .string_value(&dwarf.debug_str)
                         .map(|r| dwarf.strings.get(r.slice()));
                 }
-                gimli::DW_AT_type => if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    variable.ty = offset;
-                },
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        variable.ty = offset;
+                    }
+                }
                 gimli::DW_AT_decl_file => {
                     parse_source_file(dwarf, dwarf_unit, &attr, &mut variable.source)
                 }
@@ -3255,20 +3299,22 @@ fn parse_source_file<'input, Endian>(
     Endian: gimli::Endianity,
 {
     match attr.value() {
-        gimli::AttributeValue::FileIndex(val) => if val != 0 {
-            if let Some(ref line) = dwarf_unit.line {
-                if let Some(entry) = line.header().file(val) {
-                    source.file = Some(dwarf.strings.get(entry.path_name().slice()));
-                    if let Some(directory) = entry.directory(line.header()) {
-                        source.directory = Some(dwarf.strings.get(directory.slice()));
+        gimli::AttributeValue::FileIndex(val) => {
+            if val != 0 {
+                if let Some(ref line) = dwarf_unit.line {
+                    if let Some(entry) = line.header().file(val) {
+                        source.file = Some(dwarf.strings.get(entry.path_name().slice()));
+                        if let Some(directory) = entry.directory(line.header()) {
+                            source.directory = Some(dwarf.strings.get(directory.slice()));
+                        } else {
+                            debug!("invalid directory index {}", entry.directory_index());
+                        }
                     } else {
-                        debug!("invalid directory index {}", entry.directory_index());
+                        debug!("invalid file index {}", val);
                     }
-                } else {
-                    debug!("invalid file index {}", val);
                 }
             }
-        },
+        }
         val => {
             debug!("unknown DW_AT_decl_file attribute value: {:?}", val);
         }
@@ -3280,13 +3326,15 @@ where
     Endian: gimli::Endianity,
 {
     match attr.value() {
-        gimli::AttributeValue::Udata(val) => if val != 0 {
-            if val <= u64::from(u32::MAX) {
-                source.line = val as u32;
-            } else {
-                debug!("large source line: {}", val);
+        gimli::AttributeValue::Udata(val) => {
+            if val != 0 {
+                if val <= u64::from(u32::MAX) {
+                    source.line = val as u32;
+                } else {
+                    debug!("large source line: {}", val);
+                }
             }
-        },
+        }
         val => {
             debug!("unknown DW_AT_decl_line attribute value: {:?}", val);
         }
@@ -3298,13 +3346,15 @@ where
     Endian: gimli::Endianity,
 {
     match attr.value() {
-        gimli::AttributeValue::Udata(val) => if val != 0 {
-            if val <= u64::from(u32::MAX) {
-                source.column = val as u32;
-            } else {
-                debug!("large source column: {}", val);
+        gimli::AttributeValue::Udata(val) => {
+            if val != 0 {
+                if val <= u64::from(u32::MAX) {
+                    source.column = val as u32;
+                } else {
+                    debug!("large source column: {}", val);
+                }
             }
-        },
+        }
         val => {
             debug!("unknown DW_AT_decl_column attribute value: {:?}", val);
         }

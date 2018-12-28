@@ -220,7 +220,8 @@ fn main() {
                 clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_INLINE_DEPTH, inline_depth),
                     clap::ErrorKind::InvalidValue,
-                ).exit();
+                )
+                .exit();
             }
         }
     } else {
@@ -234,7 +235,8 @@ fn main() {
             _ => clap::Error::with_description(
                 &format!("invalid {} value: {}", OPT_OUTPUT, value),
                 clap::ErrorKind::InvalidValue,
-            ).exit(),
+            )
+            .exit(),
         }
     } else {
         options.html = false;
@@ -251,7 +253,8 @@ fn main() {
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_CATEGORY, value),
                     clap::ErrorKind::InvalidValue,
-                ).exit(),
+                )
+                .exit(),
             }
         }
     } else {
@@ -292,7 +295,8 @@ fn main() {
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_PRINT, value),
                     clap::ErrorKind::InvalidValue,
-                ).exit(),
+                )
+                .exit(),
             }
         }
     }
@@ -310,7 +314,8 @@ fn main() {
                             _ => clap::Error::with_description(
                                 &format!("invalid {} {} value: {}", OPT_FILTER, key, value),
                                 clap::ErrorKind::InvalidValue,
-                            ).exit(),
+                            )
+                            .exit(),
                         };
                     }
                     OPT_FILTER_NAME => options.filter_name = Some(value),
@@ -319,13 +324,15 @@ fn main() {
                     _ => clap::Error::with_description(
                         &format!("invalid {} key: {}", OPT_FILTER, key),
                         clap::ErrorKind::InvalidValue,
-                    ).exit(),
+                    )
+                    .exit(),
                 }
             } else {
                 clap::Error::with_description(
                     &format!("missing {} value for key: {}", OPT_FILTER, value),
                     clap::ErrorKind::InvalidValue,
-                ).exit();
+                )
+                .exit();
             }
         }
     }
@@ -336,7 +343,8 @@ fn main() {
         Some(value) => clap::Error::with_description(
             &format!("invalid {} key: {}", OPT_SORT, value),
             clap::ErrorKind::InvalidValue,
-        ).exit(),
+        )
+        .exit(),
         _ => ddbug::Sort::None,
     };
 
@@ -362,7 +370,8 @@ fn main() {
                 _ => clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_IGNORE, value),
                     clap::ErrorKind::InvalidValue,
-                ).exit(),
+                )
+                .exit(),
             }
         }
     }
@@ -377,7 +386,8 @@ fn main() {
                 clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_PREFIX_MAP, value),
                     clap::ErrorKind::InvalidValue,
-                ).exit();
+                )
+                .exit();
             }
         }
         options.prefix_map.sort_by(|a, b| b.0.len().cmp(&a.0.len()));

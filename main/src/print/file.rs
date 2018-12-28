@@ -124,7 +124,8 @@ fn merged_units<'a, 'input>(
     units_b.sort_by(|x, y| Unit::cmp_id(hash_b, x, hash_b, y, options));
     MergeIterator::new(units_a.into_iter(), units_b.into_iter(), |a, b| {
         Unit::cmp_id(hash_a, a, hash_b, b, options)
-    }).collect()
+    })
+    .collect()
 }
 
 pub fn print(file: &File, printer: &mut Printer, options: &Options) -> Result<()> {
