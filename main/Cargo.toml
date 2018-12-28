@@ -11,11 +11,11 @@ license = "Apache-2.0/MIT"
 
 [dependencies]
 clap = "2.26"
-env_logger = "0.5"
+env_logger = "0.6"
 fnv = "1.0"
 log = "0.4"
 marksman_escape = "0.1"
-memmap = "0.6"
+memmap = "0.7"
 panopticon-core = { git = "https://github.com/das-labor/panopticon", rev = "33ffec0d6d379d51b38d6ea00d040f54b1356ae4" }
 panopticon-amd64 = { git = "https://github.com/das-labor/panopticon", rev = "33ffec0d6d379d51b38d6ea00d040f54b1356ae4" }
 typed-arena = "1.3"

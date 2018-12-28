@@ -160,7 +160,7 @@ struct DwarfVariable<'input> {
 
 pub(crate) fn parse<'input, 'file, Endian, Object, Cb>(
     endian: Endian,
-    object: &Object,
+    object: &'file Object,
     strings: &'input StringCache,
     cb: Cb,
 ) -> Result<()>
