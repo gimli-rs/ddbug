@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp;
 use std::ops::Deref;
 
-use parser::{FileHash, Member, MemberLayout, Type, Unit};
+use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit};
 use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use Result;
 
@@ -28,7 +28,23 @@ fn print_name(
     Ok(())
 }
 
-fn print_padding(layout: &MemberLayout, w: &mut ValuePrinter) -> Result<()> {
+fn print_inherit(
+    layout: &Layout,
+    inherit: &Inherit,
+    w: &mut ValuePrinter,
+    hash: &FileHash,
+) -> Result<()> {
+    write!(
+        w,
+        "{}[{}]\t<inherit>: ",
+        format_bit(layout.bit_offset),
+        format_bit(layout.bit_size.get().unwrap_or(0))
+    )?;
+    print::types::print_ref(inherit.ty(hash), w, hash)?;
+    Ok(())
+}
+
+fn print_padding(layout: &Layout, w: &mut ValuePrinter) -> Result<()> {
     write!(
         w,
         "{}[{}]\t<padding>",
@@ -110,41 +126,53 @@ impl<'input> DiffList for Member<'input> {
     }
 }
 
-impl<'input, 'member> Print for MemberLayout<'input, 'member> {
+impl<'input, 'member> Print for Layout<'input, 'member> {
     type Arg = Unit<'input>;
 
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
-        if let Some(member) = self.member {
-            member.print(state, unit)?;
-        } else {
-            state.line(|w, _hash| print_padding(self, w))?;
+        match self.item {
+            LayoutItem::Padding => state.line(|w, _hash| print_padding(self, w)),
+            LayoutItem::Member(member) => member.print(state, unit),
+            LayoutItem::Inherit(inherit) => {
+                state.line(|w, hash| print_inherit(self, inherit, w, hash))
+            }
         }
-        Ok(())
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
-        match (a.member, b.member) {
-            (Some(a), Some(b)) => Member::diff(state, unit_a, a, unit_b, b),
-            (Some(_), None) | (None, Some(_)) => {
-                state.block((unit_a, a), (unit_b, b), |state, (unit, x)| {
-                    MemberLayout::print(x, state, unit)
-                })
+        match (&a.item, &b.item) {
+            (&LayoutItem::Padding, &LayoutItem::Padding) => {
+                state.line(a, b, |w, _hash, x| print_padding(x, w))
             }
-            (None, None) => state.line(a, b, |w, _hash, x| print_padding(x, w)),
+            (&LayoutItem::Member(ref a), &LayoutItem::Member(ref b)) => {
+                Member::diff(state, unit_a, a, unit_b, b)
+            }
+            (&LayoutItem::Inherit(ref inherit_a), &LayoutItem::Inherit(ref inherit_b)) => state
+                .line((a, inherit_a), (b, inherit_b), |w, hash, (x, inherit)| {
+                    print_inherit(x, inherit, w, hash)
+                }),
+            _ => state.block((unit_a, a), (unit_b, b), |state, (unit, x)| {
+                Layout::print(x, state, unit)
+            }),
         }
     }
 }
 
-impl<'input, 'member> DiffList for MemberLayout<'input, 'member> {
+impl<'input, 'member> DiffList for Layout<'input, 'member> {
     fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         1
     }
 
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
-        match (a.member, b.member) {
-            (Some(a), Some(b)) => Member::diff_cost(state, unit_a, a, unit_b, b),
-            (Some(_), None) | (None, Some(_)) => 2,
-            (None, None) => 0,
+        match (&a.item, &b.item) {
+            (&LayoutItem::Padding, &LayoutItem::Padding) => 0,
+            (&LayoutItem::Member(ref a), &LayoutItem::Member(ref b)) => {
+                Member::diff_cost(state, unit_a, a, unit_b, b)
+            }
+            (&LayoutItem::Inherit(ref a), &LayoutItem::Inherit(ref b)) => {
+                Inherit::diff_cost(state, &(), a, &(), b)
+            }
+            _ => 2,
         }
     }
 }

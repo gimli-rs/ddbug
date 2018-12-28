@@ -17,7 +17,7 @@ use namespace::{Namespace, NamespaceKind};
 use range::Range;
 use source::Source;
 use types::{
-    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Member, ParameterType,
+    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Inherit, Member, ParameterType,
     PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind,
     TypeOffset, UnionType, UnspecifiedType,
 };
@@ -1038,8 +1038,10 @@ where
             gimli::DW_TAG_member => {
                 parse_member(&mut ty.members, unit, dwarf, dwarf_unit, &namespace, child)?;
             }
-            gimli::DW_TAG_inheritance
-            | gimli::DW_TAG_template_type_parameter
+            gimli::DW_TAG_inheritance => {
+                parse_inheritance(&mut ty.inherits, dwarf_unit, child)?;
+            }
+            gimli::DW_TAG_template_type_parameter
             | gimli::DW_TAG_template_value_parameter
             | gimli::DW_TAG_GNU_template_parameter_pack => {}
             tag => {
@@ -1177,34 +1179,8 @@ where
                     }
                 }
                 gimli::DW_AT_data_member_location => {
-                    match attr.value() {
-                        gimli::AttributeValue::Udata(v) => member.bit_offset = v * 8,
-                        gimli::AttributeValue::Sdata(v) => {
-                            if v >= 0 {
-                                member.bit_offset = (v as u64) * 8;
-                            } else {
-                                debug!("DW_AT_data_member_location is negative: {}", v)
-                            }
-                        }
-                        gimli::AttributeValue::Exprloc(expr) => {
-                            if let Some(offset) = evaluate_member_location(&dwarf_unit.header, expr)
-                            {
-                                member.bit_offset = offset;
-                            }
-                        }
-                        gimli::AttributeValue::LocationListsRef(offset) => {
-                            if dwarf_unit.header.version() == 3 {
-                                // HACK: while gimli is technically correct, in my experience this
-                                // is more likely to be a constant. This can happen for large
-                                // structs.
-                                member.bit_offset = offset.0 as u64 * 8;
-                            } else {
-                                debug!("loclist for member: {:?}", attr.value());
-                            }
-                        }
-                        _ => {
-                            debug!("unknown DW_AT_data_member_location: {:?}", attr.value());
-                        }
+                    if let Some(offset) = parse_data_member_location(dwarf_unit, &attr) {
+                        member.bit_offset = offset;
                     }
                 }
                 gimli::DW_AT_data_bit_offset => {
@@ -1303,6 +1279,92 @@ where
     }
     members.push(member);
     Ok(())
+}
+
+fn parse_inheritance<'input, 'abbrev, 'unit, 'tree, Endian>(
+    inherits: &mut Vec<Inherit>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut inherit = Inherit::default();
+
+    {
+        let mut attrs = node.entry().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        inherit.ty = offset;
+                    }
+                }
+                gimli::DW_AT_data_member_location => {
+                    if let Some(offset) = parse_data_member_location(dwarf_unit, &attr) {
+                        inherit.bit_offset = offset;
+                    }
+                }
+                gimli::DW_AT_accessibility | gimli::DW_AT_virtuality | gimli::DW_AT_sibling => {}
+                _ => {
+                    debug!(
+                        "unknown inheritance attribute: {} {:?}",
+                        attr.name(),
+                        attr.value()
+                    );
+                }
+            }
+        }
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            tag => {
+                debug!("unknown inheritance child tag: {}", tag);
+            }
+        }
+    }
+    inherits.push(inherit);
+    Ok(())
+}
+
+fn parse_data_member_location<Endian>(
+    dwarf_unit: &DwarfUnit<Endian>,
+    attr: &gimli::Attribute<Reader<Endian>>,
+) -> Option<u64>
+where
+    Endian: gimli::Endianity,
+{
+    match attr.value() {
+        gimli::AttributeValue::Udata(v) => return Some(v * 8),
+        gimli::AttributeValue::Sdata(v) => {
+            if v >= 0 {
+                return Some((v as u64) * 8);
+            } else {
+                debug!("DW_AT_data_member_location is negative: {}", v)
+            }
+        }
+        gimli::AttributeValue::Exprloc(expr) => {
+            if let Some(offset) = evaluate_member_location(&dwarf_unit.header, expr) {
+                return Some(offset);
+            }
+        }
+        gimli::AttributeValue::LocationListsRef(offset) => {
+            if dwarf_unit.header.version() == 3 {
+                // HACK: while gimli is technically correct, in my experience this
+                // is more likely to be a constant. This can happen for large
+                // structs.
+                return Some(offset.0 as u64 * 8);
+            } else {
+                debug!("loclist for member: {:?}", attr.value());
+            }
+        }
+        _ => {
+            debug!("unknown DW_AT_data_member_location: {:?}", attr.value());
+        }
+    }
+    return None;
 }
 
 fn parse_enumeration_type<'input, 'abbrev, 'unit, 'tree, Endian>(

@@ -24,6 +24,7 @@ pub(crate) fn print(ty: &StructType, state: &mut PrintState, unit: &Unit, id: us
             }
             state.field("declaration", |w, state| print_declaration(ty, w, state))?;
             state.field("size", |w, state| print_byte_size(ty, w, state))?;
+            print::inherit::print_list(state, ty.inherits())?;
             state.field_expanded("members", |state| print_members(ty, state, unit))
         },
     )?;
@@ -55,6 +56,7 @@ pub(crate) fn diff(
                 print_declaration(x, w, state)
             })?;
             state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
+            print::inherit::diff_list(state, a.inherits(), b.inherits())?;
             state.field_expanded("members", |state| diff_members(state, unit_a, a, unit_b, b))
         },
     )?;

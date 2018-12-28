@@ -511,6 +511,7 @@ pub struct StructType<'input> {
     pub(crate) byte_size: Size,
     pub(crate) declaration: bool,
     pub(crate) members: Vec<Member<'input>>,
+    pub(crate) inherits: Vec<Inherit>,
 }
 
 impl<'input> StructType<'input> {
@@ -561,17 +562,28 @@ impl<'input> StructType<'input> {
         }
     }
 
+    /// The inherited types.
+    #[inline]
+    pub fn inherits(&self) -> &[Inherit] {
+        &self.inherits
+    }
+
     /// The layout of members of this type.
-    pub fn layout<'me>(&'me self, hash: &FileHash) -> Vec<MemberLayout<'input, 'me>> {
+    pub fn layout<'me>(&'me self, hash: &FileHash) -> Vec<Layout<'input, 'me>> {
         let mut members: Vec<_> = self
             .members
             .iter()
-            .map(|member| MemberLayout {
+            .map(|member| Layout {
                 bit_offset: member.bit_offset(),
                 bit_size: member.bit_size(hash).into(),
-                member: Some(member),
+                item: LayoutItem::Member(member),
             })
             .collect();
+        members.extend(self.inherits().iter().map(|inherit| Layout {
+            bit_offset: inherit.bit_offset(),
+            bit_size: inherit.bit_size(hash).into(),
+            item: LayoutItem::Inherit(inherit),
+        }));
         members.sort_by(|a, b| {
             a.bit_offset
                 .cmp(&b.bit_offset)
@@ -587,10 +599,10 @@ impl<'input> StructType<'input> {
                 let bit_offset = member.bit_offset + bit_size;
                 if next_bit_offset > bit_offset {
                     let bit_size = next_bit_offset - bit_offset;
-                    layout.push(MemberLayout {
+                    layout.push(Layout {
                         bit_offset,
                         bit_size: Size::new(bit_size),
-                        member: None,
+                        item: LayoutItem::Padding,
                     });
                 }
             }
@@ -743,17 +755,61 @@ impl<'input> Member<'input> {
     }
 }
 
+/// An inherited type of a struct or union.
+#[derive(Debug, Default, Clone)]
+pub struct Inherit {
+    pub(crate) ty: TypeOffset,
+    // Defaults to 0, so always present.
+    pub(crate) bit_offset: u64,
+}
+
+impl Inherit {
+    /// The debuginfo offset of the inherited type.
+    #[inline]
+    pub fn type_offset<'a>(&self) -> TypeOffset {
+        self.ty
+    }
+
+    /// The inherited type.
+    pub fn ty<'a, 'input>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        Type::from_offset(hash, self.ty)
+    }
+
+    /// The offset in bits of the inherited type within the struct.
+    #[inline]
+    pub fn bit_offset(&self) -> u64 {
+        self.bit_offset
+    }
+
+    /// The size in bits of the inherited type.
+    pub fn bit_size(&self, hash: &FileHash) -> Option<u64> {
+        self.ty(hash).and_then(|v| v.byte_size(hash).map(|v| v * 8))
+    }
+}
+
 /// The layout of an item (member or padding) within a struct.
-pub struct MemberLayout<'input, 'member>
+#[derive(Debug, Clone)]
+pub struct Layout<'input, 'item>
 where
-    'input: 'member,
+    'input: 'item,
 {
     /// The offset in bits of the item within the struct.
     pub bit_offset: u64,
     /// The size in bits of the item.
     pub bit_size: Size,
-    /// The member, or `None` if this is padding.
-    pub member: Option<&'member Member<'input>>,
+    /// The member or padding.
+    pub item: LayoutItem<'input, 'item>,
+}
+
+/// The item in a `Layout`.
+#[derive(Debug, Clone)]
+pub enum LayoutItem<'input, 'item> {
+    /// Padding.
+    Padding,
+    /// A member.
+    Member(&'item Member<'input>),
+    /// An inherited type.
+    Inherit(&'item Inherit),
 }
 
 /// An enumeration type.
