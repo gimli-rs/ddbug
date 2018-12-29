@@ -1,4 +1,5 @@
-use crate::parser::{Namespace, NamespaceKind};
+use parser::{Namespace, NamespaceKind};
+
 use crate::print::ValuePrinter;
 use crate::Result;
 

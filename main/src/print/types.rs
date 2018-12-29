@@ -1,10 +1,11 @@
 use std::borrow::Cow;
 use std::cmp;
 
-use crate::parser::{
+use parser::{
     ArrayType, BaseType, FileHash, FunctionType, PointerToMemberType, Type, TypeKind, TypeModifier,
     TypeModifierKind, Unit, UnspecifiedType,
 };
+
 use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 

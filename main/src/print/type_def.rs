@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 use std::ops::Deref;
 
-use crate::parser::{FileHash, TypeDef, Unit};
+use parser::{FileHash, TypeDef, Unit};
+
 use crate::print::{self, DiffState, PrintState, ValuePrinter};
 use crate::Result;
 

@@ -1,10 +1,11 @@
 use std::cmp;
 
-use crate::code::{Call, CodeRegion};
-use crate::parser::{
+use parser::{
     FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable, Parameter, ParameterType,
     Type, TypeOffset, Unit,
 };
+
+use crate::code::{Call, CodeRegion};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 

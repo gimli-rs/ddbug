@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 
-use crate::amd64;
-use crate::panopticon;
+use amd64;
+use panopticon;
 
-use crate::parser::{File, Machine, Range};
+use parser::{File, Machine, Range};
 
 #[derive(Debug)]
 pub(crate) struct CodeRegion {

@@ -1,6 +1,7 @@
 use std::cmp;
 
-use crate::parser::{FileHash, Unit, Variable};
+use parser::{FileHash, Unit, Variable};
+
 use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 

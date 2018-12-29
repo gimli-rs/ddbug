@@ -3,8 +3,6 @@
 //! ## Example usage
 //!
 //! ```rust,no_run
-//! extern crate ddbug_parser;
-//!
 //! # let a_file_path = "";
 //! ddbug_parser::File::parse(a_file_path, |file| {
 //!     for unit in file.units() {
@@ -23,14 +21,8 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 
-extern crate fnv;
-extern crate gimli;
 #[macro_use]
 extern crate log;
-extern crate memmap;
-extern crate moria;
-extern crate object;
-extern crate typed_arena;
 
 mod file;
 mod function;

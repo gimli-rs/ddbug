@@ -1,4 +1,5 @@
-use crate::parser::{FileHash, UnionType, Unit};
+use parser::{FileHash, UnionType, Unit};
+
 use crate::print::{self, DiffState, PrintState, ValuePrinter};
 use crate::Result;
 

@@ -2,7 +2,8 @@ use std::borrow::Cow;
 use std::cmp;
 use std::ops::Deref;
 
-use crate::parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit};
+use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit};
+
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 

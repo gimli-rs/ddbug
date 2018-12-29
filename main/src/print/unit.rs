@@ -1,7 +1,8 @@
 use std::cmp;
 
+use parser::{FileHash, Function, Range, Type, Unit, Variable};
+
 use crate::filter;
-use crate::parser::{FileHash, Function, Range, Type, Unit, Variable};
 use crate::print::{
     self, DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter,
 };

@@ -1,6 +1,7 @@
 use std::cmp;
 
-use crate::parser::Section;
+use parser::Section;
+
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 

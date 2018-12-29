@@ -3,8 +3,9 @@ use std::collections::BinaryHeap;
 use std::io::Write;
 use std::usize;
 
+use parser::FileHash;
+
 use crate::code::CodeRegion;
-use crate::parser::FileHash;
 use crate::{Options, Result};
 
 mod text;

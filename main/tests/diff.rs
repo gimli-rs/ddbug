@@ -1,5 +1,3 @@
-extern crate ddbug;
-
 fn diff(name: &str, expect: &str) {
     let mut options = options();
     options.unit("src/diff.c").name(name);

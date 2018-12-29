@@ -1,6 +1,7 @@
 use std::cmp;
 
-use crate::parser::{Symbol, SymbolKind};
+use parser::{Symbol, SymbolKind};
+
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 

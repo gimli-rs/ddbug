@@ -2,25 +2,19 @@
 #![allow(clippy::single_match)]
 #![allow(clippy::type_complexity)]
 
-extern crate ddbug_parser as parser;
-extern crate fnv;
 #[macro_use]
 extern crate log;
-extern crate marksman_escape;
-extern crate memmap;
-extern crate panopticon_amd64 as amd64;
-extern crate panopticon_core as panopticon;
-extern crate typed_arena;
+
+use parser::Namespace;
+
+pub use parser::{File, Result};
 
 mod code;
 mod filter;
+
 mod print;
-
-use crate::parser::Namespace;
-
-pub use crate::parser::{File, Result};
-pub use crate::print::file::{diff, print};
-pub use crate::print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
+pub use self::print::file::{diff, print};
+pub use self::print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {

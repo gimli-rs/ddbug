@@ -1,6 +1,7 @@
 use std::cmp;
 
-use crate::parser::FrameLocation;
+use parser::FrameLocation;
+
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
