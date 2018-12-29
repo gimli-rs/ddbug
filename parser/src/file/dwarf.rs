@@ -352,47 +352,44 @@ where
     Object: object::Object<'input, 'file>,
     Cb: FnOnce(Vec<Unit>, DebugInfo<Endian>) -> Result<()>,
 {
-    macro_rules! get_section {
-        ($name:expr) => {{
-            let mut relocations = RelocationMap::default();
-            let data = match object.section_by_name($name) {
-                Some(ref section) => {
-                    add_relocations(&mut relocations, object, section);
-                    section.uncompressed_data()
-                }
-                None => Cow::Borrowed(&[][..]),
-            };
-            (data, relocations)
-        }};
-    }
-    macro_rules! get_reader {
-        ($data:expr) => {{
-            let reader = gimli::EndianSlice::new(&$data.0, endian);
-            let section = reader.clone();
-            Relocate {
-                relocations: &$data.1,
-                section,
-                reader,
+    let get_section = |name| {
+        let mut relocations = RelocationMap::default();
+        let data = match object.section_by_name(name) {
+            Some(ref section) => {
+                add_relocations(&mut relocations, object, section);
+                section.uncompressed_data()
             }
-        }};
-    }
-    let debug_abbrev = get_section!(".debug_abbrev");
-    let debug_abbrev = gimli::DebugAbbrev::from(get_reader!(debug_abbrev));
-    let debug_info = get_section!(".debug_info");
-    let debug_info = gimli::DebugInfo::from(get_reader!(debug_info));
-    let debug_line = get_section!(".debug_line");
-    let debug_line = gimli::DebugLine::from(get_reader!(debug_line));
-    let debug_str = get_section!(".debug_str");
-    let debug_str = gimli::DebugStr::from(get_reader!(debug_str));
-    let debug_ranges = get_section!(".debug_ranges");
-    let debug_ranges = gimli::DebugRanges::from(get_reader!(debug_ranges));
-    let debug_rnglists = get_section!(".debug_rnglists");
-    let debug_rnglists = gimli::DebugRngLists::from(get_reader!(debug_rnglists));
+            None => Cow::Borrowed(&[][..]),
+        };
+        (data, relocations)
+    };
+    let get_reader: &for<'a> Fn(&'a (Cow<[u8]>, RelocationMap)) -> Reader<'a, Endian> = &|section| {
+        let relocations = &section.1;
+        let reader = gimli::EndianSlice::new(&section.0, endian);
+        let section = reader.clone();
+        Relocate {
+            relocations,
+            section,
+            reader,
+        }
+    };
+    let debug_abbrev = get_section(".debug_abbrev");
+    let debug_abbrev = gimli::DebugAbbrev::from(get_reader(&debug_abbrev));
+    let debug_info = get_section(".debug_info");
+    let debug_info = gimli::DebugInfo::from(get_reader(&debug_info));
+    let debug_line = get_section(".debug_line");
+    let debug_line = gimli::DebugLine::from(get_reader(&debug_line));
+    let debug_str = get_section(".debug_str");
+    let debug_str = gimli::DebugStr::from(get_reader(&debug_str));
+    let debug_ranges = get_section(".debug_ranges");
+    let debug_ranges = gimli::DebugRanges::from(get_reader(&debug_ranges));
+    let debug_rnglists = get_section(".debug_rnglists");
+    let debug_rnglists = gimli::DebugRngLists::from(get_reader(&debug_rnglists));
     let range_lists = gimli::RangeLists::new(debug_ranges, debug_rnglists)?;
-    let debug_loc = get_section!(".debug_loc");
-    let debug_loc = gimli::DebugLoc::from(get_reader!(debug_loc));
-    let debug_loclists = get_section!(".debug_loclists");
-    let debug_loclists = gimli::DebugLocLists::from(get_reader!(debug_loclists));
+    let debug_loc = get_section(".debug_loc");
+    let debug_loc = gimli::DebugLoc::from(get_reader(&debug_loc));
+    let debug_loclists = get_section(".debug_loclists");
+    let debug_loclists = gimli::DebugLocLists::from(get_reader(&debug_loclists));
     let location_lists = gimli::LocationLists::new(debug_loc, debug_loclists)?;
 
     let mut dwarf = DwarfDebugInfo {
