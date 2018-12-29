@@ -9,7 +9,7 @@ use crate::Result;
 
 fn print_name(
     member: &Member,
-    w: &mut ValuePrinter,
+    w: &mut dyn ValuePrinter,
     hash: &FileHash,
     bit_size: Option<u64>,
 ) -> Result<()> {
@@ -32,7 +32,7 @@ fn print_name(
 fn print_inherit(
     layout: &Layout,
     inherit: &Inherit,
-    w: &mut ValuePrinter,
+    w: &mut dyn ValuePrinter,
     hash: &FileHash,
 ) -> Result<()> {
     write!(
@@ -45,7 +45,7 @@ fn print_inherit(
     Ok(())
 }
 
-fn print_padding(layout: &Layout, w: &mut ValuePrinter) -> Result<()> {
+fn print_padding(layout: &Layout, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(
         w,
         "{}[{}]\t<padding>",

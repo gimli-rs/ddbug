@@ -117,7 +117,7 @@ const FOOTER: &str = r#"</ul>
 </html>"#;
 
 pub struct HtmlPrinter<'w> {
-    w: &'w mut Write,
+    w: &'w mut dyn Write,
     indent: usize,
     prefix: DiffPrefix,
     inline_depth: usize,
@@ -126,7 +126,7 @@ pub struct HtmlPrinter<'w> {
 }
 
 impl<'w> HtmlPrinter<'w> {
-    pub fn new(w: &'w mut Write, options: &Options) -> Self {
+    pub fn new(w: &'w mut dyn Write, options: &Options) -> Self {
         HtmlPrinter {
             w,
             indent: 0,
@@ -151,7 +151,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
     fn value(
         &mut self,
         buf: &mut Vec<u8>,
-        f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
     ) -> Result<()> {
         let mut p = HtmlValuePrinter { w: buf };
         f(&mut p)
@@ -161,7 +161,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
     fn buffer(
         &mut self,
         buf: &mut Vec<u8>,
-        f: &mut FnMut(&mut Printer) -> Result<()>,
+        f: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         let mut p = HtmlPrinter {
             w: buf,
@@ -252,7 +252,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
     fn indent_body(
         &mut self,
         buf: &mut Vec<u8>,
-        body: &mut FnMut(&mut Printer) -> Result<()>,
+        body: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         let mut printer = HtmlPrinter {
             w: buf,
@@ -270,7 +270,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
         &mut self,
         collapsed: bool,
         body: &[u8],
-        header: &mut FnMut(&mut Printer) -> Result<()>,
+        header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         debug_assert!(!self.line_started);
         write!(self.w, "<li>")?;
@@ -329,7 +329,7 @@ impl<'w> Write for HtmlValuePrinter<'w> {
 }
 
 impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
-    fn link(&mut self, id: usize, f: &mut FnMut(&mut ValuePrinter) -> Result<()>) -> Result<()> {
+    fn link(&mut self, id: usize, f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>) -> Result<()> {
         if id == 0 {
             f(self)
         } else {

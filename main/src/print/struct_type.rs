@@ -3,7 +3,7 @@ use parser::{FileHash, StructType, Unit};
 use crate::print::{self, DiffState, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_name(ty: &StructType, w: &mut ValuePrinter) -> Result<()> {
+fn print_name(ty: &StructType, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "struct ")?;
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
@@ -12,7 +12,7 @@ fn print_name(ty: &StructType, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn print_ref(ty: &StructType, w: &mut ValuePrinter, id: usize) -> Result<()> {
+pub(crate) fn print_ref(ty: &StructType, w: &mut dyn ValuePrinter, id: usize) -> Result<()> {
     w.link(id, &mut |w| print_name(ty, w))
 }
 
@@ -65,11 +65,11 @@ pub(crate) fn diff(
     Ok(())
 }
 
-fn print_source(ty: &StructType, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
+fn print_source(ty: &StructType, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     print::source::print(ty.source(), w, unit)
 }
 
-fn print_byte_size(ty: &StructType, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
+fn print_byte_size(ty: &StructType, w: &mut dyn ValuePrinter, _hash: &FileHash) -> Result<()> {
     if let Some(size) = ty.byte_size() {
         write!(w, "{}", size)?;
     } else if !ty.is_declaration() {
@@ -78,7 +78,7 @@ fn print_byte_size(ty: &StructType, w: &mut ValuePrinter, _hash: &FileHash) -> R
     Ok(())
 }
 
-fn print_declaration(ty: &StructType, w: &mut ValuePrinter, _hash: &FileHash) -> Result<()> {
+fn print_declaration(ty: &StructType, w: &mut dyn ValuePrinter, _hash: &FileHash) -> Result<()> {
     if ty.is_declaration() {
         write!(w, "yes")?;
     }

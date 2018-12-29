@@ -5,7 +5,7 @@ use parser::{Symbol, SymbolKind};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_name(symbol: &Symbol, w: &mut ValuePrinter) -> Result<()> {
+fn print_name(symbol: &Symbol, w: &mut dyn ValuePrinter) -> Result<()> {
     match symbol.kind() {
         SymbolKind::Variable => write!(w, "var ")?,
         SymbolKind::Function => write!(w, "fn ")?,
@@ -17,7 +17,7 @@ fn print_name(symbol: &Symbol, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-fn print_address(symbol: &Symbol, w: &mut ValuePrinter) -> Result<()> {
+fn print_address(symbol: &Symbol, w: &mut dyn ValuePrinter) -> Result<()> {
     print::range::print_address(&symbol.address(), w)
 }
 

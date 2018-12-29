@@ -5,7 +5,7 @@ use parser::{EnumerationType, Enumerator, FileHash, Unit};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_name(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {
+fn print_name(ty: &EnumerationType, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "enum ")?;
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
@@ -14,7 +14,7 @@ fn print_name(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn print_ref(ty: &EnumerationType, w: &mut ValuePrinter, id: usize) -> Result<()> {
+pub(crate) fn print_ref(ty: &EnumerationType, w: &mut dyn ValuePrinter, id: usize) -> Result<()> {
     w.link(id, &mut |w| print_name(ty, w))
 }
 
@@ -74,18 +74,18 @@ pub(crate) fn diff(
     Ok(())
 }
 
-fn print_source(ty: &EnumerationType, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
+fn print_source(ty: &EnumerationType, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     print::source::print(ty.source(), w, unit)
 }
 
-fn print_declaration(ty: &EnumerationType, w: &mut ValuePrinter) -> Result<()> {
+fn print_declaration(ty: &EnumerationType, w: &mut dyn ValuePrinter) -> Result<()> {
     if ty.is_declaration() {
         write!(w, "yes")?;
     }
     Ok(())
 }
 
-fn print_byte_size(ty: &EnumerationType, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_byte_size(ty: &EnumerationType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(size) = ty.byte_size(hash) {
         write!(w, "{}", size)?;
     } else {
@@ -94,7 +94,7 @@ fn print_byte_size(ty: &EnumerationType, w: &mut ValuePrinter, hash: &FileHash) 
     Ok(())
 }
 
-fn print_enumerator(ty: &Enumerator, w: &mut ValuePrinter) -> Result<()> {
+fn print_enumerator(ty: &Enumerator, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
     if let Some(value) = ty.value() {
         write!(w, "({})", value)?;

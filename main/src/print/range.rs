@@ -3,7 +3,7 @@ use parser::Range;
 use crate::print::{DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-pub(crate) fn print_address(range: &Range, w: &mut ValuePrinter) -> Result<()> {
+pub(crate) fn print_address(range: &Range, w: &mut dyn ValuePrinter) -> Result<()> {
     if range.end > range.begin {
         write!(w, "0x{:x}-0x{:x}", range.begin, range.end - 1)?;
     } else {
@@ -12,7 +12,7 @@ pub(crate) fn print_address(range: &Range, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn print_address_and_size(range: &Range, w: &mut ValuePrinter) -> Result<()> {
+pub(crate) fn print_address_and_size(range: &Range, w: &mut dyn ValuePrinter) -> Result<()> {
     if range.end > range.begin {
         write!(
             w,

@@ -1,3 +1,7 @@
+// Enable some rust 2018 idioms.
+#![warn(bare_trait_objects)]
+#![warn(unused_extern_crates)]
+
 #[cfg(feature = "system_alloc")]
 use std::alloc::System;
 
@@ -431,7 +435,7 @@ fn print_file(file: &ddbug::File, options: &ddbug::Options) -> ddbug::Result<()>
 
 fn format<F>(options: &ddbug::Options, f: F) -> ddbug::Result<()>
 where
-    F: FnOnce(&mut ddbug::Printer) -> ddbug::Result<()>,
+    F: FnOnce(&mut dyn ddbug::Printer) -> ddbug::Result<()>,
 {
     let stdout = std::io::stdout();
     let mut writer = BufWriter::new(stdout.lock());

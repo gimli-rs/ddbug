@@ -27,7 +27,7 @@ pub(crate) fn diff_list(
     Ok(())
 }
 
-pub(crate) fn print(register: Register, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+pub(crate) fn print(register: Register, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     match register.name(hash) {
         Some(name) => write!(w, "{}", name)?,
         None => write!(w, "r{}", register.0)?,

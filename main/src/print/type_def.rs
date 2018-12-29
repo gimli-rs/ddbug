@@ -6,7 +6,7 @@ use parser::{FileHash, TypeDef, Unit};
 use crate::print::{self, DiffState, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_name(ty: &TypeDef, w: &mut ValuePrinter) -> Result<()> {
+fn print_name(ty: &TypeDef, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
@@ -14,11 +14,11 @@ fn print_name(ty: &TypeDef, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn print_ref(ty: &TypeDef, w: &mut ValuePrinter, id: usize) -> Result<()> {
+pub(crate) fn print_ref(ty: &TypeDef, w: &mut dyn ValuePrinter, id: usize) -> Result<()> {
     w.link(id, &mut |w| print_name(ty, w))
 }
 
-fn print_def(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_def(ty: &TypeDef, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "type ")?;
     print_name(ty, w)?;
     write!(w, " = ")?;
@@ -26,11 +26,11 @@ fn print_def(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> 
     Ok(())
 }
 
-fn print_source(ty: &TypeDef, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
+fn print_source(ty: &TypeDef, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     print::source::print(ty.source(), w, unit)
 }
 
-fn print_byte_size(ty: &TypeDef, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_byte_size(ty: &TypeDef, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(byte_size) = ty.byte_size(hash) {
         write!(w, "{}", byte_size)?;
     }

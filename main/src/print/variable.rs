@@ -61,7 +61,7 @@ pub(crate) fn diff(
     Ok(())
 }
 
-fn print_name(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_name(v: &Variable, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "var ")?;
     if let Some(namespace) = v.namespace() {
         print::namespace::print(namespace, w)?;
@@ -71,32 +71,32 @@ fn print_name(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()>
     Ok(())
 }
 
-fn print_linkage_name(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
+fn print_linkage_name(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(linkage_name) = v.linkage_name() {
         write!(w, "{}", linkage_name)?;
     }
     Ok(())
 }
 
-fn print_symbol_name(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
+fn print_symbol_name(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(symbol_name) = v.symbol_name() {
         write!(w, "{}", symbol_name)?;
     }
     Ok(())
 }
 
-fn print_source(v: &Variable, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
+fn print_source(v: &Variable, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     print::source::print(v.source(), w, unit)
 }
 
-fn print_address(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
+fn print_address(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(address) = v.address() {
         write!(w, "0x{:x}", address)?;
     }
     Ok(())
 }
 
-fn print_size(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_size(v: &Variable, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(byte_size) = v.byte_size(hash) {
         write!(w, "{}", byte_size)?;
     } else if !v.is_declaration() {
@@ -105,7 +105,7 @@ fn print_size(v: &Variable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()>
     Ok(())
 }
 
-fn print_declaration(v: &Variable, w: &mut ValuePrinter) -> Result<()> {
+fn print_declaration(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
     if v.is_declaration() {
         write!(w, "yes")?;
     }

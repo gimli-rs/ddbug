@@ -36,7 +36,7 @@ pub(crate) fn diff_list(
     Ok(())
 }
 
-fn print_inherit(inherit: &Inherit, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_inherit(inherit: &Inherit, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     print::types::print_ref(inherit.ty(hash), w, hash)
 }
 

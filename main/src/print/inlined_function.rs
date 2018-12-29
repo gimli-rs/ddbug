@@ -5,7 +5,7 @@ use parser::{FileHash, Function, InlinedFunction, LocalVariable, Unit};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::Result;
 
-fn print_size_and_decl(f: &InlinedFunction, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_size_and_decl(f: &InlinedFunction, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     match f.size() {
         Some(size) => write!(w, "[{}]", size)?,
         None => write!(w, "[??]")?,
@@ -18,7 +18,7 @@ fn print_size_and_decl(f: &InlinedFunction, w: &mut ValuePrinter, hash: &FileHas
     Ok(())
 }
 
-fn print_call_source(f: &InlinedFunction, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
+fn print_call_source(f: &InlinedFunction, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     print::source::print(f.call_source(), w, unit)
 }
 

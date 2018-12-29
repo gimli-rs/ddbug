@@ -5,7 +5,7 @@ use parser::{FileHash, Parameter, Type, Unit};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-pub(crate) fn print_decl(p: &Parameter, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+pub(crate) fn print_decl(p: &Parameter, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = p.name() {
         write!(w, "{}: ", name)?;
     }
@@ -13,7 +13,7 @@ pub(crate) fn print_decl(p: &Parameter, w: &mut ValuePrinter, hash: &FileHash) -
     Ok(())
 }
 
-fn print_size_and_decl(p: &Parameter, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_size_and_decl(p: &Parameter, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     match p.byte_size(hash) {
         Some(byte_size) => write!(w, "[{}]", byte_size)?,
         None => write!(w, "[??]")?,

@@ -5,7 +5,7 @@ use parser::Section;
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_name(section: &Section, w: &mut ValuePrinter) -> Result<()> {
+fn print_name(section: &Section, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(ref segment) = section.segment() {
         write!(w, "{},", segment)?;
     }
@@ -16,7 +16,7 @@ fn print_name(section: &Section, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-fn print_address(section: &Section, w: &mut ValuePrinter) -> Result<()> {
+fn print_address(section: &Section, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(ref address) = section.address() {
         print::range::print_address(address, w)?;
     }

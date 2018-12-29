@@ -3,7 +3,7 @@ use parser::{Namespace, NamespaceKind};
 use crate::print::ValuePrinter;
 use crate::Result;
 
-pub(crate) fn print(namespace: &Namespace, w: &mut ValuePrinter) -> Result<()> {
+pub(crate) fn print(namespace: &Namespace, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(parent) = namespace.parent() {
         print(parent, w)?;
     }

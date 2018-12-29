@@ -49,14 +49,14 @@ pub trait Printer {
     fn value(
         &mut self,
         buf: &mut Vec<u8>,
-        f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
     ) -> Result<()>;
 
     /// Calls `f` to write to a temporary buffer.
     fn buffer(
         &mut self,
         buf: &mut Vec<u8>,
-        f: &mut FnMut(&mut Printer) -> Result<()>,
+        f: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()>;
     fn write_buf(&mut self, buf: &[u8]) -> Result<()>;
 
@@ -68,13 +68,13 @@ pub trait Printer {
     fn indent_body(
         &mut self,
         buf: &mut Vec<u8>,
-        body: &mut FnMut(&mut Printer) -> Result<()>,
+        body: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()>;
     fn indent_header(
         &mut self,
         collapsed: bool,
         body: &[u8],
-        header: &mut FnMut(&mut Printer) -> Result<()>,
+        header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()>;
 
     fn prefix(&mut self, prefix: DiffPrefix);
@@ -85,12 +85,12 @@ pub trait Printer {
 }
 
 pub trait ValuePrinter: Write {
-    fn link(&mut self, id: usize, f: &mut FnMut(&mut ValuePrinter) -> Result<()>) -> Result<()>;
+    fn link(&mut self, id: usize, f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>) -> Result<()>;
 }
 
 pub(crate) struct PrintState<'a> {
     // 'w lifetime needed due to invariance
-    printer: &'a mut Printer,
+    printer: &'a mut dyn Printer,
 
     // The remaining fields contain information that is commonly needed in print methods.
     hash: &'a FileHash<'a>,
@@ -110,7 +110,7 @@ impl<'a> PrintState<'a> {
     }
 
     pub fn new(
-        printer: &'a mut Printer,
+        printer: &'a mut dyn Printer,
         hash: &'a FileHash<'a>,
         code: Option<&'a CodeRegion>,
         options: &'a Options<'a>,
@@ -204,7 +204,7 @@ impl<'a> PrintState<'a> {
     fn prefix(
         &mut self,
         prefix: DiffPrefix,
-        f: &mut FnMut(&mut PrintState) -> Result<()>,
+        f: &mut dyn FnMut(&mut PrintState) -> Result<()>,
     ) -> Result<()> {
         self.printer.prefix(prefix);
         f(self)
@@ -220,7 +220,7 @@ impl<'a> PrintState<'a> {
 
     fn line_impl<F>(&mut self, id: usize, label: &str, mut f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash) -> Result<()>,
     {
         let mut buf = Vec::new();
         let hash = self.hash;
@@ -234,21 +234,21 @@ impl<'a> PrintState<'a> {
 
     pub fn line<F>(&mut self, f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash) -> Result<()>,
     {
         self.line_impl(0, "", f)
     }
 
     pub fn id<F>(&mut self, id: usize, f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash) -> Result<()>,
     {
         self.line_impl(id, "", f)
     }
 
     pub fn field<F>(&mut self, label: &str, f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash) -> Result<()>,
     {
         self.line_impl(0, label, f)
     }
@@ -277,7 +277,7 @@ impl<'a> PrintState<'a> {
 }
 
 pub(crate) struct DiffState<'a> {
-    printer: &'a mut Printer,
+    printer: &'a mut dyn Printer,
 
     // True if DiffPrefix::Delete or DiffPrefix::Add was printed.
     diff: bool,
@@ -317,7 +317,7 @@ impl<'a> DiffState<'a> {
     }
 
     pub fn new(
-        printer: &'a mut Printer,
+        printer: &'a mut dyn Printer,
         hash_a: &'a FileHash<'a>,
         hash_b: &'a FileHash<'a>,
         code_a: Option<&'a CodeRegion>,
@@ -544,7 +544,7 @@ impl<'a> DiffState<'a> {
         mut f: F,
     ) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
         let mut a = Vec::new();
@@ -581,7 +581,7 @@ impl<'a> DiffState<'a> {
 
     pub fn line<F, T>(&mut self, arg_a: T, arg_b: T, f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
         self.line_impl(0, "", arg_a, arg_b, f)
@@ -589,7 +589,7 @@ impl<'a> DiffState<'a> {
 
     pub fn id<F, T>(&mut self, id: usize, arg_a: T, arg_b: T, f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
         self.line_impl(id, "", arg_a, arg_b, f)
@@ -597,7 +597,7 @@ impl<'a> DiffState<'a> {
 
     pub fn field<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, f: F) -> Result<()>
     where
-        F: FnMut(&mut ValuePrinter, &FileHash, T) -> Result<()>,
+        F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
         self.line_impl(0, label, arg_a, arg_b, f)

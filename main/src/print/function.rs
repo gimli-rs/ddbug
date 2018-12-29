@@ -9,7 +9,7 @@ use crate::code::{Call, CodeRegion};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 
-pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+pub(crate) fn print_ref(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     w.link(f.id(), &mut |w| {
         if let Some(namespace) = f.namespace() {
             print::namespace::print(namespace, w)?;
@@ -19,7 +19,7 @@ pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
     })
 }
 
-fn print_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_name(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "fn ")?;
     if let Some(namespace) = f.namespace() {
         print::namespace::print(namespace, w)?;
@@ -28,53 +28,53 @@ fn print_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-fn print_linkage_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_linkage_name(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(linkage_name) = f.linkage_name() {
         write!(w, "{}", linkage_name)?;
     }
     Ok(())
 }
 
-fn print_symbol_name(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_symbol_name(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(symbol_name) = f.symbol_name() {
         write!(w, "{}", symbol_name)?;
     }
     Ok(())
 }
 
-fn print_source(f: &Function, w: &mut ValuePrinter, unit: &Unit) -> Result<()> {
+fn print_source(f: &Function, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     print::source::print(f.source(), w, unit)
 }
 
-fn print_address(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_address(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(ref range) = f.range() {
         print::range::print_address(range, w)?;
     }
     Ok(())
 }
 
-fn print_size(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_size(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(size) = f.size() {
         write!(w, "{}", size)?;
     }
     Ok(())
 }
 
-fn print_inline(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_inline(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if f.is_inline() {
         write!(w, "yes")?;
     }
     Ok(())
 }
 
-fn print_declaration(f: &Function, w: &mut ValuePrinter) -> Result<()> {
+fn print_declaration(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if f.is_declaration() {
         write!(w, "yes")?;
     }
     Ok(())
 }
 
-fn print_return_type(f: &Function, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_return_type(f: &Function, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     let ty = f.return_type(hash);
     if ty.as_ref().map(|t| t.is_void()) != Some(true) {
         match ty.as_ref().and_then(|t| t.byte_size(hash)) {
@@ -283,7 +283,7 @@ impl<'input> SortList for Function<'input> {
     }
 }
 
-fn print_call(call: &Call, w: &mut ValuePrinter, hash: &FileHash, options: &Options) -> Result<()> {
+fn print_call(call: &Call, w: &mut dyn ValuePrinter, hash: &FileHash, options: &Options) -> Result<()> {
     if !options.ignore_function_address {
         // FIXME: it would be nice to display this in a way that doesn't clutter the output
         // when diffing
@@ -377,7 +377,7 @@ impl<'input> PartialOrd for FrameVariable<'input> {
     }
 }
 
-fn print_frame_unknown(variable: &FrameVariable, w: &mut ValuePrinter) -> Result<()> {
+fn print_frame_unknown(variable: &FrameVariable, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(offset) = variable.prev_offset {
         if offset < variable.offset {
             write!(w, "{}[{}]\t<unknown>", offset, variable.offset - offset)?;
@@ -388,7 +388,7 @@ fn print_frame_unknown(variable: &FrameVariable, w: &mut ValuePrinter) -> Result
 
 fn print_frame_variable(
     variable: &FrameVariable,
-    w: &mut ValuePrinter,
+    w: &mut dyn ValuePrinter,
     hash: &FileHash,
 ) -> Result<()> {
     write!(w, "{}", variable.offset)?;

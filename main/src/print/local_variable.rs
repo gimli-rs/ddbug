@@ -5,13 +5,13 @@ use parser::{FileHash, LocalVariable, Type, Unit};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_decl(v: &LocalVariable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_decl(v: &LocalVariable, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;
     print::types::print_ref(v.ty(hash), w, hash)?;
     Ok(())
 }
 
-fn print_size_and_decl(v: &LocalVariable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_size_and_decl(v: &LocalVariable, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     // TODO: print address?
     match v.byte_size(hash) {
         Some(byte_size) => write!(w, "[{}]", byte_size)?,
@@ -21,7 +21,7 @@ fn print_size_and_decl(v: &LocalVariable, w: &mut ValuePrinter, hash: &FileHash)
     print_decl(v, w, hash)
 }
 
-fn print_address(v: &LocalVariable, w: &mut ValuePrinter) -> Result<()> {
+fn print_address(v: &LocalVariable, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(address) = v.address() {
         write!(w, "0x{:x}", address)?;
     }

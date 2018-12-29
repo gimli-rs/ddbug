@@ -5,14 +5,14 @@ use super::{DiffPrefix, Printer, ValuePrinter};
 use crate::{Options, Result};
 
 pub struct TextPrinter<'w> {
-    w: &'w mut Write,
+    w: &'w mut dyn Write,
     indent: usize,
     prefix: DiffPrefix,
     inline_depth: usize,
 }
 
 impl<'w> TextPrinter<'w> {
-    pub fn new(w: &'w mut Write, options: &Options) -> Self {
+    pub fn new(w: &'w mut dyn Write, options: &Options) -> Self {
         TextPrinter {
             w,
             indent: 0,
@@ -26,7 +26,7 @@ impl<'w> Printer for TextPrinter<'w> {
     fn value(
         &mut self,
         buf: &mut Vec<u8>,
-        f: &mut FnMut(&mut ValuePrinter) -> Result<()>,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
     ) -> Result<()> {
         let mut p = TextValuePrinter { w: buf };
         f(&mut p)
@@ -36,7 +36,7 @@ impl<'w> Printer for TextPrinter<'w> {
     fn buffer(
         &mut self,
         buf: &mut Vec<u8>,
-        f: &mut FnMut(&mut Printer) -> Result<()>,
+        f: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         let mut p = TextPrinter {
             w: buf,
@@ -91,7 +91,7 @@ impl<'w> Printer for TextPrinter<'w> {
     fn indent_body(
         &mut self,
         buf: &mut Vec<u8>,
-        body: &mut FnMut(&mut Printer) -> Result<()>,
+        body: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         let mut printer = TextPrinter {
             w: buf,
@@ -106,7 +106,7 @@ impl<'w> Printer for TextPrinter<'w> {
         &mut self,
         _collapsed: bool,
         body: &[u8],
-        header: &mut FnMut(&mut Printer) -> Result<()>,
+        header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         header(self)?;
         self.write_buf(body)?;
@@ -150,7 +150,7 @@ impl<'w> Write for TextValuePrinter<'w> {
 }
 
 impl<'w> ValuePrinter for TextValuePrinter<'w> {
-    fn link(&mut self, _id: usize, f: &mut FnMut(&mut ValuePrinter) -> Result<()>) -> Result<()> {
+    fn link(&mut self, _id: usize, f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>) -> Result<()> {
         f(self)
     }
 }

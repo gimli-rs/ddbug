@@ -237,7 +237,7 @@ impl<'input> Type<'input> {
     }
 
     /// If this is a type that has members, then call 'f' for each member of this type.
-    pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+    pub fn visit_members(&self, f: &mut dyn FnMut(&Member) -> ()) {
         match self.kind {
             TypeKind::Struct(ref val) => val.visit_members(f),
             TypeKind::Union(ref val) => val.visit_members(f),
@@ -556,7 +556,7 @@ impl<'input> StructType<'input> {
     }
 
     /// Call 'f' for each member of this type.
-    pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+    pub fn visit_members(&self, f: &mut dyn FnMut(&Member) -> ()) {
         for member in &self.members {
             f(member);
         }
@@ -677,7 +677,7 @@ impl<'input> UnionType<'input> {
     }
 
     /// Call 'f' for each member of this type.
-    pub fn visit_members(&self, f: &mut FnMut(&Member) -> ()) {
+    pub fn visit_members(&self, f: &mut dyn FnMut(&Member) -> ()) {
         for member in &self.members {
             f(member);
         }

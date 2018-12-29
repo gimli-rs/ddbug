@@ -16,6 +16,12 @@
 //! });
 //! ```
 #![deny(missing_docs)]
+
+// Enable some rust 2018 idioms.
+#![warn(bare_trait_objects)]
+#![warn(unused_extern_crates)]
+
+// Calm down clippy.
 #![allow(clippy::new_ret_no_self)]
 #![allow(clippy::single_match)]
 #![allow(clippy::too_many_arguments)]

@@ -28,7 +28,7 @@ pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()
 
 pub(crate) fn print_ref(
     ty: Option<Cow<Type>>,
-    w: &mut ValuePrinter,
+    w: &mut dyn ValuePrinter,
     hash: &FileHash,
 ) -> Result<()> {
     match ty {
@@ -55,17 +55,17 @@ pub(crate) fn print_ref(
     }
 }
 
-fn print_ref_void(w: &mut ValuePrinter) -> Result<()> {
+fn print_ref_void(w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "void")?;
     Ok(())
 }
 
-fn print_ref_base(ty: &BaseType, w: &mut ValuePrinter) -> Result<()> {
+fn print_ref_base(ty: &BaseType, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "{}", ty.name().unwrap_or("<anon-base-type>"))?;
     Ok(())
 }
 
-fn print_ref_array(ty: &ArrayType, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_ref_array(ty: &ArrayType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "[")?;
     print_ref(ty.element_type(hash), w, hash)?;
     if let Some(count) = ty.count(hash) {
@@ -75,7 +75,7 @@ fn print_ref_array(ty: &ArrayType, w: &mut ValuePrinter, hash: &FileHash) -> Res
     Ok(())
 }
 
-fn print_ref_function(ty: &FunctionType, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_ref_function(ty: &FunctionType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     let mut first = true;
     write!(w, "(")?;
     for parameter in ty.parameters() {
@@ -100,7 +100,7 @@ fn print_ref_function(ty: &FunctionType, w: &mut ValuePrinter, hash: &FileHash) 
     Ok(())
 }
 
-fn print_ref_unspecified(ty: &UnspecifiedType, w: &mut ValuePrinter) -> Result<()> {
+fn print_ref_unspecified(ty: &UnspecifiedType, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
@@ -110,7 +110,7 @@ fn print_ref_unspecified(ty: &UnspecifiedType, w: &mut ValuePrinter) -> Result<(
 
 fn print_ref_pointer_to_member(
     ty: &PointerToMemberType,
-    w: &mut ValuePrinter,
+    w: &mut dyn ValuePrinter,
     hash: &FileHash,
 ) -> Result<()> {
     print_ref(ty.containing_type(hash), w, hash)?;
@@ -119,7 +119,7 @@ fn print_ref_pointer_to_member(
     Ok(())
 }
 
-fn print_ref_modifier(ty: &TypeModifier, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
+fn print_ref_modifier(ty: &TypeModifier, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = ty.name() {
         write!(w, "{}", name)?;
     } else {

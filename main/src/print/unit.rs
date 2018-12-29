@@ -75,7 +75,7 @@ pub(crate) fn merged_variables<'a, 'input>(
     .collect()
 }
 
-fn print_ref(unit: &Unit, w: &mut ValuePrinter) -> Result<()> {
+fn print_ref(unit: &Unit, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "{}", unit.name().unwrap_or("<anon>"))?;
     Ok(())
 }
@@ -280,7 +280,7 @@ pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Resul
     Ok(())
 }
 
-fn print_address(unit: &Unit, w: &mut ValuePrinter, range: Option<Range>) -> Result<()> {
+fn print_address(unit: &Unit, w: &mut dyn ValuePrinter, range: Option<Range>) -> Result<()> {
     if let Some(ref range) = range {
         print::range::print_address(range, w)?;
     } else if let Some(low_pc) = unit.address() {
