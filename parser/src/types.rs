@@ -713,7 +713,7 @@ impl<'input> Member<'input> {
 
     /// The debuginfo offset of the type of this member.
     #[inline]
-    pub fn type_offset<'a>(&self) -> TypeOffset {
+    pub fn type_offset(&self) -> TypeOffset {
         self.ty
     }
 
@@ -766,7 +766,7 @@ pub struct Inherit {
 impl Inherit {
     /// The debuginfo offset of the inherited type.
     #[inline]
-    pub fn type_offset<'a>(&self) -> TypeOffset {
+    pub fn type_offset(&self) -> TypeOffset {
         self.ty
     }
 

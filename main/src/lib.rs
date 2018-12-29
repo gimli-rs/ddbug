@@ -1,3 +1,7 @@
+#![allow(clippy::new_ret_no_self)]
+#![allow(clippy::single_match)]
+#![allow(clippy::type_complexity)]
+
 extern crate ddbug_parser as parser;
 extern crate fnv;
 #[macro_use]

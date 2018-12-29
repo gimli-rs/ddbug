@@ -94,9 +94,7 @@ impl<'input> Function<'input> {
         if offset.is_none() {
             return None;
         }
-        hash.functions_by_offset
-            .get(&offset)
-            .map(|function| *function)
+        hash.functions_by_offset.get(&offset).cloned()
     }
 
     /// The user defined id for this function.
@@ -279,7 +277,7 @@ impl<'input> Parameter<'input> {
     ///
     /// A type offset is unique for all types in a file.
     #[inline]
-    pub fn type_offset<'a>(&self) -> TypeOffset {
+    pub fn type_offset(&self) -> TypeOffset {
         self.ty
     }
 

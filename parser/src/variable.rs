@@ -177,7 +177,7 @@ impl<'input> LocalVariable<'input> {
     ///
     /// A type offset is unique for all types in a file.
     #[inline]
-    pub fn type_offset<'a>(&self) -> TypeOffset {
+    pub fn type_offset(&self) -> TypeOffset {
         self.ty
     }
 

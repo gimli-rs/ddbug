@@ -366,10 +366,9 @@ where
     let get_reader: &for<'a> Fn(&'a (Cow<[u8]>, RelocationMap)) -> Reader<'a, Endian> = &|section| {
         let relocations = &section.1;
         let reader = gimli::EndianSlice::new(&section.0, endian);
-        let section = reader.clone();
         Relocate {
             relocations,
-            section,
+            section: reader,
             reader,
         }
     };
@@ -1563,7 +1562,7 @@ where
             debug!("unknown DW_AT_data_member_location: {:?}", attr.value());
         }
     }
-    return None;
+    None
 }
 
 fn parse_enumeration_type<'input, 'abbrev, 'unit, 'tree, Endian>(
@@ -3153,10 +3152,10 @@ where
     let addr_mask = if address_size == 8 {
         !0u64
     } else {
-        (1 << (8 * address_size as u64)) - 1
+        (1 << (8 * u64::from(address_size))) - 1
     };
     let format = unit.format();
-    let bytecode = expression.0.clone();
+    let bytecode = expression.0;
     let mut bytes = expression.0;
 
     let mut pieces = Vec::new();

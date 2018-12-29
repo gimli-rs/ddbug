@@ -18,6 +18,10 @@
 //! });
 //! ```
 #![deny(missing_docs)]
+#![allow(clippy::new_ret_no_self)]
+#![allow(clippy::single_match)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::type_complexity)]
 
 extern crate fnv;
 extern crate gimli;
