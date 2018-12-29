@@ -9,22 +9,22 @@ use gimli;
 use gimli::Reader as GimliReader;
 use object::{self, ObjectSection};
 
-use file::{DebugInfo, FileHash, StringCache};
-use function::{
+use crate::file::{DebugInfo, FileHash, StringCache};
+use crate::function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
 };
-use location::{Location, Piece, Register};
-use namespace::{Namespace, NamespaceKind};
-use range::Range;
-use source::Source;
-use types::{
+use crate::location::{Location, Piece, Register};
+use crate::namespace::{Namespace, NamespaceKind};
+use crate::range::Range;
+use crate::source::Source;
+use crate::types::{
     ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Inherit, Member, ParameterType,
     PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind,
     TypeOffset, UnionType, UnspecifiedType,
 };
-use unit::Unit;
-use variable::{LocalVariable, Variable, VariableOffset};
-use {Address, Result, Size};
+use crate::unit::Unit;
+use crate::variable::{LocalVariable, Variable, VariableOffset};
+use crate::{Address, Result, Size};
 
 type RelocationMap = HashMap<usize, object::Relocation>;
 
@@ -240,7 +240,7 @@ where
         // FIXME: cache lookups
         for unit in &self.units {
             if let Some(offset) = offset.to_unit_offset(&unit.header) {
-                let mut tree = unit.header.entries_tree(&unit.abbrev, Some(offset)).ok()?;
+                let tree = unit.header.entries_tree(&unit.abbrev, Some(offset)).ok()?;
                 return Some((unit, tree));
             }
         }

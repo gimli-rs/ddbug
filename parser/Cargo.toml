@@ -7,6 +7,7 @@ repository = "https://github.com/philipc/ddbug"
 keywords = ["debug", "DWARF", "PDB"]
 categories = ["development-tools::debugging"]
 license = "Apache-2.0/MIT"
+edition = "2018"
 
 [dependencies]
 fnv = "1.0"

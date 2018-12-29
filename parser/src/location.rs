@@ -1,5 +1,5 @@
-use file::FileHash;
-use {Address, Size};
+use crate::file::FileHash;
+use crate::{Address, Size};
 
 /// A register number.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

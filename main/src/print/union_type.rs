@@ -1,6 +1,6 @@
-use parser::{FileHash, UnionType, Unit};
-use print::{self, DiffState, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, UnionType, Unit};
+use crate::print::{self, DiffState, PrintState, ValuePrinter};
+use crate::Result;
 
 fn print_name(ty: &UnionType, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "union ")?;

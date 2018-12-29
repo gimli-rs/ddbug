@@ -8,6 +8,7 @@ readme = "README.md"
 keywords = ["debug", "DWARF", "PDB"]
 categories = ["development-tools::debugging"]
 license = "Apache-2.0/MIT"
+edition = "2018"
 
 [dependencies]
 clap = "2.26"

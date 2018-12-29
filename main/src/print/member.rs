@@ -2,9 +2,9 @@ use std::borrow::Cow;
 use std::cmp;
 use std::ops::Deref;
 
-use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit};
-use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit};
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
+use crate::Result;
 
 fn print_name(
     member: &Member,

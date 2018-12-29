@@ -1,11 +1,11 @@
 use std::cmp;
 use std::collections::HashSet;
 
-use parser::{
+use crate::parser::{
     EnumerationType, File, FileHash, Function, StructType, Type, TypeDef, TypeKind, TypeOffset,
     UnionType, Unit, UnspecifiedType, Variable,
 };
-use Options;
+use crate::Options;
 
 pub(crate) fn filter_units<'input, 'file>(
     file: &'file File<'input>,

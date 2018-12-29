@@ -50,7 +50,7 @@ impl RangeList {
             // (This may be a wrong assumption, but does it matter and
             // how do we do better?)
             // TODO: make alignment configurable
-            let mut padding = if range.begin == range.begin & !15 {
+            let padding = if range.begin == range.begin & !15 {
                 15
             } else {
                 0

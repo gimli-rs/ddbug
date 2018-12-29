@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 use std::cmp;
 
-use parser::{
+use crate::parser::{
     ArrayType, BaseType, FileHash, FunctionType, PointerToMemberType, Type, TypeKind, TypeModifier,
     TypeModifierKind, Unit, UnspecifiedType,
 };
-use print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
-use {Options, Result, Sort};
+use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
+use crate::{Options, Result, Sort};
 
 pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()> {
     let id = ty.id();

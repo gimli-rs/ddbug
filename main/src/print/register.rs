@@ -1,8 +1,8 @@
 use std::cmp;
 
-use parser::{FileHash, Register};
-use print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, Register};
+use crate::print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
+use crate::Result;
 
 pub(crate) fn print_list(state: &mut PrintState, mut registers: Vec<Register>) -> Result<()> {
     registers.sort_unstable();

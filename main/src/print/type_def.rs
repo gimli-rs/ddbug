@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 use std::ops::Deref;
 
-use parser::{FileHash, TypeDef, Unit};
-use print::{self, DiffState, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, TypeDef, Unit};
+use crate::print::{self, DiffState, PrintState, ValuePrinter};
+use crate::Result;
 
 fn print_name(ty: &TypeDef, w: &mut ValuePrinter) -> Result<()> {
     if let Some(namespace) = ty.namespace() {

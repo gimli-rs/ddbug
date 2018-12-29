@@ -1,11 +1,11 @@
 use std::cmp;
 
-use filter;
-use parser::{FileHash, Function, Range, Type, Unit, Variable};
-use print::{
+use crate::filter;
+use crate::parser::{FileHash, Function, Range, Type, Unit, Variable};
+use crate::print::{
     self, DiffState, MergeIterator, MergeResult, Print, PrintState, SortList, ValuePrinter,
 };
-use {Options, Result, Sort};
+use crate::{Options, Result, Sort};
 
 pub(crate) fn merged_types<'a, 'input>(
     hash_a: &FileHash,

@@ -5,11 +5,11 @@ use std::marker;
 use std::rc::Rc;
 use std::usize;
 
-use file::FileHash;
-use function::ParameterOffset;
-use namespace::Namespace;
-use source::Source;
-use Size;
+use crate::file::FileHash;
+use crate::function::ParameterOffset;
+use crate::namespace::Namespace;
+use crate::source::Source;
+use crate::Size;
 
 /// The kind of a type.
 #[derive(Debug, Clone)]

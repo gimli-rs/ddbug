@@ -4,13 +4,13 @@ use std::cmp;
 use std::rc::Rc;
 use std::usize;
 
-use file::FileHash;
-use location::{FrameLocation, Location, Piece, Register};
-use namespace::Namespace;
-use range::Range;
-use source::Source;
-use types::{Type, TypeOffset};
-use {Address, Size};
+use crate::file::FileHash;
+use crate::location::{FrameLocation, Location, Piece, Register};
+use crate::namespace::Namespace;
+use crate::range::Range;
+use crate::source::Source;
+use crate::types::{Type, TypeOffset};
+use crate::{Address, Size};
 
 /// The debuginfo offset of a variable.
 ///

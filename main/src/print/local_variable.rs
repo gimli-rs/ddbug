@@ -1,8 +1,8 @@
 use std::cmp;
 
-use parser::{FileHash, LocalVariable, Type, Unit};
-use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, LocalVariable, Type, Unit};
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
+use crate::Result;
 
 fn print_decl(v: &LocalVariable, w: &mut ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;

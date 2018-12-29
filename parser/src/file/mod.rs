@@ -12,13 +12,13 @@ use moria;
 use object::{self, Object, ObjectSection, ObjectSegment};
 use typed_arena::Arena;
 
-use function::{Function, FunctionDetails, FunctionOffset};
-use location::Register;
-use range::{Range, RangeList};
-use types::{Enumerator, Type, TypeOffset};
-use unit::Unit;
-use variable::Variable;
-use {Address, Result, Size};
+use crate::function::{Function, FunctionDetails, FunctionOffset};
+use crate::location::Register;
+use crate::range::{Range, RangeList};
+use crate::types::{Enumerator, Type, TypeOffset};
+use crate::unit::Unit;
+use crate::variable::Variable;
+use crate::{Address, Result, Size};
 
 pub(crate) enum DebugInfo<'input, Endian>
 where

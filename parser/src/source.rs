@@ -1,4 +1,4 @@
-use unit::Unit;
+use crate::unit::Unit;
 
 /// A source location.
 #[derive(Debug, Default, Clone)]

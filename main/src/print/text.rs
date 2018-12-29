@@ -2,7 +2,7 @@ use std;
 use std::io::Write;
 
 use super::{DiffPrefix, Printer, ValuePrinter};
-use {Options, Result};
+use crate::{Options, Result};
 
 pub struct TextPrinter<'w> {
     w: &'w mut Write,

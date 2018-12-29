@@ -1,8 +1,8 @@
-use code::CodeRegion;
-use filter;
-use parser::{File, FileHash, Unit};
-use print::{self, DiffState, MergeIterator, MergeResult, PrintState, Printer, SortList};
-use {Options, Result};
+use crate::code::CodeRegion;
+use crate::filter;
+use crate::parser::{File, FileHash, Unit};
+use crate::print::{self, DiffState, MergeIterator, MergeResult, PrintState, Printer, SortList};
+use crate::{Options, Result};
 
 fn assign_ids(file: &File, options: &Options) {
     let mut id = 0;

@@ -1,6 +1,6 @@
-use parser::{FileHash, StructType, Unit};
-use print::{self, DiffState, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, StructType, Unit};
+use crate::print::{self, DiffState, PrintState, ValuePrinter};
+use crate::Result;
 
 fn print_name(ty: &StructType, w: &mut ValuePrinter) -> Result<()> {
     write!(w, "struct ")?;

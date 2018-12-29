@@ -38,15 +38,15 @@ mod types;
 mod unit;
 mod variable;
 
-pub use file::*;
-pub use function::*;
-pub use location::*;
-pub use namespace::*;
-pub use range::*;
-pub use source::*;
-pub use types::*;
-pub use unit::*;
-pub use variable::*;
+pub use crate::file::*;
+pub use crate::function::*;
+pub use crate::location::*;
+pub use crate::namespace::*;
+pub use crate::range::*;
+pub use crate::source::*;
+pub use crate::types::*;
+pub use crate::unit::*;
+pub use crate::variable::*;
 
 use std::borrow::{Borrow, Cow};
 use std::error;
@@ -159,7 +159,7 @@ mod address {
     }
 }
 
-pub use address::Address;
+pub use crate::address::Address;
 
 mod size {
     use std::u64;
@@ -224,4 +224,4 @@ mod size {
     }
 }
 
-pub use size::Size;
+pub use crate::size::Size;

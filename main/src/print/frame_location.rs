@@ -1,8 +1,8 @@
 use std::cmp;
 
-use parser::FrameLocation;
-use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use Result;
+use crate::parser::FrameLocation;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
+use crate::Result;
 
 pub(crate) fn print_list(
     state: &mut PrintState,

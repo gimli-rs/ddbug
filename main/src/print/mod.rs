@@ -3,9 +3,9 @@ use std::collections::BinaryHeap;
 use std::io::Write;
 use std::usize;
 
-use code::CodeRegion;
-use parser::FileHash;
-use {Options, Result};
+use crate::code::CodeRegion;
+use crate::parser::FileHash;
+use crate::{Options, Result};
 
 mod text;
 pub use self::text::TextPrinter;

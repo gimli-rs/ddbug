@@ -1,8 +1,8 @@
 use std::cmp;
 
-use parser::{FileHash, Unit, Variable};
-use print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
-use {Options, Result, Sort};
+use crate::parser::{FileHash, Unit, Variable};
+use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
+use crate::{Options, Result, Sort};
 
 pub(crate) fn print(v: &Variable, state: &mut PrintState, unit: &Unit) -> Result<()> {
     state.collapsed(

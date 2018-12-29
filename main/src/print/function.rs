@@ -1,12 +1,12 @@
 use std::cmp;
 
-use code::{Call, CodeRegion};
-use parser::{
+use crate::code::{Call, CodeRegion};
+use crate::parser::{
     FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable, Parameter, ParameterType,
     Type, TypeOffset, Unit,
 };
-use print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
-use {Options, Result, Sort};
+use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
+use crate::{Options, Result, Sort};
 
 pub(crate) fn print_ref(f: &Function, w: &mut ValuePrinter) -> Result<()> {
     w.link(f.id(), &mut |w| {

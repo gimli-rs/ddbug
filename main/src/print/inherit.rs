@@ -1,8 +1,8 @@
 use std::cmp;
 
-use parser::{FileHash, Inherit, Type};
-use print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
-use Result;
+use crate::parser::{FileHash, Inherit, Type};
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
+use crate::Result;
 
 pub(crate) fn print_list(state: &mut PrintState, inherits: &[Inherit]) -> Result<()> {
     if inherits.len() > 1 {

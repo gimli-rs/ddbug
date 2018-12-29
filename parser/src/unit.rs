@@ -3,11 +3,11 @@ use std::ops::Deref;
 
 use gimli;
 
-use file::FileHash;
-use function::Function;
-use range::RangeList;
-use types::Type;
-use variable::Variable;
+use crate::file::FileHash;
+use crate::function::Function;
+use crate::range::RangeList;
+use crate::types::Type;
+use crate::variable::Variable;
 
 /// A compilation unit.
 #[derive(Debug, Default)]

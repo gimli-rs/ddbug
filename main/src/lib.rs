@@ -12,11 +12,11 @@ mod code;
 mod filter;
 mod print;
 
-use parser::Namespace;
+use crate::parser::Namespace;
 
-pub use parser::{File, Result};
-pub use print::file::{diff, print};
-pub use print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
+pub use crate::parser::{File, Result};
+pub use crate::print::file::{diff, print};
+pub use crate::print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
