@@ -166,7 +166,12 @@ pub fn print(file: &File, printer: &mut dyn Printer, options: &Options) -> Resul
     state.sort_list(&(), &mut filter::filter_units(file, options))
 }
 
-pub fn diff(printer: &mut dyn Printer, file_a: &File, file_b: &File, options: &Options) -> Result<()> {
+pub fn diff(
+    printer: &mut dyn Printer,
+    file_a: &File,
+    file_b: &File,
+    options: &Options,
+) -> Result<()> {
     let hash_a = FileHash::new(file_a);
     let hash_b = FileHash::new(file_b);
     let code_a = CodeRegion::new(file_a);

@@ -363,15 +363,16 @@ where
         };
         (data, relocations)
     };
-    let get_reader: &dyn for<'a> Fn(&'a (Cow<[u8]>, RelocationMap)) -> Reader<'a, Endian> = &|section| {
-        let relocations = &section.1;
-        let reader = gimli::EndianSlice::new(&section.0, endian);
-        Relocate {
-            relocations,
-            section: reader,
-            reader,
-        }
-    };
+    let get_reader: &dyn for<'a> Fn(&'a (Cow<[u8]>, RelocationMap)) -> Reader<'a, Endian> =
+        &|section| {
+            let relocations = &section.1;
+            let reader = gimli::EndianSlice::new(&section.0, endian);
+            Relocate {
+                relocations,
+                section: reader,
+                reader,
+            }
+        };
     let debug_abbrev = get_section(".debug_abbrev");
     let debug_abbrev = gimli::DebugAbbrev::from(get_reader(&debug_abbrev));
     let debug_info = get_section(".debug_info");

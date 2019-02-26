@@ -85,7 +85,11 @@ pub trait Printer {
 }
 
 pub trait ValuePrinter: Write {
-    fn link(&mut self, id: usize, f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>) -> Result<()>;
+    fn link(
+        &mut self,
+        id: usize,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
+    ) -> Result<()>;
 }
 
 pub(crate) struct PrintState<'a> {

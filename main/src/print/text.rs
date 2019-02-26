@@ -150,7 +150,11 @@ impl<'w> Write for TextValuePrinter<'w> {
 }
 
 impl<'w> ValuePrinter for TextValuePrinter<'w> {
-    fn link(&mut self, _id: usize, f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>) -> Result<()> {
+    fn link(
+        &mut self,
+        _id: usize,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
+    ) -> Result<()> {
         f(self)
     }
 }

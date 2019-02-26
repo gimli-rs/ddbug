@@ -329,7 +329,11 @@ impl<'w> Write for HtmlValuePrinter<'w> {
 }
 
 impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
-    fn link(&mut self, id: usize, f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>) -> Result<()> {
+    fn link(
+        &mut self,
+        id: usize,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
+    ) -> Result<()> {
         if id == 0 {
             f(self)
         } else {

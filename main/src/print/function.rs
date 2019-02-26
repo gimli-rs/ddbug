@@ -283,7 +283,12 @@ impl<'input> SortList for Function<'input> {
     }
 }
 
-fn print_call(call: &Call, w: &mut dyn ValuePrinter, hash: &FileHash, options: &Options) -> Result<()> {
+fn print_call(
+    call: &Call,
+    w: &mut dyn ValuePrinter,
+    hash: &FileHash,
+    options: &Options,
+) -> Result<()> {
     if !options.ignore_function_address {
         // FIXME: it would be nice to display this in a way that doesn't clutter the output
         // when diffing
