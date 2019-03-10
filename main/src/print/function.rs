@@ -5,7 +5,7 @@ use parser::{
     Type, TypeOffset, Unit,
 };
 
-use crate::code::{Call, CodeRegion};
+use crate::code::{Call, Code};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 
@@ -349,7 +349,7 @@ impl DiffList for Call {
     }
 }
 
-fn calls(f: &Function, code: Option<&CodeRegion>) -> Vec<Call> {
+fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
     if let (Some(code), Some(range)) = (code, f.range()) {
         return code.calls(range);
     }

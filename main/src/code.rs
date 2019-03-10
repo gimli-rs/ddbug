@@ -1,47 +1,19 @@
-use std::fmt::Debug;
-
-use amd64;
-use panopticon;
-
+use capstone::arch::x86::X86OperandType;
+use capstone::arch::ArchOperand;
+use capstone::{self, Arch, Capstone, Insn, InsnGroupType, Mode};
 use parser::{File, Machine, Range};
 
 #[derive(Debug)]
-pub(crate) struct CodeRegion {
-    machine: panopticon::Machine,
-    region: panopticon::Region,
+pub(crate) struct Code<'code> {
+    arch: Arch,
+    mode: Mode,
+    regions: Vec<Region<'code>>,
 }
 
-impl CodeRegion {
-    pub(crate) fn new(file: &File) -> Option<Self> {
-        let (machine, mut region) = match file.machine() {
-            Machine::X86_64 => {
-                let region =
-                    panopticon::Region::undefined("RAM".to_string(), 0xFFFF_FFFF_FFFF_FFFF);
-                (panopticon::Machine::Amd64, region)
-            }
-            _ => return None,
-        };
-
-        for segment in file.segments() {
-            let bytes = segment.bytes;
-            let address = segment.address;
-            let bound = panopticon::Bound::new(address, address + bytes.len() as u64);
-            // FIXME: avoid copy
-            let layer = panopticon::Layer::wrap(bytes.to_vec());
-            region.cover(bound, layer);
-        }
-
-        Some(CodeRegion { machine, region })
-    }
-
-    pub(crate) fn calls(&self, range: Range) -> Vec<Call> {
-        match self.machine {
-            panopticon::Machine::Amd64 => {
-                disassemble_arch::<amd64::Amd64>(&self.region, range, amd64::Mode::Long)
-            }
-            _ => Vec::new(),
-        }
-    }
+#[derive(Debug)]
+struct Region<'code> {
+    address: u64,
+    code: &'code [u8],
 }
 
 #[derive(Debug)]
@@ -50,46 +22,79 @@ pub(crate) struct Call {
     pub to: u64,
 }
 
-fn disassemble_arch<A>(
-    region: &panopticon::Region,
-    range: Range,
-    cfg: A::Configuration,
-) -> Vec<Call>
-where
-    A: panopticon::Architecture + Debug,
-    A::Configuration: Debug,
-{
-    let mut calls = Vec::new();
-    let mut addr = range.begin;
-    while addr < range.end {
-        let m = match A::decode(region, addr, &cfg) {
-            Ok(m) => m,
-            Err(e) => {
-                error!("failed to disassemble: {}", e);
-                return calls;
-            }
+impl<'code> Code<'code> {
+    pub(crate) fn new(file: &File<'code>) -> Option<Self> {
+        let (arch, mode) = match file.machine() {
+            Machine::X86 => (Arch::X86, Mode::Mode32),
+            Machine::X86_64 => (Arch::X86, Mode::Mode64),
+            _ => return None,
         };
+        let mut regions = Vec::new();
+        for segment in file.segments() {
+            regions.push(Region {
+                address: segment.address,
+                code: segment.bytes,
+            });
+        }
+        Some(Code {
+            arch,
+            mode,
+            regions,
+        })
+    }
 
-        for mnemonic in m.mnemonics {
-            for instruction in &mnemonic.instructions {
-                match *instruction {
-                    panopticon::Statement {
-                        op: panopticon::Operation::Call(ref call),
-                        ..
-                    } => match *call {
-                        panopticon::Rvalue::Constant { ref value, .. } => {
-                            calls.push(Call {
-                                from: mnemonic.area.start,
-                                to: *value,
-                            });
-                        }
-                        _ => {}
-                    },
-                    _ => {}
-                }
+    pub(crate) fn calls(&self, range: Range) -> Vec<Call> {
+        for region in &*self.regions {
+            if range.begin >= region.address
+                && range.end <= region.address + region.code.len() as u64
+            {
+                let begin = (range.begin - region.address) as usize;
+                let len = (range.end - range.begin) as usize;
+                let code = &region.code[begin..][..len];
+                return calls(self.arch, self.mode, code, range.begin).unwrap_or(Vec::new());
             }
-            addr = mnemonic.area.end;
+        }
+        Vec::new()
+    }
+}
+
+fn calls(arch: Arch, mode: Mode, code: &[u8], addr: u64) -> Option<Vec<Call>> {
+    let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
+    cs.set_detail(true).ok()?;
+    Some(
+        cs.disasm_all(code, addr)
+            .ok()?
+            .iter()
+            .filter_map(|x| call(arch, &cs, &x))
+            .collect(),
+    )
+}
+
+fn call(arch: Arch, cs: &Capstone, insn: &Insn) -> Option<Call> {
+    match arch {
+        Arch::X86 => call_x86(cs, insn),
+        _ => None,
+    }
+}
+
+fn call_x86(cs: &Capstone, insn: &Insn) -> Option<Call> {
+    let detail = cs.insn_detail(insn).ok()?;
+    if !detail
+        .groups()
+        .any(|group| group.0 as u32 == InsnGroupType::CS_GRP_CALL)
+    {
+        return None;
+    }
+    let arch_detail = detail.arch_detail();
+    for op in arch_detail.operands() {
+        if let ArchOperand::X86Operand(op) = op {
+            if let X86OperandType::Imm(imm) = op.op_type {
+                return Some(Call {
+                    from: insn.address(),
+                    to: imm as u64,
+                });
+            }
         }
     }
-    calls
+    None
 }
