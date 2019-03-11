@@ -127,6 +127,10 @@ impl<'input> Print for Function<'input> {
                     let calls = calls(self, state.code);
                     state.field_collapsed("calls", |state| state.list(&(), &calls))?;
                 }
+                if state.options().print_function_instructions {
+                    state
+                        .field_collapsed("instructions", |state| print_instructions(state, self))?;
+                }
                 Ok(())
             },
         )?;
@@ -220,6 +224,14 @@ impl<'input> Print for Function<'input> {
                     let calls_b = calls(b, state.code_b);
                     state.field_collapsed("calls", |state| {
                         state.list(&(), &calls_a, &(), &calls_b)
+                    })?;
+                }
+                if state.options().print_function_instructions {
+                    state.field_collapsed("instructions", |state| {
+                        // TODO: diff instructions
+                        state.ignore_diff(true, |state| {
+                            state.block(a, b, |state, x| print_instructions(state, x))
+                        })
                     })?;
                 }
                 Ok(())
@@ -354,6 +366,14 @@ fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
         return code.calls(range);
     }
     Vec::new()
+}
+
+fn print_instructions(state: &mut PrintState, f: &Function) -> Result<()> {
+    if let (Some(code), Some(range)) = (state.code, f.range()) {
+        code.print_instructions(state, range)
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

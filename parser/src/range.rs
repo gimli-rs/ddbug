@@ -12,8 +12,15 @@ pub struct Range {
 
 impl Range {
     /// The size of the address range.
+    #[inline]
     pub fn size(&self) -> u64 {
         self.end - self.begin
+    }
+
+    /// Return true if the range contains the value.
+    #[inline]
+    pub fn contains(&self, addr: u64) -> bool {
+        self.begin <= addr && addr < self.end
     }
 }
 
