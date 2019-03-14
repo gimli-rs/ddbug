@@ -4,6 +4,7 @@ use std::cmp;
 use std::rc::Rc;
 use std::usize;
 
+use crate::cfi::Cfi;
 use crate::file::FileHash;
 use crate::location::{self, FrameLocation, Piece, Register};
 use crate::namespace::Namespace;
@@ -195,6 +196,11 @@ impl<'input> Function<'input> {
     /// Extra function details.
     pub fn details(&self, hash: &FileHash<'input>) -> FunctionDetails<'input> {
         hash.file.get_function_details(self.offset, hash)
+    }
+
+    /// Call frame information.
+    pub fn cfi(&self, hash: &FileHash<'input>) -> Vec<Cfi> {
+        hash.file.get_cfi(self.address, self.size)
     }
 
     /// Compare the identifying information of two functions.

@@ -1,8 +1,8 @@
 use std::cmp;
 
 use parser::{
-    FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable, Parameter, ParameterType,
-    Type, TypeOffset, Unit,
+    Cfi, CfiDirective, FileHash, Function, FunctionDetails, InlinedFunction, LocalVariable,
+    Parameter, ParameterType, Range, Type, TypeOffset, Unit,
 };
 
 use crate::code::{Call, Code};
@@ -385,10 +385,122 @@ fn print_instructions(state: &mut PrintState, f: &Function) -> Result<()> {
         Some(x) => x,
         None => return Ok(()),
     };
-    for insn in insns.iter() {
-        insn.print(state, &disassembler, range)?;
+    let cfis = f.cfi(state.hash());
+
+    let mut insns = insns.iter();
+    let mut cfis = cfis.iter();
+
+    let mut insn_next = insns.next();
+    let mut cfi_next = cfis.next();
+    loop {
+        match (&insn_next, cfi_next) {
+            (&Some(ref insn), Some(cfi)) => {
+                if cfi.0.is_none() || cfi.0 <= insn.address() {
+                    print_cfi(state, cfi, range)?;
+                    cfi_next = cfis.next();
+                } else {
+                    insn.print(state, &disassembler, range)?;
+                    insn_next = insns.next();
+                }
+            }
+            (&Some(ref insn), None) => {
+                insn.print(state, &disassembler, range)?;
+                insn_next = insns.next();
+            }
+            (&None, Some(cfi)) => {
+                print_cfi(state, cfi, range)?;
+                cfi_next = cfis.next();
+            }
+            (&None, None) => break,
+        }
     }
     Ok(())
+}
+
+fn print_cfi(state: &mut PrintState, cfi: &Cfi, range: Range) -> Result<()> {
+    state.line(|w, hash| {
+        macro_rules! write_reg {
+            ($w:expr, $lead:expr, $r:expr) => {{
+                write!($w, $lead)?;
+                match $r.name(hash) {
+                    Some(name) => write!($w, "{}", name),
+                    None => write!($w, "{}", $r.0),
+                }
+            }};
+        }
+        macro_rules! write_ofs {
+            ($w:expr, $lead:expr, $o:expr) => {{
+                write!($w, $lead)?;
+                if $o < 0 {
+                    write!($w, "-0x{:x}", -$o)
+                } else {
+                    write!($w, "0x{:x}", $o)
+                }
+            }};
+        }
+
+        write!(
+            w,
+            "{:3x}:  ",
+            cfi.0.get().map(|x| x - range.begin).unwrap_or(0)
+        )?;
+        match cfi.1 {
+            CfiDirective::StartProc => write!(w, ".cfi_startproc")?,
+            CfiDirective::EndProc => write!(w, ".cfi_endproc")?,
+            // TODO: lookup address?
+            CfiDirective::Personality(a) => {
+                write!(w, ".cfi_personality 0x{:x}", a.get().unwrap_or(0))?;
+            }
+            // TODO: lookup address?
+            CfiDirective::Lsda(a) => write!(w, ".cfi_lsda 0x{:x}", a.get().unwrap_or(0))?,
+            CfiDirective::SignalFrame => write!(w, ".cfi_signalframe")?,
+            CfiDirective::ReturnColumn(r) => {
+                write!(w, ".cfi_return_column")?;
+                write_reg!(w, " ", r)?;
+            }
+            CfiDirective::DefCfa(r, o) => {
+                write!(w, ".cfi_def_cfa")?;
+                write_reg!(w, " ", r)?;
+                write_ofs!(w, ", ", o)?;
+            }
+            CfiDirective::DefCfaRegister(r) => {
+                write!(w, ".cfi_def_cfa_register")?;
+                write_reg!(w, " ", r)?;
+            }
+            CfiDirective::DefCfaOffset(o) => write!(w, ".cfi_def_cfa_offset 0x{:x}", o)?,
+            CfiDirective::Offset(r, o) => {
+                write!(w, ".cfi_offset")?;
+                write_reg!(w, " ", r)?;
+                write_ofs!(w, ", ", o)?;
+            }
+            CfiDirective::ValOffset(r, o) => {
+                write!(w, ".cfi_val_offset")?;
+                write_reg!(w, " ", r)?;
+                write_ofs!(w, ", ", o)?;
+            }
+            CfiDirective::Register(r1, r2) => {
+                write!(w, ".cfi_register")?;
+                write_reg!(w, " ", r1)?;
+                write_reg!(w, ", ", r2)?;
+            }
+            CfiDirective::Restore(r) => {
+                write!(w, ".cfi_restore")?;
+                write_reg!(w, " ", r)?;
+            }
+            CfiDirective::Undefined(r) => {
+                write!(w, ".cfi_undefined")?;
+                write_reg!(w, " ", r)?;
+            }
+            CfiDirective::SameValue(r) => {
+                write!(w, ".cfi_same_value")?;
+                write_reg!(w, " ", r)?;
+            }
+            CfiDirective::RememberState => write!(w, ".cfi_remember_state")?,
+            CfiDirective::RestoreState => write!(w, ".cfi_restore_state")?,
+            CfiDirective::Other => write!(w, "<other cfi instruction>")?,
+        }
+        Ok(())
+    })
 }
 
 #[derive(Debug, PartialEq, Eq)]

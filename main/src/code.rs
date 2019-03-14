@@ -151,6 +151,10 @@ pub(crate) struct Instruction<'a> {
 }
 
 impl<'a> Instruction<'a> {
+    pub(crate) fn address(&self) -> Address {
+        Address::new(self.insn.address())
+    }
+
     pub(crate) fn print(
         &self,
         state: &mut PrintState,

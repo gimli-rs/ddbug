@@ -9,6 +9,7 @@ use gimli;
 use gimli::Reader as GimliReader;
 use object::{self, ObjectSection};
 
+use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{DebugInfo, FileHash, StringCache};
 use crate::function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
@@ -209,6 +210,7 @@ where
 {
     endian: Endian,
     read: gimli::Dwarf<Reader<'input, Endian>>,
+    frame: DwarfFrame<Reader<'input, Endian>>,
     strings: &'input StringCache,
     units: Vec<gimli::Unit<Reader<'input, Endian>, usize>>,
 }
@@ -298,6 +300,10 @@ where
         })
     }
 
+    pub(crate) fn get_cfi(&self, address: Address, size: Size) -> Vec<Cfi> {
+        self.frame.get_cfi(address, size).unwrap_or_default()
+    }
+
     pub(crate) fn get_register_name(
         &self,
         machine: object::Machine,
@@ -364,9 +370,28 @@ where
     let sections = gimli::Dwarf::load(get_section, no_section)?;
     let read = sections.borrow(get_reader);
 
+    let debug_frame = get_section(gimli::SectionId::DebugFrame)?;
+    let eh_frame = get_section(gimli::SectionId::EhFrame)?;
+    let mut bases = gimli::BaseAddresses::default();
+    if let Some(section) = object.section_by_name(".eh_frame") {
+        bases = bases.set_eh_frame(section.address());
+    }
+    if let Some(section) = object.section_by_name(".text") {
+        bases = bases.set_text(section.address());
+    }
+    if let Some(section) = object.section_by_name(".got") {
+        bases = bases.set_got(section.address());
+    }
+    let frame = DwarfFrame::new(
+        get_reader(&debug_frame).into(),
+        get_reader(&eh_frame).into(),
+        bases,
+    );
+
     let mut dwarf = DwarfDebugInfo {
         endian,
         read,
+        frame,
         strings,
         units: Vec::new(),
     };
@@ -3483,5 +3508,299 @@ where
         val => {
             debug!("unknown DW_AT_decl_column attribute value: {:?}", val);
         }
+    }
+}
+
+struct DwarfFrame<R: gimli::Reader<Offset = usize>> {
+    debug_frame: DebugFrameTable<R>,
+    eh_frame: EhFrameTable<R>,
+}
+
+impl<R: gimli::Reader<Offset = usize>> DwarfFrame<R> {
+    fn new(
+        debug_frame: gimli::DebugFrame<R>,
+        eh_frame: gimli::EhFrame<R>,
+        bases: gimli::BaseAddresses,
+    ) -> Self {
+        DwarfFrame {
+            debug_frame: DebugFrameTable::new(debug_frame),
+            eh_frame: EhFrameTable::new(eh_frame, bases),
+        }
+    }
+
+    fn get_cfi(&self, address: Address, size: Size) -> Option<Vec<Cfi>> {
+        let cfi = self
+            .eh_frame
+            .get_cfi(address, size)
+            .or_else(|| self.debug_frame.get_cfi(address, size));
+        if cfi.is_none() {
+            debug!(
+                "no FDE for 0x{:x}[0x{:x}]",
+                address.get().unwrap_or(0),
+                size.get().unwrap_or(0)
+            );
+        }
+        cfi
+    }
+}
+
+struct DebugFrameTable<R: gimli::Reader<Offset = usize>> {
+    debug_frame: gimli::DebugFrame<R>,
+    bases: gimli::BaseAddresses,
+    fdes: FdeOffsetTable,
+}
+
+impl<R: gimli::Reader<Offset = usize>> DebugFrameTable<R> {
+    fn new(debug_frame: gimli::DebugFrame<R>) -> Self {
+        let bases = gimli::BaseAddresses::default();
+        let fdes = FdeOffsetTable::new(&debug_frame, &bases);
+        DebugFrameTable {
+            debug_frame,
+            bases,
+            fdes,
+        }
+    }
+
+    fn get_cfi(&self, address: Address, size: Size) -> Option<Vec<Cfi>> {
+        get_cfi(&self.debug_frame, &self.bases, &self.fdes, address, size)
+    }
+}
+
+struct EhFrameTable<R: gimli::Reader<Offset = usize>> {
+    eh_frame: gimli::EhFrame<R>,
+    bases: gimli::BaseAddresses,
+    fdes: FdeOffsetTable,
+}
+
+impl<R: gimli::Reader<Offset = usize>> EhFrameTable<R> {
+    fn new(eh_frame: gimli::EhFrame<R>, bases: gimli::BaseAddresses) -> Self {
+        let fdes = FdeOffsetTable::new(&eh_frame, &bases);
+        EhFrameTable {
+            eh_frame,
+            bases,
+            fdes,
+        }
+    }
+
+    fn get_cfi(&self, address: Address, size: Size) -> Option<Vec<Cfi>> {
+        get_cfi(&self.eh_frame, &self.bases, &self.fdes, address, size)
+    }
+}
+
+struct FdeOffsetTable {
+    offsets: Vec<(Range, usize)>,
+}
+
+impl FdeOffsetTable {
+    fn new<R: gimli::Reader<Offset = usize>, S: gimli::UnwindSection<R>>(
+        section: &S,
+        bases: &gimli::BaseAddresses,
+    ) -> Self
+    where
+        S::Offset: gimli::UnwindOffset,
+    {
+        let mut offsets = Vec::new();
+        let mut entries = section.entries(bases);
+        while let Ok(Some(entry)) = entries.next() {
+            match entry {
+                gimli::CieOrFde::Cie(_) => {}
+                gimli::CieOrFde::Fde(partial) => {
+                    if let Ok(fde) = partial.parse(S::cie_from_offset) {
+                        let range = Range {
+                            begin: fde.initial_address(),
+                            end: fde.initial_address() + fde.len(),
+                        };
+                        offsets.push((range, fde.offset()));
+                    }
+                }
+            }
+        }
+        offsets.sort_by_key(|x| x.0);
+        FdeOffsetTable { offsets }
+    }
+
+    fn find(&self, address: u64) -> Option<usize> {
+        // FIXME: doesn't handle overlapping
+        let index = match self.offsets.binary_search_by_key(&address, |x| x.0.begin) {
+            Ok(x) => Some(x),
+            Err(x) => {
+                if x > 0 {
+                    Some(x - 1)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(index) = index {
+            let (range, offset) = self.offsets[index];
+            if range.begin <= address && range.end > address {
+                return Some(offset);
+            }
+        }
+        None
+    }
+}
+
+fn get_cfi<R: gimli::Reader, S: gimli::UnwindSection<R>>(
+    section: &S,
+    bases: &gimli::BaseAddresses,
+    fdes: &FdeOffsetTable,
+    address: Address,
+    size: Size,
+) -> Option<Vec<Cfi>>
+where
+    S::Offset: gimli::UnwindOffset,
+{
+    let address = address.get()?;
+    let size = size.get()?;
+    let fde_offset = S::Offset::from(fdes.find(address)?);
+    let fde = section
+        .fde_from_offset(bases, fde_offset, S::cie_from_offset)
+        .ok()?;
+
+    if (address, size) != (fde.initial_address(), fde.len()) {
+        debug!(
+            "FDE address mismatch: want function 0x{:x}[0x{:x}], found FDE 0x{:x}[0x{:x}]",
+            address,
+            size,
+            fde.initial_address(),
+            fde.len(),
+        );
+    }
+
+    let mut cfi = Vec::new();
+    cfi.push((Address::none(), CfiDirective::StartProc));
+    if let Some(personality) = fde.personality() {
+        // TODO: better handling of indirect
+        let address = match personality {
+            gimli::Pointer::Direct(x) => Address::new(x),
+            gimli::Pointer::Indirect(x) => Address::new(x),
+        };
+        cfi.push((Address::none(), CfiDirective::Personality(address)));
+    }
+    if let Some(lsda) = fde.lsda() {
+        // TODO: better handling of indirect
+        let address = match lsda {
+            gimli::Pointer::Direct(x) => Address::new(x),
+            gimli::Pointer::Indirect(x) => Address::new(x),
+        };
+        cfi.push((Address::none(), CfiDirective::Lsda(address)));
+    }
+    if fde.is_signal_trampoline() {
+        cfi.push((Address::none(), CfiDirective::SignalFrame));
+    }
+
+    let cie = fde.cie();
+    let mut address = 0;
+    let mut instructions = cie.instructions(section, bases);
+    while let Ok(Some(instruction)) = instructions.next() {
+        if let Some(directive) = convert_cfi(cie, instruction, &mut address) {
+            cfi.push((Address::none(), directive))
+        }
+    }
+
+    let mut address = fde.initial_address();
+    let mut instructions = fde.instructions(section, bases);
+    while let Ok(Some(instruction)) = instructions.next() {
+        if let Some(directive) = convert_cfi(cie, instruction, &mut address) {
+            cfi.push((Address::new(address), directive))
+        }
+    }
+
+    cfi.push((
+        Address::new(fde.initial_address() + fde.len()),
+        CfiDirective::EndProc,
+    ));
+    Some(cfi)
+}
+
+fn convert_cfi<R: gimli::Reader>(
+    cie: &gimli::CommonInformationEntry<R>,
+    instruction: gimli::CallFrameInstruction<R>,
+    loc: &mut u64,
+) -> Option<CfiDirective> {
+    match instruction {
+        gimli::CallFrameInstruction::SetLoc { address } => {
+            *loc = address;
+            None
+        }
+        gimli::CallFrameInstruction::AdvanceLoc { delta } => {
+            *loc += delta as u64 * cie.code_alignment_factor();
+            None
+        }
+        gimli::CallFrameInstruction::DefCfa { register, offset } => {
+            Some(CfiDirective::DefCfa(register.into(), offset as i64))
+        }
+        gimli::CallFrameInstruction::DefCfaSf {
+            register,
+            factored_offset,
+        } => {
+            let offset = factored_offset * cie.data_alignment_factor();
+            Some(CfiDirective::DefCfa(register.into(), offset as i64))
+        }
+        gimli::CallFrameInstruction::DefCfaRegister { register } => {
+            Some(CfiDirective::DefCfaRegister(register.into()))
+        }
+        gimli::CallFrameInstruction::DefCfaOffset { offset } => {
+            Some(CfiDirective::DefCfaOffset(offset as i64))
+        }
+        gimli::CallFrameInstruction::DefCfaOffsetSf { factored_offset } => {
+            let offset = factored_offset * cie.data_alignment_factor();
+            Some(CfiDirective::DefCfaOffset(offset as i64))
+        }
+        gimli::CallFrameInstruction::Offset {
+            register,
+            factored_offset,
+        } => {
+            let offset = factored_offset as i64 * cie.data_alignment_factor();
+            Some(CfiDirective::Offset(register.into(), offset))
+        }
+        gimli::CallFrameInstruction::OffsetExtendedSf {
+            register,
+            factored_offset,
+        } => {
+            let offset = factored_offset * cie.data_alignment_factor();
+            Some(CfiDirective::Offset(register.into(), offset))
+        }
+        gimli::CallFrameInstruction::ValOffset {
+            register,
+            factored_offset,
+        } => {
+            let offset = factored_offset as i64 * cie.data_alignment_factor();
+            Some(CfiDirective::ValOffset(register.into(), offset))
+        }
+        gimli::CallFrameInstruction::ValOffsetSf {
+            register,
+            factored_offset,
+        } => {
+            let offset = factored_offset * cie.data_alignment_factor();
+            Some(CfiDirective::ValOffset(register.into(), offset))
+        }
+        gimli::CallFrameInstruction::Register {
+            dest_register,
+            src_register,
+        } => Some(CfiDirective::Register(
+            dest_register.into(),
+            src_register.into(),
+        )),
+        gimli::CallFrameInstruction::Undefined { register } => {
+            Some(CfiDirective::Undefined(register.into()))
+        }
+        gimli::CallFrameInstruction::SameValue { register } => {
+            Some(CfiDirective::SameValue(register.into()))
+        }
+        gimli::CallFrameInstruction::Restore { register } => {
+            Some(CfiDirective::Restore(register.into()))
+        }
+        gimli::CallFrameInstruction::RememberState => Some(CfiDirective::RememberState),
+        gimli::CallFrameInstruction::RestoreState => Some(CfiDirective::RestoreState),
+        gimli::CallFrameInstruction::ArgsSize { .. }
+        | gimli::CallFrameInstruction::DefCfaExpression { .. }
+        | gimli::CallFrameInstruction::Expression { .. }
+        | gimli::CallFrameInstruction::ValExpression { .. } => {
+            debug!("Unhandled CFI: {:?}", instruction);
+            Some(CfiDirective::Other)
+        }
+        gimli::CallFrameInstruction::Nop => None,
     }
 }

@@ -28,6 +28,7 @@
 #[macro_use]
 extern crate log;
 
+mod cfi;
 mod file;
 mod function;
 mod location;
@@ -38,6 +39,7 @@ mod types;
 mod unit;
 mod variable;
 
+pub use crate::cfi::*;
 pub use crate::file::*;
 pub use crate::function::*;
 pub use crate::location::*;

@@ -12,6 +12,7 @@ use moria;
 use object::{self, Object, ObjectSection, ObjectSegment};
 use typed_arena::Arena;
 
+use crate::cfi::Cfi;
 use crate::function::{Function, FunctionDetails, FunctionOffset};
 use crate::location::Register;
 use crate::range::{Range, RangeList};
@@ -50,6 +51,12 @@ where
     ) -> Option<FunctionDetails<'input>> {
         match self {
             DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash),
+        }
+    }
+
+    fn get_cfi(&self, address: Address, size: Size) -> Vec<Cfi> {
+        match self {
+            DebugInfo::Dwarf(dwarf) => dwarf.get_cfi(address, size),
         }
     }
 
@@ -115,6 +122,10 @@ impl<'input> File<'input> {
         self.debug_info
             .get_function_details(offset, hash)
             .unwrap_or_default()
+    }
+
+    pub(crate) fn get_cfi(&self, address: Address, size: Size) -> Vec<Cfi> {
+        self.debug_info.get_cfi(address, size)
     }
 
     pub(crate) fn get_register_name(&self, register: Register) -> Option<&'static str> {
