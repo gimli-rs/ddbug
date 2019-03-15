@@ -4,30 +4,7 @@ use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
 
 use crate::print::{self, PrintState, ValuePrinter};
 use crate::Result;
-use parser::{Error, File, Machine, Range};
-
-// Newtype so that we can convert capstone errors.
-struct CodeError(Error);
-
-type CodeResult<T> = std::result::Result<T, CodeError>;
-
-impl From<CodeError> for Error {
-    fn from(e: CodeError) -> Error {
-        e.0
-    }
-}
-
-impl From<Error> for CodeError {
-    fn from(e: Error) -> CodeError {
-        CodeError(e)
-    }
-}
-
-impl From<capstone::Error> for CodeError {
-    fn from(e: capstone::Error) -> CodeError {
-        CodeError(format!("Capstone error: {}", e).into())
-    }
-}
+use parser::{Address, File, Machine, Range};
 
 #[derive(Debug)]
 pub(crate) struct Code<'code> {
@@ -75,11 +52,8 @@ impl<'code> Code<'code> {
             .unwrap_or(Vec::new())
     }
 
-    pub(crate) fn print_instructions(&self, state: &mut PrintState, range: Range) -> Result<()> {
-        self.range(range)
-            .map(|code| print_instructions(state, self.arch, self.mode, code, range))
-            .unwrap_or(Ok(()))?;
-        Ok(())
+    pub(crate) fn disassembler<'a>(&'a self) -> Option<Disassembler<'a>> {
+        Disassembler::new(self, self.arch, self.mode)
     }
 
     fn range(&self, range: Range) -> Option<&'code [u8]> {
@@ -99,13 +73,8 @@ impl<'code> Code<'code> {
 fn calls(arch: Arch, mode: Mode, code: &[u8], addr: u64) -> Option<Vec<Call>> {
     let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
     cs.set_detail(true).ok()?;
-    Some(
-        cs.disasm_all(code, addr)
-            .ok()?
-            .iter()
-            .filter_map(|x| call(arch, &cs, &x))
-            .collect(),
-    )
+    let insns = cs.disasm_all(code, addr).ok()?;
+    Some(insns.iter().filter_map(|x| call(arch, &cs, &x)).collect())
 }
 
 fn call(arch: Arch, cs: &Capstone, insn: &Insn) -> Option<Call> {
@@ -134,93 +103,130 @@ fn call_x86(cs: &Capstone, insn: &Insn) -> Option<Call> {
     None
 }
 
-fn print_instructions(
-    state: &mut PrintState,
-    arch: Arch,
-    mode: Mode,
-    code: &[u8],
-    range: Range,
-) -> CodeResult<()> {
-    let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None)?;
-    cs.set_detail(true)?;
-    for insn in cs.disasm_all(code, range.begin)?.iter() {
-        print_instruction(state, &cs, &insn, range)?;
-    }
-    Ok(())
+pub(crate) struct Disassembler<'a> {
+    code: &'a Code<'a>,
+    cs: capstone::Capstone,
 }
 
-fn print_instruction(
-    state: &mut PrintState,
-    cs: &Capstone,
-    insn: &Insn,
-    range: Range,
-) -> CodeResult<()> {
-    fn pad_address(w: &mut dyn ValuePrinter) -> Result<()> {
-        write!(w, "{:3}   ", "")?;
-        Ok(())
-    }
-    fn pad_mnemonic(w: &mut dyn ValuePrinter) -> Result<()> {
-        write!(w, "{:6} ", "")?;
-        Ok(())
+impl<'a> Disassembler<'a> {
+    pub(crate) fn new(code: &'a Code<'a>, arch: Arch, mode: Mode) -> Option<Disassembler<'a>> {
+        let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
+        cs.set_detail(true).ok()?;
+        Some(Disassembler { code, cs })
     }
 
-    let detail = cs.insn_detail(insn)?;
-    let arch_detail = detail.arch_detail();
+    pub(crate) fn instructions(&'a self, range: Range) -> Option<Instructions<'a>> {
+        self.code
+            .range(range)
+            .and_then(|code| self.cs.disasm_all(code, range.begin).ok())
+            .map(|instructions| Instructions { instructions })
+    }
+}
 
-    state.line(|w, _hash| {
-        write!(w, "{:3x}:  ", insn.address() - range.begin)?;
-        if let Some(mnemonic) = insn.mnemonic() {
-            write!(w, "{:6}", mnemonic)?;
-            if let Some(op_str) = insn.op_str().filter(|s| !s.is_empty()) {
-                let mut ops = arch_detail.operands().into_iter();
-                let mut first = true;
-                for op_str in op_str.split(", ") {
-                    if first {
-                        write!(w, " ")?;
-                        first = false;
-                    } else {
-                        write!(w, ", ")?;
-                    }
-                    if let Some(op) = ops.next() {
-                        if let Some(imm) = is_imm(&op) {
-                            if is_jump(&detail) && range.contains(imm) {
-                                write!(w, "+{:x}", imm - range.begin)?;
-                                continue;
-                            }
+pub(crate) struct Instructions<'a> {
+    instructions: capstone::Instructions<'a>,
+}
+
+impl<'a> Instructions<'a> {
+    pub(crate) fn iter(&'a self) -> InstructionIterator<'a> {
+        let instructions = self.instructions.iter();
+        InstructionIterator { instructions }
+    }
+}
+
+pub(crate) struct InstructionIterator<'a> {
+    instructions: capstone::InstructionIterator<'a>,
+}
+
+impl<'a> Iterator for InstructionIterator<'a> {
+    type Item = Instruction<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.instructions.next().map(|insn| Instruction { insn })
+    }
+}
+
+pub(crate) struct Instruction<'a> {
+    insn: capstone::Insn<'a>,
+}
+
+impl<'a> Instruction<'a> {
+    pub(crate) fn print(
+        &self,
+        state: &mut PrintState,
+        d: &Disassembler<'a>,
+        range: Range,
+    ) -> Result<()> {
+        fn pad_address(w: &mut dyn ValuePrinter) -> Result<()> {
+            write!(w, "{:3}   ", "")?;
+            Ok(())
+        }
+        fn pad_mnemonic(w: &mut dyn ValuePrinter) -> Result<()> {
+            write!(w, "{:6} ", "")?;
+            Ok(())
+        }
+
+        let detail = match d.cs.insn_detail(&self.insn) {
+            Ok(detail) => detail,
+            Err(_) => return Ok(()),
+        };
+        let arch_detail = detail.arch_detail();
+
+        state.line(|w, _hash| {
+            write!(w, "{:3x}:  ", self.insn.address() - range.begin)?;
+            if let Some(mnemonic) = self.insn.mnemonic() {
+                write!(w, "{:6}", mnemonic)?;
+                if let Some(op_str) = self.insn.op_str().filter(|s| !s.is_empty()) {
+                    let mut ops = arch_detail.operands().into_iter();
+                    let mut first = true;
+                    for op_str in op_str.split(", ") {
+                        if first {
+                            write!(w, " ")?;
+                            first = false;
+                        } else {
+                            write!(w, ", ")?;
                         }
-                    } else {
-                        debug!("operand count mismatch {:x}", insn.address());
+                        if let Some(op) = ops.next() {
+                            if let Some(imm) = is_imm(&op) {
+                                if is_jump(&detail) && range.contains(imm) {
+                                    write!(w, "+{:x}", imm - range.begin)?;
+                                    continue;
+                                }
+                            }
+                        } else {
+                            debug!("operand count mismatch {:x}", self.insn.address());
+                        }
+                        write!(w, "{}", op_str)?
                     }
-                    write!(w, "{}", op_str)?
+                }
+            } else {
+                for b in self.insn.bytes() {
+                    write!(w, "{:02x} ", b)?;
                 }
             }
-        } else {
-            for b in insn.bytes() {
-                write!(w, "{:02x} ", b)?;
+            Ok(())
+        })?;
+
+        for op in arch_detail.operands() {
+            if let Some(imm) = is_imm(&op) {
+                if is_jump(&detail) && range.contains(imm) {
+                    continue;
+                }
+                // TODO: lookup variables too
+                if let Some(function) = state.hash().functions_by_address.get(&imm) {
+                    state.line(|w, _hash| {
+                        pad_address(w)?;
+                        pad_mnemonic(w)?;
+                        write!(w, "{:x} = ", imm)?;
+                        print::function::print_ref(function, w)
+                    })?;
+                }
             }
+            // TODO: find DWARF expressions for registers
         }
+
         Ok(())
-    })?;
-
-    for op in arch_detail.operands() {
-        if let Some(imm) = is_imm(&op) {
-            if is_jump(&detail) && range.contains(imm) {
-                continue;
-            }
-            // TODO: lookup variables too
-            if let Some(function) = state.hash().functions_by_address.get(&imm) {
-                state.line(|w, _hash| {
-                    pad_address(w)?;
-                    pad_mnemonic(w)?;
-                    write!(w, "{:x} = ", imm)?;
-                    print::function::print_ref(function, w)
-                })?;
-            }
-        }
-        // TODO: find DWARF expressions for registers
     }
-
-    Ok(())
 }
 
 fn is_call(detail: &InsnDetail) -> bool {

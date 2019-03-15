@@ -369,11 +369,26 @@ fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
 }
 
 fn print_instructions(state: &mut PrintState, f: &Function) -> Result<()> {
-    if let (Some(code), Some(range)) = (state.code, f.range()) {
-        code.print_instructions(state, range)
-    } else {
-        Ok(())
+    let range = match f.range() {
+        Some(x) => x,
+        None => return Ok(()),
+    };
+    let code = match state.code {
+        Some(x) => x,
+        None => return Ok(()),
+    };
+    let disassembler = match code.disassembler() {
+        Some(x) => x,
+        None => return Ok(()),
+    };
+    let insns = match disassembler.instructions(range) {
+        Some(x) => x,
+        None => return Ok(()),
+    };
+    for insn in insns.iter() {
+        insn.print(state, &disassembler, range)?;
     }
+    Ok(())
 }
 
 #[derive(Debug, PartialEq, Eq)]
