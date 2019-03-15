@@ -124,10 +124,16 @@ impl<'input> Variable<'input> {
     /// The address range of the variable.
     pub fn range(&self, hash: &FileHash) -> Option<Range> {
         match (self.address(), self.byte_size(hash)) {
-            (Some(begin), Some(size)) => Some(Range {
-                begin,
-                end: begin + size,
-            }),
+            (Some(begin), Some(size)) => {
+                if size != 0 {
+                    Some(Range {
+                        begin,
+                        end: begin + size,
+                    })
+                } else {
+                    None
+                }
+            }
             _ => None,
         }
     }

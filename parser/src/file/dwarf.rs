@@ -1147,7 +1147,8 @@ where
             gimli::DW_TAG_inheritance => {
                 parse_inheritance(&mut ty.inherits, dwarf_unit, child)?;
             }
-            gimli::DW_TAG_template_type_parameter
+            gimli::DW_TAG_variant_part
+            | gimli::DW_TAG_template_type_parameter
             | gimli::DW_TAG_template_value_parameter
             | gimli::DW_TAG_GNU_template_parameter_pack => {}
             tag => {
@@ -1500,6 +1501,7 @@ where
             gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
             gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
             gimli::DW_AT_sibling
+            | gimli::DW_AT_encoding
             | gimli::DW_AT_type
             | gimli::DW_AT_alignment
             | gimli::DW_AT_enum_class => {}
