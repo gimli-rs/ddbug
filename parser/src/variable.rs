@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::usize;
 
 use crate::file::FileHash;
-use crate::location::{FrameLocation, Location, Piece, Register};
+use crate::location::{self, FrameLocation, Location, Piece, Register};
 use crate::namespace::Namespace;
 use crate::range::Range;
 use crate::source::Source;
@@ -169,7 +169,7 @@ pub struct LocalVariable<'input> {
     pub(crate) source: Source<'input>,
     pub(crate) address: Address,
     pub(crate) size: Size,
-    pub(crate) locations: Vec<Piece>,
+    pub(crate) locations: Vec<(Range, Piece)>,
 }
 
 impl<'input> LocalVariable<'input> {
@@ -219,21 +219,13 @@ impl<'input> LocalVariable<'input> {
     }
 
     /// The registers in which this variable is stored.
-    pub fn registers<'a>(&'a self) -> impl Iterator<Item = Register> + 'a {
-        self.locations.iter().filter_map(|piece| {
-            if piece.is_value {
-                return None;
-            }
-            match piece.location {
-                Location::Register { register } => Some(register),
-                _ => None,
-            }
-        })
+    pub fn registers<'a>(&'a self) -> impl Iterator<Item = (Range, Register)> + 'a {
+        location::registers(&self.locations)
     }
 
     /// The stack frame locations at which this variable is stored.
     pub fn frame_locations<'a>(&'a self) -> impl Iterator<Item = FrameLocation> + 'a {
-        self.locations.iter().filter_map(|piece| {
+        self.locations.iter().filter_map(|(_, piece)| {
             if piece.is_value {
                 return None;
             }

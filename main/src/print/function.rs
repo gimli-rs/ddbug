@@ -128,8 +128,9 @@ impl<'input> Print for Function<'input> {
                     state.field_collapsed("calls", |state| state.list(&(), &calls))?;
                 }
                 if state.options().print_function_instructions {
-                    state
-                        .field_collapsed("instructions", |state| print_instructions(state, self))?;
+                    state.field_collapsed("instructions", |state| {
+                        print_instructions(state, self, &details)
+                    })?;
                 }
                 Ok(())
             },
@@ -230,7 +231,9 @@ impl<'input> Print for Function<'input> {
                     state.field_collapsed("instructions", |state| {
                         // TODO: diff instructions
                         state.ignore_diff(true, |state| {
-                            state.block(a, b, |state, x| print_instructions(state, x))
+                            state.block((a, &details_a), (b, &details_b), |state, (x, details)| {
+                                print_instructions(state, x, details)
+                            })
                         })
                     })?;
                 }
@@ -368,7 +371,11 @@ fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
     Vec::new()
 }
 
-fn print_instructions(state: &mut PrintState, f: &Function) -> Result<()> {
+fn print_instructions(
+    state: &mut PrintState,
+    f: &Function,
+    details: &FunctionDetails,
+) -> Result<()> {
     let range = match f.range() {
         Some(x) => x,
         None => return Ok(()),
@@ -399,12 +406,12 @@ fn print_instructions(state: &mut PrintState, f: &Function) -> Result<()> {
                     print_cfi(state, cfi, range)?;
                     cfi_next = cfis.next();
                 } else {
-                    insn.print(state, &disassembler, range)?;
+                    insn.print(state, &disassembler, details, range)?;
                     insn_next = insns.next();
                 }
             }
             (&Some(ref insn), None) => {
-                insn.print(state, &disassembler, range)?;
+                insn.print(state, &disassembler, details, range)?;
                 insn_next = insns.next();
             }
             (&None, Some(cfi)) => {

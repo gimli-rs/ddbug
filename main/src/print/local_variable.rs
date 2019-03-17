@@ -5,7 +5,11 @@ use parser::{FileHash, LocalVariable, Type, Unit};
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_decl(v: &LocalVariable, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
+pub(crate) fn print_decl(
+    v: &LocalVariable,
+    w: &mut dyn ValuePrinter,
+    hash: &FileHash,
+) -> Result<()> {
     write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;
     print::types::print_ref(v.ty(hash), w, hash)?;
     Ok(())
@@ -37,7 +41,7 @@ impl<'input> Print for LocalVariable<'input> {
             |state| {
                 if state.options().print_variable_locations {
                     state.field("address", |w, _state| print_address(self, w))?;
-                    print::register::print_list(state, self.registers().collect())?;
+                    print::register::print_list(state, self.registers().map(|x| x.1).collect())?;
                     print::frame_location::print_list(state, self.frame_locations().collect())?;
                 }
                 Ok(())
@@ -64,8 +68,8 @@ impl<'input> Print for LocalVariable<'input> {
 
                     print::register::diff_list(
                         state,
-                        a.registers().collect(),
-                        b.registers().collect(),
+                        a.registers().map(|x| x.1).collect(),
+                        b.registers().map(|x| x.1).collect(),
                     )?;
                     print::frame_location::diff_list(
                         state,

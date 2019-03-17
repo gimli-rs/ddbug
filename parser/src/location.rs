@@ -1,5 +1,5 @@
 use crate::file::FileHash;
-use crate::{Address, Size};
+use crate::{Address, Range, Size};
 
 /// A register number.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -84,22 +84,24 @@ pub(crate) enum Location {
     Other,
 }
 
-pub(crate) fn registers<'a>(locations: &'a [Piece]) -> impl Iterator<Item = Register> + 'a {
-    locations.iter().filter_map(|piece| {
+pub(crate) fn registers<'a>(
+    locations: &'a [(Range, Piece)],
+) -> impl Iterator<Item = (Range, Register)> + 'a {
+    locations.iter().filter_map(|(range, piece)| {
         if piece.is_value {
             return None;
         }
         match piece.location {
-            Location::Register { register } => Some(register),
+            Location::Register { register } => Some((*range, register)),
             _ => None,
         }
     })
 }
 
 pub(crate) fn frame_locations<'a>(
-    locations: &'a [Piece],
+    locations: &'a [(Range, Piece)],
 ) -> impl Iterator<Item = FrameLocation> + 'a {
-    locations.iter().filter_map(|piece| {
+    locations.iter().filter_map(|(_, piece)| {
         if piece.is_value {
             return None;
         }

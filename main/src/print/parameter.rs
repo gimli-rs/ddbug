@@ -30,7 +30,7 @@ impl<'input> Print for Parameter<'input> {
             |state| state.line(|w, state| print_size_and_decl(self, w, state)),
             |state| {
                 if state.options().print_variable_locations {
-                    print::register::print_list(state, self.registers().collect())?;
+                    print::register::print_list(state, self.registers().map(|x| x.1).collect())?;
                     print::frame_location::print_list(state, self.frame_locations().collect())?;
                 }
                 Ok(())
@@ -51,8 +51,8 @@ impl<'input> Print for Parameter<'input> {
                 if state.options().print_variable_locations {
                     print::register::diff_list(
                         state,
-                        a.registers().collect(),
-                        b.registers().collect(),
+                        a.registers().map(|x| x.1).collect(),
+                        b.registers().map(|x| x.1).collect(),
                     )?;
                     print::frame_location::diff_list(
                         state,

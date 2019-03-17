@@ -11,6 +11,11 @@ pub struct Range {
 }
 
 impl Range {
+    /// A range that covers everything.
+    pub fn all() -> Self {
+        Range { begin: 0, end: !0 }
+    }
+
     /// The size of the address range.
     #[inline]
     pub fn size(&self) -> u64 {

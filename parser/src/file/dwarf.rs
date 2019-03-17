@@ -2216,7 +2216,12 @@ where
             gimli::DW_AT_location => {
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
-                        evaluate_parameter_location(&dwarf_unit.header, expr, &mut parameter);
+                        evaluate_parameter_location(
+                            &dwarf_unit.header,
+                            Range::all(),
+                            expr,
+                            &mut parameter,
+                        );
                     }
                     gimli::AttributeValue::LocationListsRef(offset) => {
                         let mut locations = dwarf.read.locations(dwarf_unit, offset)?;
@@ -2224,6 +2229,7 @@ where
                             // TODO: use location.range too
                             evaluate_parameter_location(
                                 &dwarf_unit.header,
+                                location.range.into(),
                                 location.data,
                                 &mut parameter,
                             );
@@ -2804,7 +2810,12 @@ where
             gimli::DW_AT_location => {
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
-                        evaluate_local_variable_location(&dwarf_unit.header, expr, &mut variable);
+                        evaluate_local_variable_location(
+                            &dwarf_unit.header,
+                            Range::all(),
+                            expr,
+                            &mut variable,
+                        );
                     }
                     gimli::AttributeValue::LocationListsRef(offset) => {
                         let mut locations = dwarf.read.locations(dwarf_unit, offset)?;
@@ -2812,6 +2823,7 @@ where
                             // TODO: use location.range too
                             evaluate_local_variable_location(
                                 &dwarf_unit.header,
+                                location.range.into(),
                                 location.data,
                                 &mut variable,
                             );
@@ -2952,6 +2964,7 @@ where
 
 fn evaluate_local_variable_location<'input, Endian>(
     unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    range: Range,
     expression: gimli::Expression<Reader<'input, Endian>>,
     variable: &mut LocalVariable<'input>,
 ) where
@@ -2989,11 +3002,14 @@ fn evaluate_local_variable_location<'input, Endian>(
         }
     }
 
-    variable.locations.extend(pieces);
+    variable
+        .locations
+        .extend(pieces.into_iter().map(|piece| (range, piece)));
 }
 
 fn evaluate_parameter_location<'input, Endian>(
     unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    range: Range,
     expression: gimli::Expression<Reader<'input, Endian>>,
     parameter: &mut Parameter<'input>,
 ) where
@@ -3008,7 +3024,9 @@ fn evaluate_parameter_location<'input, Endian>(
         }
     };
 
-    parameter.locations.extend(pieces);
+    parameter
+        .locations
+        .extend(pieces.into_iter().map(|piece| (range, piece)));
 }
 
 fn evaluate_simple<'input, Endian>(
@@ -3326,6 +3344,16 @@ where
                 debug!("evaluation failed: {}", e);
                 return Vec::new();
             }
+        }
+    }
+}
+
+impl From<gimli::Range> for Range {
+    #[inline]
+    fn from(range: gimli::Range) -> Range {
+        Range {
+            begin: range.begin,
+            end: range.end,
         }
     }
 }

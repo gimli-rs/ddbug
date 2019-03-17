@@ -269,7 +269,7 @@ pub struct Parameter<'input> {
     pub(crate) name: Option<&'input str>,
     pub(crate) ty: TypeOffset,
     // TODO: move this to ParameterDetails
-    pub(crate) locations: Vec<Piece>,
+    pub(crate) locations: Vec<(Range, Piece)>,
 }
 
 impl<'input> Parameter<'input> {
@@ -299,7 +299,7 @@ impl<'input> Parameter<'input> {
     }
 
     /// The registers in which this parameter is stored.
-    pub fn registers<'a>(&'a self) -> impl Iterator<Item = Register> + 'a {
+    pub fn registers<'a>(&'a self) -> impl Iterator<Item = (Range, Register)> + 'a {
         location::registers(&self.locations)
     }
 
