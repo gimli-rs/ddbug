@@ -223,6 +223,11 @@ impl<'input> LocalVariable<'input> {
         location::registers(&self.locations)
     }
 
+    /// The registers pointing to where this variable is stored.
+    pub fn register_offsets<'a>(&'a self) -> impl Iterator<Item = (Range, Register, i64)> + 'a {
+        location::register_offsets(&self.locations)
+    }
+
     /// The stack frame locations at which this variable is stored.
     pub fn frame_locations<'a>(&'a self) -> impl Iterator<Item = FrameLocation> + 'a {
         self.locations.iter().filter_map(|(_, piece)| {

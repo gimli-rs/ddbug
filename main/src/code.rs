@@ -263,6 +263,50 @@ impl<'a> Instruction<'a> {
                     }
                 }
             }
+            if let Some((reg, ofs)) = is_reg_offset(&op) {
+                for parameter in f.parameters() {
+                    let size = parameter.byte_size(state.hash()).unwrap_or(0) as i64;
+                    for (range, register, offset) in parameter.register_offsets() {
+                        if reg == register && ofs >= offset && ofs < offset + size && range.contains(address) {
+                            state.line(|w, hash| {
+                                pad_address(w)?;
+                                pad_mnemonic(w)?;
+                                write!(w, "[")?;
+                                print::register::print(register, w, hash)?;
+                                if offset < 0 {
+                                    write!(w, " - 0x{:x}", -offset)?;
+                                } else if offset > 0 {
+                                    write!(w, " + 0x{:x}", offset)?;
+                                }
+                                write!(w, "] = ")?;
+                                // FIXME: print members if ofs != offset || reg.size() < size
+                                print::parameter::print_decl(parameter, w, hash)
+                            })?;
+                        }
+                    }
+                }
+                for variable in f.variables() {
+                    let size = variable.byte_size(state.hash()).unwrap_or(0) as i64;
+                    for (range, register, offset) in variable.register_offsets() {
+                        if reg == register && ofs >= offset && ofs < offset + size && range.contains(address) {
+                            state.line(|w, hash| {
+                                pad_address(w)?;
+                                pad_mnemonic(w)?;
+                                write!(w, "[")?;
+                                print::register::print(register, w, hash)?;
+                                if offset < 0 {
+                                    write!(w, " - 0x{:x}", -offset)?;
+                                } else if offset > 0 {
+                                    write!(w, " + 0x{:x}", offset)?;
+                                }
+                                write!(w, "] = ")?;
+                                // FIXME: print members if ofs != offset || reg.size() < size
+                                print::local_variable::print_decl(variable, w, hash)
+                            })?;
+                        }
+                    }
+                }
+            }
             // TODO: keep track of pointer types, and lookup X86OperandType::Mem offsets
         }
 
@@ -299,6 +343,15 @@ fn is_reg(op: &ArchOperand) -> Option<Register> {
         if let X86OperandType::Mem(op) = op.op_type {
             return convert_reg(op.base());
             // TODO: op.index()?
+        }
+    }
+    None
+}
+
+fn is_reg_offset(op: &ArchOperand) -> Option<(Register, i64)> {
+    if let ArchOperand::X86Operand(op) = op {
+        if let X86OperandType::Mem(op) = op.op_type {
+            return convert_reg(op.base()).map(|reg| (reg, op.disp()));
         }
     }
     None
@@ -344,6 +397,9 @@ fn convert_reg(reg: capstone::RegId) -> Option<Register> {
         X86_REG_XMM13 | X86_REG_YMM13 => Some(Register(30)),
         X86_REG_XMM14 | X86_REG_YMM14 => Some(Register(31)),
         X86_REG_XMM15 | X86_REG_YMM15 => Some(Register(32)),
+
+        // Don't need RIP/EIP, there's never variables/parameters there.
+        X86_REG_INVALID | X86_REG_RIP | X86_REG_EIP => None,
 
         _ => {
             debug!("Unsupported x86 register {}", reg.0);

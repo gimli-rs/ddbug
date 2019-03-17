@@ -117,3 +117,17 @@ pub(crate) fn frame_locations<'a>(
         }
     })
 }
+
+pub(crate) fn register_offsets<'a>(
+    locations: &'a [(Range, Piece)],
+) -> impl Iterator<Item = (Range, Register, i64)> + 'a {
+    locations.iter().filter_map(|(range, piece)| {
+        if piece.is_value {
+            return None;
+        }
+        match piece.location {
+            Location::RegisterOffset { register, offset } => Some((*range, register, offset)),
+            _ => None,
+        }
+    })
+}
