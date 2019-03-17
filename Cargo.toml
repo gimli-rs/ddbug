@@ -3,6 +3,9 @@ members = [
     "main",
 ]
 
+[profile.release]
+debug = true
+
 [patch.crates-io]
 capstone = { git = "https://github.com/capstone-rust/capstone-rs.git", rev = "5044ace8022b1651d1b7c93d41ad56993e0225f5" }
 capstone-sys = { git = "https://github.com/capstone-rust/capstone-rs.git", rev = "5044ace8022b1651d1b7c93d41ad56993e0225f5" }
