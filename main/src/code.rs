@@ -267,7 +267,11 @@ impl<'a> Instruction<'a> {
                 for parameter in f.parameters() {
                     let size = parameter.byte_size(state.hash()).unwrap_or(0) as i64;
                     for (range, register, offset) in parameter.register_offsets() {
-                        if reg == register && ofs >= offset && ofs < offset + size && range.contains(address) {
+                        if reg == register
+                            && ofs >= offset
+                            && ofs < offset + size
+                            && range.contains(address)
+                        {
                             state.line(|w, hash| {
                                 pad_address(w)?;
                                 pad_mnemonic(w)?;
@@ -288,7 +292,11 @@ impl<'a> Instruction<'a> {
                 for variable in f.variables() {
                     let size = variable.byte_size(state.hash()).unwrap_or(0) as i64;
                     for (range, register, offset) in variable.register_offsets() {
-                        if reg == register && ofs >= offset && ofs < offset + size && range.contains(address) {
+                        if reg == register
+                            && ofs >= offset
+                            && ofs < offset + size
+                            && range.contains(address)
+                        {
                             state.line(|w, hash| {
                                 pad_address(w)?;
                                 pad_mnemonic(w)?;
