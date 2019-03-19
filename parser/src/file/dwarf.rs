@@ -19,9 +19,9 @@ use crate::namespace::{Namespace, NamespaceKind};
 use crate::range::Range;
 use crate::source::Source;
 use crate::types::{
-    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Inherit, Member, ParameterType,
-    PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind,
-    TypeOffset, UnionType, UnspecifiedType,
+    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Inherit, Member, MemberOffset,
+    ParameterType, PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
+    TypeModifierKind, TypeOffset, UnionType, UnspecifiedType, Variant,
 };
 use crate::unit::Unit;
 use crate::variable::{LocalVariable, Variable, VariableOffset};
@@ -1172,8 +1172,18 @@ where
             gimli::DW_TAG_inheritance => {
                 parse_inheritance(&mut ty.inherits, dwarf_unit, child)?;
             }
-            gimli::DW_TAG_variant_part
-            | gimli::DW_TAG_template_type_parameter
+            gimli::DW_TAG_variant_part => {
+                parse_variant_part(
+                    &mut ty.members,
+                    &mut ty.variants,
+                    unit,
+                    dwarf,
+                    dwarf_unit,
+                    &namespace,
+                    child,
+                )?;
+            }
+            gimli::DW_TAG_template_type_parameter
             | gimli::DW_TAG_template_value_parameter
             | gimli::DW_TAG_GNU_template_parameter_pack => {}
             tag => {
@@ -1274,6 +1284,113 @@ where
     Ok(ty)
 }
 
+fn parse_variant_part<'input, 'abbrev, 'unit, 'tree, Endian>(
+    members: &mut Vec<Member<'input>>,
+    variants: &mut Vec<Variant<'input>>,
+    unit: &mut Unit<'input>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    namespace: &Option<Rc<Namespace<'input>>>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut discr = MemberOffset::none();
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        match attr.name() {
+            gimli::DW_AT_discr => {
+                if let Some(offset) = parse_member_offset(dwarf_unit, &attr) {
+                    discr = offset;
+                }
+            }
+            gimli::DW_AT_sibling => {}
+            _ => debug!(
+                "unknown variant_part attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_member => {
+                // Treat any members in the variant_part the same as any other member.
+                // TODO: maybe set a field to indicate which variant part it belongs to.
+                parse_member(members, unit, dwarf, dwarf_unit, namespace, child)?;
+            }
+            gimli::DW_TAG_variant => {
+                parse_variant(variants, discr, unit, dwarf, dwarf_unit, namespace, child)?;
+            }
+            tag => {
+                debug!("unknown variant_part child tag: {}", tag);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn parse_variant<'input, 'abbrev, 'unit, 'tree, Endian>(
+    variants: &mut Vec<Variant<'input>>,
+    discr: MemberOffset,
+    unit: &mut Unit<'input>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    namespace: &Option<Rc<Namespace<'input>>>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut variant = Variant {
+        discr,
+        ..Default::default()
+    };
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        match attr.name() {
+            gimli::DW_AT_discr_value => {
+                if let Some(value) = attr.udata_value() {
+                    variant.discr_value = Some(value);
+                }
+            }
+            gimli::DW_AT_sibling => {}
+            _ => debug!(
+                "unknown variant attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_member => {
+                parse_member(
+                    &mut variant.members,
+                    unit,
+                    dwarf,
+                    dwarf_unit,
+                    namespace,
+                    child,
+                )?;
+            }
+            tag => {
+                debug!("unknown variant child tag: {}", tag);
+            }
+        }
+    }
+
+    variants.push(variant);
+    Ok(())
+}
+
 fn parse_member<'input, 'abbrev, 'unit, 'tree, Endian>(
     members: &mut Vec<Member<'input>>,
     unit: &mut Unit<'input>,
@@ -1286,6 +1403,9 @@ where
     Endian: gimli::Endianity,
 {
     let mut member = Member::default();
+    let offset = node.entry().offset();
+    let offset = offset.to_unit_section_offset(dwarf_unit);
+    member.offset = offset.into();
     let mut bit_offset = None;
     let mut byte_size = None;
     let mut declaration = false;
@@ -2432,6 +2552,7 @@ where
             gimli::DW_TAG_formal_parameter
             | gimli::DW_TAG_variable
             | gimli::DW_TAG_label
+            | gimli::DW_TAG_GNU_call_site
             | gimli::DW_TAG_imported_module => {}
             tag => {
                 debug!("unknown inlined lexical_block child tag: {}", tag);
@@ -3226,6 +3347,11 @@ where
                         // Seen in practice, but we can't handle this yet.
                         Location::Other
                     }
+                    (Location::Literal { value }, Location::FrameOffset { offset }) => {
+                        Location::FrameOffset {
+                            offset: offset - value as i64,
+                        }
+                    }
                     location => {
                         debug!("unsupported Minus: {:?}", location);
                         Location::Other
@@ -3387,6 +3513,17 @@ impl From<gimli::UnitSectionOffset> for ParameterOffset {
     }
 }
 
+impl From<gimli::UnitSectionOffset> for MemberOffset {
+    #[inline]
+    fn from(o: gimli::UnitSectionOffset) -> MemberOffset {
+        let o = match o {
+            gimli::UnitSectionOffset::DebugInfoOffset(o) => o,
+            _ => panic!("unexpected offset {:?}", o),
+        };
+        MemberOffset::new(o.0)
+    }
+}
+
 impl From<gimli::UnitSectionOffset> for TypeOffset {
     #[inline]
     fn from(o: gimli::UnitSectionOffset) -> TypeOffset {
@@ -3442,6 +3579,16 @@ fn parse_parameter_offset<'input, Endian>(
     dwarf_unit: &DwarfUnit<'input, Endian>,
     attr: &gimli::Attribute<Reader<'input, Endian>>,
 ) -> Option<ParameterOffset>
+where
+    Endian: gimli::Endianity,
+{
+    parse_debug_info_offset(dwarf_unit, attr).map(|x| x.into())
+}
+
+fn parse_member_offset<'input, Endian>(
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    attr: &gimli::Attribute<Reader<'input, Endian>>,
+) -> Option<MemberOffset>
 where
     Endian: gimli::Endianity,
 {

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp;
 use std::ops::Deref;
 
-use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit};
+use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit, Variant};
 
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
@@ -26,6 +26,19 @@ fn print_name(
     }
     write!(w, "\t{}: ", member.name().unwrap_or("<anon>"))?;
     print::types::print_ref(member.ty(hash), w, hash)?;
+    Ok(())
+}
+
+fn print_variant(layout: &Layout, variant: &Variant, w: &mut dyn ValuePrinter) -> Result<()> {
+    write!(
+        w,
+        "{}[{}]\t<variant {}>",
+        format_bit(layout.bit_offset),
+        format_bit(layout.bit_size.get().unwrap_or(0)),
+        // TODO: indicate which discriminant
+        // TODO: use discriminant type to display value
+        variant.discriminant_value().unwrap_or(0),
+    )?;
     Ok(())
 }
 
@@ -134,6 +147,16 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
         match self.item {
             LayoutItem::Padding => state.line(|w, _hash| print_padding(self, w)),
             LayoutItem::Member(member) => member.print(state, unit),
+            LayoutItem::Variant(variant) => {
+                // TODO: if variant is a single struct member then display inline
+                state.expanded(
+                    |state| state.line(|w, _hash| print_variant(self, variant, w)),
+                    |state| {
+                        let layout = variant.layout(state.hash());
+                        state.list(unit, &layout)
+                    },
+                )
+            }
             LayoutItem::Inherit(inherit) => {
                 state.line(|w, hash| print_inherit(self, inherit, w, hash))
             }
@@ -148,6 +171,21 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
             (&LayoutItem::Member(ref a), &LayoutItem::Member(ref b)) => {
                 Member::diff(state, unit_a, a, unit_b, b)
             }
+            (&LayoutItem::Variant(ref variant_a), &LayoutItem::Variant(ref variant_b)) => {
+                // TODO: if variant is a single struct member then display inline
+                state.expanded(
+                    |state| {
+                        state.line((a, variant_a), (b, variant_b), |w, _hash, (x, variant)| {
+                            print_variant(x, variant, w)
+                        })
+                    },
+                    |state| {
+                        let layout_a = variant_a.layout(state.hash_a());
+                        let layout_b = variant_b.layout(state.hash_b());
+                        state.list(unit_a, &layout_a, unit_b, &layout_b)
+                    },
+                )
+            }
             (&LayoutItem::Inherit(ref inherit_a), &LayoutItem::Inherit(ref inherit_b)) => state
                 .line((a, inherit_a), (b, inherit_b), |w, hash, (x, inherit)| {
                     print_inherit(x, inherit, w, hash)
@@ -161,6 +199,7 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
 
 impl<'input, 'member> DiffList for Layout<'input, 'member> {
     fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
+        // Must be same as diff cost for each layout item
         1
     }
 
@@ -169,6 +208,10 @@ impl<'input, 'member> DiffList for Layout<'input, 'member> {
             (&LayoutItem::Padding, &LayoutItem::Padding) => 0,
             (&LayoutItem::Member(ref a), &LayoutItem::Member(ref b)) => {
                 Member::diff_cost(state, unit_a, a, unit_b, b)
+            }
+            (&LayoutItem::Variant(ref _a), &LayoutItem::Variant(ref _b)) => {
+                // TODO
+                2
             }
             (&LayoutItem::Inherit(ref a), &LayoutItem::Inherit(ref b)) => {
                 Inherit::diff_cost(state, &(), a, &(), b)

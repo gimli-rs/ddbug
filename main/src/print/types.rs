@@ -167,7 +167,7 @@ pub(crate) fn print_members(state: &mut PrintState, unit: &Unit, ty: Option<&Typ
         match *ty.kind() {
             TypeKind::Struct(ref t) => return print::struct_type::print_members(t, state, unit),
             TypeKind::Union(ref t) => return print::union_type::print_members(t, state, unit),
-            _ => return Err(format!("can't print members {:?}", ty).into()),
+            _ => {}
         }
     }
     Ok(())
