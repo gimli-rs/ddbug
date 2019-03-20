@@ -236,11 +236,11 @@ impl<'input> Type<'input> {
         }
     }
 
-    /// If this is a type that has members, then call 'f' for each member of this type.
-    pub fn visit_members(&self, f: &mut dyn FnMut(&Member) -> ()) {
+    /// The members of this type.
+    pub fn members(&self) -> &[Member<'input>]{
         match self.kind {
-            TypeKind::Struct(ref val) => val.visit_members(f),
-            TypeKind::Union(ref val) => val.visit_members(f),
+            TypeKind::Struct(ref val) => val.members(),
+            TypeKind::Union(ref val) => val.members(),
             TypeKind::Void
             | TypeKind::Enumeration(..)
             | TypeKind::Def(..)
@@ -249,7 +249,7 @@ impl<'input> Type<'input> {
             | TypeKind::Function(..)
             | TypeKind::Unspecified(..)
             | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..) => {}
+            | TypeKind::Modifier(..) => &[],
         }
     }
 
@@ -568,13 +568,6 @@ impl<'input> StructType<'input> {
         &self.variants
     }
 
-    /// Call 'f' for each member of this type.
-    pub fn visit_members(&self, f: &mut dyn FnMut(&Member) -> ()) {
-        for member in &self.members {
-            f(member);
-        }
-    }
-
     /// The inherited types.
     #[inline]
     pub fn inherits(&self) -> &[Inherit] {
@@ -654,13 +647,6 @@ impl<'input> UnionType<'input> {
     #[inline]
     pub fn members(&self) -> &[Member<'input>] {
         &self.members
-    }
-
-    /// Call 'f' for each member of this type.
-    pub fn visit_members(&self, f: &mut dyn FnMut(&Member) -> ()) {
-        for member in &self.members {
-            f(member);
-        }
     }
 
     /// Compare the identifying information of two types.

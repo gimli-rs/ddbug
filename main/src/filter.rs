@@ -41,11 +41,11 @@ fn inline_types(unit: &Unit, hash: &FileHash) -> HashSet<TypeOffset> {
         }
 
         // Find all inline members.
-        ty.visit_members(&mut |t| {
+        for t in ty.members() {
             if t.is_inline(hash) && t.type_offset().is_some() {
                 inline_types.insert(t.type_offset());
             }
-        });
+        }
     }
     inline_types
 }
