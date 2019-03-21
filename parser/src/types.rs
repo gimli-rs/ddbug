@@ -237,7 +237,7 @@ impl<'input> Type<'input> {
     }
 
     /// The members of this type.
-    pub fn members(&self) -> &[Member<'input>]{
+    pub fn members(&self) -> &[Member<'input>] {
         match self.kind {
             TypeKind::Struct(ref val) => val.members(),
             TypeKind::Union(ref val) => val.members(),
@@ -368,11 +368,7 @@ impl<'input> TypeModifier<'input> {
         Type::from_offset(hash, self.ty)
     }
 
-    /// The size in bytes of an instance of this type.
-    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
-        if self.byte_size.is_some() {
-            return self.byte_size.get();
-        }
+    fn is_pointer_like(&self) -> bool {
         match self.kind {
             TypeModifierKind::Const
             | TypeModifierKind::Packed
@@ -380,10 +376,22 @@ impl<'input> TypeModifier<'input> {
             | TypeModifierKind::Restrict
             | TypeModifierKind::Shared
             | TypeModifierKind::Atomic
-            | TypeModifierKind::Other => self.ty(hash).and_then(|v| v.byte_size(hash)),
+            | TypeModifierKind::Other => false,
             TypeModifierKind::Pointer
             | TypeModifierKind::Reference
-            | TypeModifierKind::RvalueReference => self.address_size,
+            | TypeModifierKind::RvalueReference => true,
+        }
+    }
+
+    /// The size in bytes of an instance of this type.
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+        if self.byte_size.is_some() {
+            return self.byte_size.get();
+        }
+        if self.is_pointer_like() {
+            self.address_size
+        } else {
+            self.ty(hash).and_then(|v| v.byte_size(hash))
         }
     }
 
@@ -670,6 +678,7 @@ impl<'input> UnionType<'input> {
 pub struct Variant<'input> {
     pub(crate) discr: MemberOffset,
     pub(crate) discr_value: Option<u64>,
+    pub(crate) name: Option<&'input str>,
     pub(crate) members: Vec<Member<'input>>,
 }
 
@@ -695,6 +704,14 @@ impl<'input> Variant<'input> {
         self.discr_value
     }
 
+    /// The name of the variant.
+    ///
+    /// Currently this is only set for Rust enums.
+    #[inline]
+    pub fn name(&self) -> Option<&str> {
+        self.name
+    }
+
     /// The members for this variant.
     #[inline]
     pub fn members(&self) -> &[Member<'input>] {
@@ -702,35 +719,40 @@ impl<'input> Variant<'input> {
     }
 
     /// The smallest offset in bits for a member of this variant.
-    #[inline]
     pub fn bit_offset(&self) -> u64 {
-        self.members
-            .iter()
-            .map(|x| x.bit_offset())
-            .min()
-            .unwrap_or(0)
+        let mut bit_offset = u64::max_value();
+        for member in &self.members {
+            let o = member.bit_offset();
+            if bit_offset > o {
+                bit_offset = o;
+            }
+        }
+        if bit_offset < u64::max_value() {
+            bit_offset
+        } else {
+            0
+        }
     }
 
-    /// The range in bits covered by members of this variant.
+    /// The size in bits for the members of this variant, excluding leading and trailing padding.
     pub fn bit_size(&self, hash: &FileHash) -> Option<u64> {
         let start = self.bit_offset();
-        let mut end = 0;
+        let mut end = start;
         for member in &self.members {
-            match member.bit_size(hash) {
-                Some(size) => {
-                    let member_end = member.bit_offset() + size;
-                    if end < member_end {
-                        end = member_end;
-                    }
+            let o = member.bit_offset();
+            if let Some(size) = member.bit_size(hash) {
+                if end < o + size {
+                    end = o + size;
                 }
-                None => return None,
+            } else {
+                return None;
             }
         }
         Some(end - start)
     }
 
     /// The layout of members of this variant.
-    pub fn layout<'me>(&'me self, hash: &FileHash) -> Vec<Layout<'input, 'me>> {
+    pub fn layout<'me>(&'me self, hash: &FileHash<'input>) -> Vec<Layout<'input, 'me>> {
         layout(
             &*self.members,
             &[],
@@ -906,25 +928,25 @@ fn layout<'input, 'item>(
     members: &'item [Member<'input>],
     variants: &'item [Variant<'input>],
     inherits: &'item [Inherit],
-    bit_offset: u64,
+    base_bit_offset: u64,
     bit_size: Option<u64>,
     hash: &FileHash,
 ) -> Vec<Layout<'input, 'item>> {
     let mut members: Vec<_> = members
         .iter()
         .map(|member| Layout {
-            bit_offset: bit_offset + member.bit_offset(),
+            bit_offset: member.bit_offset() - base_bit_offset,
             bit_size: member.bit_size(hash).into(),
             item: LayoutItem::Member(member),
         })
         .collect();
     members.extend(variants.iter().map(|variant| Layout {
-        bit_offset: bit_offset + variant.bit_offset(),
+        bit_offset: variant.bit_offset() - base_bit_offset,
         bit_size: variant.bit_size(hash).into(),
         item: LayoutItem::Variant(variant),
     }));
     members.extend(inherits.iter().map(|inherit| Layout {
-        bit_offset: bit_offset + inherit.bit_offset(),
+        bit_offset: inherit.bit_offset() - base_bit_offset,
         bit_size: inherit.bit_size(hash).into(),
         item: LayoutItem::Inherit(inherit),
     }));
@@ -935,7 +957,7 @@ fn layout<'input, 'item>(
             .then_with(|| a.bit_size.cmp(&b.bit_size))
     });
 
-    let mut next_bit_offset = bit_size.map(|v| bit_offset + v);
+    let mut next_bit_offset = bit_size;
     let mut layout = Vec::new();
     for member in members.into_iter().rev() {
         if let (Some(bit_size), Some(next_bit_offset)) = (member.bit_size.get(), next_bit_offset) {
@@ -953,11 +975,10 @@ fn layout<'input, 'item>(
         layout.push(member);
     }
     if let Some(first_bit_offset) = layout.last().map(|x| x.bit_offset) {
-        if first_bit_offset > bit_offset {
-            let bit_size = first_bit_offset - bit_offset;
+        if first_bit_offset > 0 {
             layout.push(Layout {
-                bit_offset,
-                bit_size: Size::new(bit_size),
+                bit_offset: 0,
+                bit_size: Size::new(first_bit_offset),
                 item: LayoutItem::Padding,
             });
         }

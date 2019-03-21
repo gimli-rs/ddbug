@@ -7,13 +7,14 @@ use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit, Variant}
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_name(
+fn print_member(
     member: &Member,
+    bit_offset: u64,
+    bit_size: Option<u64>,
     w: &mut dyn ValuePrinter,
     hash: &FileHash,
-    bit_size: Option<u64>,
 ) -> Result<()> {
-    write!(w, "{}", format_bit(member.bit_offset()))?;
+    write!(w, "{}", format_bit(bit_offset))?;
     match bit_size {
         Some(bit_size) => {
             write!(w, "[{}]", format_bit(bit_size))?;
@@ -39,6 +40,9 @@ fn print_variant(layout: &Layout, variant: &Variant, w: &mut dyn ValuePrinter) -
         // TODO: use discriminant type to display value
         variant.discriminant_value().unwrap_or(0),
     )?;
+    if let Some(name) = variant.name() {
+        write!(w, " {}", name)?;
+    }
     Ok(())
 }
 
@@ -73,7 +77,6 @@ impl<'input> Print for Member<'input> {
 
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         let hash = state.hash();
-        let bit_size = self.bit_size(hash);
         let ty = if self.is_inline(hash) {
             self.ty(hash)
         } else {
@@ -81,14 +84,16 @@ impl<'input> Print for Member<'input> {
         };
         let ty = ty.as_ref().map(Cow::deref);
         state.expanded(
-            |state| state.line(|w, state| print_name(self, w, state, bit_size)),
+            |state| {
+                state.line(|w, hash| {
+                    print_member(self, self.bit_offset(), self.bit_size(hash), w, hash)
+                })
+            },
             |state| print::types::print_members(state, unit, ty),
         )
     }
 
     fn diff(state: &mut DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> Result<()> {
-        let bit_size_a = a.bit_size(state.hash_a());
-        let bit_size_b = b.bit_size(state.hash_b());
         let ty_a = if a.is_inline(state.hash_a()) {
             a.ty(state.hash_a())
         } else {
@@ -103,11 +108,9 @@ impl<'input> Print for Member<'input> {
         let ty_b = ty_b.as_ref().map(Cow::deref);
         state.expanded(
             |state| {
-                state.line(
-                    (a, bit_size_a),
-                    (b, bit_size_b),
-                    |w, state, (x, bit_size)| print_name(x, w, state, bit_size),
-                )
+                state.line(a, b, |w, hash, x| {
+                    print_member(x, x.bit_offset(), x.bit_size(hash), w, hash)
+                })
             },
             |state| print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b),
         )
@@ -146,17 +149,29 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         match self.item {
             LayoutItem::Padding => state.line(|w, _hash| print_padding(self, w)),
-            LayoutItem::Member(member) => member.print(state, unit),
-            LayoutItem::Variant(variant) => {
-                // TODO: if variant is a single struct member then display inline
-                state.expanded(
-                    |state| state.line(|w, _hash| print_variant(self, variant, w)),
-                    |state| {
-                        let layout = variant.layout(state.hash());
-                        state.list(unit, &layout)
-                    },
-                )
-            }
+            LayoutItem::Member(member) => state.expanded(
+                |state| {
+                    state.line(|w, hash| {
+                        print_member(member, self.bit_offset, self.bit_size.get(), w, hash)
+                    })
+                },
+                |state| {
+                    let hash = state.hash();
+                    if member.is_inline(hash) {
+                        let ty = member.ty(hash);
+                        let ty = ty.as_ref().map(Cow::deref);
+                        print::types::print_members(state, unit, ty)?;
+                    }
+                    Ok(())
+                },
+            ),
+            LayoutItem::Variant(variant) => state.expanded(
+                |state| state.line(|w, _hash| print_variant(self, variant, w)),
+                |state| {
+                    let layout = variant.layout(state.hash());
+                    state.list(unit, &layout)
+                },
+            ),
             LayoutItem::Inherit(inherit) => {
                 state.line(|w, hash| print_inherit(self, inherit, w, hash))
             }
@@ -168,12 +183,31 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
             (&LayoutItem::Padding, &LayoutItem::Padding) => {
                 state.line(a, b, |w, _hash, x| print_padding(x, w))
             }
-            (&LayoutItem::Member(ref a), &LayoutItem::Member(ref b)) => {
-                Member::diff(state, unit_a, a, unit_b, b)
-            }
-            (&LayoutItem::Variant(ref variant_a), &LayoutItem::Variant(ref variant_b)) => {
-                // TODO: if variant is a single struct member then display inline
-                state.expanded(
+            (&LayoutItem::Member(ref member_a), &LayoutItem::Member(ref member_b)) => state
+                .expanded(
+                    |state| {
+                        state.line((a, member_a), (b, member_b), |w, hash, (x, member)| {
+                            print_member(member, x.bit_offset, x.bit_size.get(), w, hash)
+                        })
+                    },
+                    |state| {
+                        let ty_a = if member_a.is_inline(state.hash_a()) {
+                            member_a.ty(state.hash_a())
+                        } else {
+                            None
+                        };
+                        let ty_a = ty_a.as_ref().map(Cow::deref);
+                        let ty_b = if member_b.is_inline(state.hash_b()) {
+                            member_b.ty(state.hash_b())
+                        } else {
+                            None
+                        };
+                        let ty_b = ty_b.as_ref().map(Cow::deref);
+                        print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b)
+                    },
+                ),
+            (&LayoutItem::Variant(ref variant_a), &LayoutItem::Variant(ref variant_b)) => state
+                .expanded(
                     |state| {
                         state.line((a, variant_a), (b, variant_b), |w, _hash, (x, variant)| {
                             print_variant(x, variant, w)
@@ -184,8 +218,7 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
                         let layout_b = variant_b.layout(state.hash_b());
                         state.list(unit_a, &layout_a, unit_b, &layout_b)
                     },
-                )
-            }
+                ),
             (&LayoutItem::Inherit(ref inherit_a), &LayoutItem::Inherit(ref inherit_b)) => state
                 .line((a, inherit_a), (b, inherit_b), |w, hash, (x, inherit)| {
                     print_inherit(x, inherit, w, hash)
