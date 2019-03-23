@@ -7,15 +7,9 @@ use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit, Variant,
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
-fn print_member(
-    member: &Member,
-    bit_offset: u64,
-    bit_size: Option<u64>,
-    w: &mut dyn ValuePrinter,
-    hash: &FileHash,
-) -> Result<()> {
-    write!(w, "{}", format_bit(bit_offset))?;
-    match bit_size {
+fn print_member(member: &Member, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
+    write!(w, "{}", format_bit(member.bit_offset()))?;
+    match member.bit_size(hash) {
         Some(bit_size) => {
             write!(w, "[{}]", format_bit(bit_size))?;
         }
@@ -92,11 +86,7 @@ impl<'input> Print for Member<'input> {
         };
         let ty = ty.as_ref().map(Cow::deref);
         state.expanded(
-            |state| {
-                state.line(|w, hash| {
-                    print_member(self, self.bit_offset(), self.bit_size(hash), w, hash)
-                })
-            },
+            |state| state.line(|w, hash| print_member(self, w, hash)),
             |state| print::types::print_members(state, unit, ty),
         )
     }
@@ -115,11 +105,7 @@ impl<'input> Print for Member<'input> {
         };
         let ty_b = ty_b.as_ref().map(Cow::deref);
         state.expanded(
-            |state| {
-                state.line(a, b, |w, hash, x| {
-                    print_member(x, x.bit_offset(), x.bit_size(hash), w, hash)
-                })
-            },
+            |state| state.line(a, b, |w, hash, x| print_member(x, w, hash)),
             |state| print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b),
         )
     }
@@ -209,22 +195,7 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         match self.item {
             LayoutItem::Padding => state.line(|w, _hash| print_padding(self, w)),
-            LayoutItem::Member(member) => state.expanded(
-                |state| {
-                    state.line(|w, hash| {
-                        print_member(member, self.bit_offset, self.bit_size.get(), w, hash)
-                    })
-                },
-                |state| {
-                    let hash = state.hash();
-                    if member.is_inline(hash) {
-                        let ty = member.ty(hash);
-                        let ty = ty.as_ref().map(Cow::deref);
-                        print::types::print_members(state, unit, ty)?;
-                    }
-                    Ok(())
-                },
-            ),
+            LayoutItem::Member(member) => member.print(state, unit),
             LayoutItem::VariantPart(variant_part) => state.expanded(
                 |state| state.line(|w, _hash| print_variant_part(self, variant_part, w)),
                 |state| {
@@ -245,29 +216,9 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
             (&LayoutItem::Padding, &LayoutItem::Padding) => {
                 state.line(a, b, |w, _hash, x| print_padding(x, w))
             }
-            (&LayoutItem::Member(ref member_a), &LayoutItem::Member(ref member_b)) => state
-                .expanded(
-                    |state| {
-                        state.line((a, member_a), (b, member_b), |w, hash, (x, member)| {
-                            print_member(member, x.bit_offset, x.bit_size.get(), w, hash)
-                        })
-                    },
-                    |state| {
-                        let ty_a = if member_a.is_inline(state.hash_a()) {
-                            member_a.ty(state.hash_a())
-                        } else {
-                            None
-                        };
-                        let ty_a = ty_a.as_ref().map(Cow::deref);
-                        let ty_b = if member_b.is_inline(state.hash_b()) {
-                            member_b.ty(state.hash_b())
-                        } else {
-                            None
-                        };
-                        let ty_b = ty_b.as_ref().map(Cow::deref);
-                        print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b)
-                    },
-                ),
+            (&LayoutItem::Member(ref member_a), &LayoutItem::Member(ref member_b)) => {
+                Member::diff(state, unit_a, member_a, unit_b, member_b)
+            }
             (
                 &LayoutItem::VariantPart(ref variant_part_a),
                 &LayoutItem::VariantPart(ref variant_part_b),
