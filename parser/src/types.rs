@@ -519,7 +519,7 @@ pub struct StructType<'input> {
     pub(crate) byte_size: Size,
     pub(crate) declaration: bool,
     pub(crate) members: Vec<Member<'input>>,
-    pub(crate) variants: Vec<Variant<'input>>,
+    pub(crate) variant_parts: Vec<VariantPart<'input>>,
     pub(crate) inherits: Vec<Inherit>,
 }
 
@@ -570,10 +570,10 @@ impl<'input> StructType<'input> {
         &self.members
     }
 
-    /// The variant members of this type.
+    /// The variant parts of this type.
     #[inline]
-    pub fn variants(&self) -> &[Variant<'input>] {
-        &self.variants
+    pub fn variant_parts(&self) -> &[VariantPart<'input>] {
+        &self.variant_parts
     }
 
     /// The inherited types.
@@ -586,8 +586,8 @@ impl<'input> StructType<'input> {
     pub fn layout<'me>(&'me self, hash: &FileHash) -> Vec<Layout<'input, 'me>> {
         layout(
             &*self.members,
-            &*self.variants,
             &*self.inherits,
+            &*self.variant_parts,
             0,
             self.bit_size(),
             hash,
@@ -668,7 +668,70 @@ impl<'input> UnionType<'input> {
     }
 }
 
-// TODO allow for groups of variants (corresponding to DW_TAG_variant_part)
+/// A variant part.
+///
+/// A variant part is a discriminant member and list of variants that are
+/// selected based on the value of the discriminant member.
+#[derive(Debug, Default, Clone)]
+pub struct VariantPart<'input> {
+    pub(crate) discr: MemberOffset,
+    pub(crate) variants: Vec<Variant<'input>>,
+}
+
+impl<'input> VariantPart<'input> {
+    /// The discriminant member for this variant part.
+    ///
+    /// The given members should be from the type containing this variant part.
+    #[inline]
+    pub fn discriminant<'a>(&self, members: &'a [Member<'input>]) -> Option<&'a Member<'input>> {
+        for member in members {
+            if member.offset == self.discr {
+                return Some(member);
+            }
+        }
+        None
+    }
+
+    /// The variants for this variant part.
+    #[inline]
+    pub fn variants(&self) -> &[Variant<'input>] {
+        &self.variants
+    }
+
+    /// The smallest offset in bits for a variant of this variant part.
+    pub fn bit_offset(&self) -> u64 {
+        let mut bit_offset = u64::max_value();
+        for variant in &self.variants {
+            let o = variant.bit_offset();
+            if bit_offset > o {
+                bit_offset = o;
+            }
+        }
+        if bit_offset < u64::max_value() {
+            bit_offset
+        } else {
+            0
+        }
+    }
+
+    /// The largest size in bits for the variants of this variant part,
+    /// excluding leading and trailing padding.
+    pub fn bit_size(&self, hash: &FileHash) -> Option<u64> {
+        let start = self.bit_offset();
+        let mut end = start;
+        for variant in &self.variants {
+            let o = variant.bit_offset();
+            if let Some(size) = variant.bit_size(hash) {
+                if end < o + size {
+                    end = o + size;
+                }
+            } else {
+                return None;
+            }
+        }
+        Some(end - start)
+    }
+}
 
 /// A variant.
 ///
@@ -683,19 +746,6 @@ pub struct Variant<'input> {
 }
 
 impl<'input> Variant<'input> {
-    /// The discriminant member for this variant.
-    ///
-    /// The given members should be from the type containing this variant.
-    #[inline]
-    pub fn discriminant<'a>(&self, members: &'a [Member<'input>]) -> Option<&'a Member<'input>> {
-        for member in members {
-            if member.offset == self.discr {
-                return Some(member);
-            }
-        }
-        None
-    }
-
     /// The discriminant value which selects this variant.
     ///
     /// The sign of this value depends on the type of the discriminant member.
@@ -751,16 +801,16 @@ impl<'input> Variant<'input> {
         Some(end - start)
     }
 
-    /// The layout of members of this variant.
-    pub fn layout<'me>(&'me self, hash: &FileHash<'input>) -> Vec<Layout<'input, 'me>> {
-        layout(
-            &*self.members,
-            &[],
-            &[],
-            self.bit_offset(),
-            self.bit_size(hash),
-            hash,
-        )
+    /// The layout of members of this variant within a variant part.
+    ///
+    /// The given bit_offset and bit_size should be for the variant part.
+    pub fn layout<'me>(
+        &'me self,
+        bit_offset: u64,
+        bit_size: Option<u64>,
+        hash: &FileHash<'input>,
+    ) -> Vec<Layout<'input, 'me>> {
+        layout(&*self.members, &[], &[], bit_offset, bit_size, hash)
     }
 
     /// Compare the identifying information of two types.
@@ -918,16 +968,16 @@ pub enum LayoutItem<'input, 'item> {
     Padding,
     /// A member.
     Member(&'item Member<'input>),
-    /// A variant.
-    Variant(&'item Variant<'input>),
+    /// A variant part.
+    VariantPart(&'item VariantPart<'input>),
     /// An inherited type.
     Inherit(&'item Inherit),
 }
 
 fn layout<'input, 'item>(
     members: &'item [Member<'input>],
-    variants: &'item [Variant<'input>],
     inherits: &'item [Inherit],
+    variant_parts: &'item [VariantPart<'input>],
     base_bit_offset: u64,
     bit_size: Option<u64>,
     hash: &FileHash,
@@ -940,17 +990,16 @@ fn layout<'input, 'item>(
             item: LayoutItem::Member(member),
         })
         .collect();
-    members.extend(variants.iter().map(|variant| Layout {
-        bit_offset: variant.bit_offset() - base_bit_offset,
-        bit_size: variant.bit_size(hash).into(),
-        item: LayoutItem::Variant(variant),
-    }));
     members.extend(inherits.iter().map(|inherit| Layout {
         bit_offset: inherit.bit_offset() - base_bit_offset,
         bit_size: inherit.bit_size(hash).into(),
         item: LayoutItem::Inherit(inherit),
     }));
-    // FIXME: different sorting for variants
+    members.extend(variant_parts.iter().map(|variant_part| Layout {
+        bit_offset: variant_part.bit_offset() - base_bit_offset,
+        bit_size: variant_part.bit_size(hash).into(),
+        item: LayoutItem::VariantPart(variant_part),
+    }));
     members.sort_by(|a, b| {
         a.bit_offset
             .cmp(&b.bit_offset)
