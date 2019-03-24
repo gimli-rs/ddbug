@@ -740,7 +740,9 @@ where
                     unit.variables.push(variable.variable);
                 }
             }
-            gimli::DW_TAG_imported_declaration | gimli::DW_TAG_imported_module => {}
+            gimli::DW_TAG_dwarf_procedure
+            | gimli::DW_TAG_imported_declaration
+            | gimli::DW_TAG_imported_module => {}
             tag => {
                 if !parse_type(
                     unit,
@@ -2513,7 +2515,7 @@ where
                 p.ty = parameter.ty;
             }
             if !parameter.locations.is_empty() {
-                p.locations = parameter.locations;
+                p.locations.extend(&parameter.locations);
             }
             return Ok(());
         } else {
@@ -2557,6 +2559,7 @@ where
             gimli::DW_AT_low_pc
             | gimli::DW_AT_high_pc
             | gimli::DW_AT_ranges
+            | gimli::DW_AT_abstract_origin
             | gimli::DW_AT_sibling => {}
             _ => debug!(
                 "unknown lexical_block attribute: {} {:?}",
@@ -2650,6 +2653,7 @@ where
             gimli::DW_AT_low_pc
             | gimli::DW_AT_high_pc
             | gimli::DW_AT_ranges
+            | gimli::DW_AT_abstract_origin
             | gimli::DW_AT_sibling => {}
             _ => debug!(
                 "unknown inlined lexical_block attribute: {} {:?}",
@@ -3115,7 +3119,7 @@ where
                 v.size = variable.size;
             }
             if !variable.locations.is_empty() {
-                v.locations = variable.locations;
+                v.locations.extend(&variable.locations);
             }
             return Ok(());
         } else {
