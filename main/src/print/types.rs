@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::cmp;
 
 use parser::{
-    ArrayType, BaseType, FileHash, FunctionType, PointerToMemberType, Type, TypeKind, TypeModifier,
-    TypeModifierKind, Unit, UnspecifiedType,
+    ArrayType, BaseType, FileHash, FunctionType, PointerToMemberType, SubrangeType, Type, TypeKind,
+    TypeModifier, TypeModifierKind, Unit, UnspecifiedType,
 };
 
 use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
@@ -22,7 +22,8 @@ pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()
         | TypeKind::Function(..)
         | TypeKind::Unspecified(..)
         | TypeKind::PointerToMember(..)
-        | TypeKind::Modifier(..) => Err(format!("can't print {:?}", ty).into()),
+        | TypeKind::Modifier(..)
+        | TypeKind::Subrange(..) => Err(format!("can't print {:?}", ty).into()),
     }
 }
 
@@ -50,6 +51,7 @@ pub(crate) fn print_ref(
                 TypeKind::Unspecified(ref val) => print_ref_unspecified(val, w),
                 TypeKind::PointerToMember(ref val) => print_ref_pointer_to_member(val, w, hash),
                 TypeKind::Modifier(ref val) => print_ref_modifier(val, w, hash),
+                TypeKind::Subrange(ref val) => print_ref_subrange(val, w, hash),
             }
         }
     }
@@ -135,6 +137,22 @@ fn print_ref_modifier(ty: &TypeModifier, w: &mut dyn ValuePrinter, hash: &FileHa
             | TypeModifierKind::Other => {}
         }
         print_ref(ty.ty(hash), w, hash)?;
+    }
+    Ok(())
+}
+
+fn print_ref_subrange(ty: &SubrangeType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
+    if let Some(name) = ty.name() {
+        write!(w, "{}", name)?;
+    } else {
+        print_ref(ty.ty(hash), w, hash)?;
+    }
+    // TODO: display bounds use underlying type
+    match (ty.lower(), ty.upper()) {
+        (Some(lower), Some(upper)) => write!(w, " {}..{}", lower, upper)?,
+        (Some(lower), None) => write!(w, " {}..", lower)?,
+        (None, Some(upper)) => write!(w, " ..{}", upper)?,
+        (None, None) => {}
     }
     Ok(())
 }

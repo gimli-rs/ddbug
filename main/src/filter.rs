@@ -80,7 +80,8 @@ pub(crate) fn filter_types<'input, 'unit>(
             | TypeKind::Function(..)
             | TypeKind::Unspecified(..)
             | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..) => return false,
+            | TypeKind::Modifier(..)
+            | TypeKind::Subrange(..) => return false,
         }
         // Filter out inline types.
         t.offset().is_some() && !inline_types.contains(&t.offset())
@@ -140,7 +141,8 @@ fn filter_type(ty: &Type, options: &Options) -> bool {
         | TypeKind::Array(..)
         | TypeKind::Function(..)
         | TypeKind::PointerToMember(..)
-        | TypeKind::Modifier(..) => options.filter_name.is_none(),
+        | TypeKind::Modifier(..)
+        | TypeKind::Subrange(..) => options.filter_name.is_none(),
     }
 }
 

@@ -20,8 +20,8 @@ use crate::range::Range;
 use crate::source::Source;
 use crate::types::{
     ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Inherit, Member, MemberOffset,
-    ParameterType, PointerToMemberType, StructType, Type, TypeDef, TypeKind, TypeModifier,
-    TypeModifierKind, TypeOffset, UnionType, UnspecifiedType, Variant, VariantPart,
+    ParameterType, PointerToMemberType, StructType, SubrangeType, Type, TypeDef, TypeKind,
+    TypeModifier, TypeModifierKind, TypeOffset, UnionType, UnspecifiedType, Variant, VariantPart,
 };
 use crate::unit::Unit;
 use crate::variable::{LocalVariable, Variable, VariableOffset};
@@ -903,6 +903,9 @@ where
     ty.kind = match tag {
         gimli::DW_TAG_base_type => TypeKind::Base(parse_base_type(dwarf, dwarf_unit, node)?),
         gimli::DW_TAG_array_type => TypeKind::Array(parse_array_type(dwarf, dwarf_unit, node)?),
+        gimli::DW_TAG_subrange_type => {
+            TypeKind::Subrange(parse_subrange_type(dwarf, dwarf_unit, node)?)
+        }
         gimli::DW_TAG_subroutine_type => {
             TypeKind::Function(parse_subroutine_type(dwarf, dwarf_unit, node)?)
         }
@@ -1001,6 +1004,7 @@ where
                     modifier.byte_size = Size::new(byte_size);
                 }
             }
+            gimli::DW_AT_artificial => {}
             _ => debug!(
                 "unknown type modifier attribute: {} {:?}",
                 attr.name(),
@@ -1041,7 +1045,7 @@ where
                     ty.byte_size = Size::new(byte_size);
                 }
             }
-            gimli::DW_AT_encoding => {}
+            gimli::DW_AT_artificial | gimli::DW_AT_decimal_scale | gimli::DW_AT_encoding => {}
             _ => debug!(
                 "unknown base type attribute: {} {:?}",
                 attr.name(),
@@ -1385,6 +1389,13 @@ where
                     namespace,
                     child,
                 )?;
+            }
+            // subrange type encountered here for Ada.
+            // TODO: not sure which types are valid here.
+            // Maybe need to call parse_type(), but don't have all the parameters
+            // needed for it yet.
+            gimli::DW_TAG_subrange_type => {
+                parse_subrange_type(dwarf, dwarf_unit, child)?;
             }
             tag => {
                 debug!("unknown variant child tag: {}", tag);
@@ -1859,6 +1870,73 @@ where
         }
     }
     Ok(array)
+}
+
+fn parse_subrange_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+) -> Result<SubrangeType<'input>>
+where
+    Endian: gimli::Endianity,
+{
+    // TODO: lower bound default should depend on language
+    let mut subrange = SubrangeType::default();
+    let mut count = None;
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        match attr.name() {
+            gimli::DW_AT_name => {
+                subrange.name = dwarf.string(dwarf_unit, attr.value());
+            }
+            gimli::DW_AT_type => {
+                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    subrange.ty = offset;
+                }
+            }
+            gimli::DW_AT_lower_bound => {
+                if let Some(lower) = attr.udata_value() {
+                    subrange.lower = Some(lower);
+                }
+            }
+            gimli::DW_AT_upper_bound => {
+                if let Some(upper) = attr.udata_value() {
+                    subrange.upper = Some(upper);
+                }
+            }
+            gimli::DW_AT_count => {
+                if let Some(v) = attr.udata_value() {
+                    count = Some(v);
+                }
+            }
+            gimli::DW_AT_byte_size => {
+                if let Some(byte_size) = attr.udata_value() {
+                    subrange.byte_size = Size::new(byte_size);
+                }
+            }
+            gimli::DW_AT_artificial => {}
+            _ => debug!(
+                "unknown subrange attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    if let (Some(lower), Some(count)) = (subrange.lower, count) {
+        subrange.upper = Some(lower + count);
+    }
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            tag => {
+                debug!("unknown subrange child tag: {}", tag);
+            }
+        }
+    }
+    Ok(subrange)
 }
 
 fn parse_subroutine_type<'input, 'abbrev, 'unit, 'tree, Endian>(

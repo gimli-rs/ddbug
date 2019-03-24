@@ -36,6 +36,8 @@ pub enum TypeKind<'input> {
     PointerToMember(PointerToMemberType),
     /// A type that is obtained by adding a modifier to another type.
     Modifier(TypeModifier<'input>),
+    /// A subrange of another type.
+    Subrange(SubrangeType<'input>),
 }
 
 impl<'input> TypeKind<'input> {
@@ -52,6 +54,7 @@ impl<'input> TypeKind<'input> {
             TypeKind::Unspecified(..) => 9,
             TypeKind::PointerToMember(..) => 10,
             TypeKind::Modifier(..) => 11,
+            TypeKind::Subrange(..) => 12,
         }
     }
 }
@@ -193,6 +196,7 @@ impl<'input> Type<'input> {
             TypeKind::Unspecified(..) => None,
             TypeKind::PointerToMember(ref val) => val.byte_size(hash),
             TypeKind::Modifier(ref val) => val.byte_size(hash),
+            TypeKind::Subrange(ref val) => val.byte_size(hash),
         }
     }
 
@@ -209,7 +213,8 @@ impl<'input> Type<'input> {
             | TypeKind::Function(..)
             | TypeKind::Unspecified(..)
             | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..) => false,
+            | TypeKind::Modifier(..)
+            | TypeKind::Subrange(..) => false,
         }
     }
 
@@ -232,7 +237,8 @@ impl<'input> Type<'input> {
             | TypeKind::Enumeration(..)
             | TypeKind::Array(..)
             | TypeKind::Unspecified(..)
-            | TypeKind::PointerToMember(..) => false,
+            | TypeKind::PointerToMember(..)
+            | TypeKind::Subrange(..) => false,
         }
     }
 
@@ -249,7 +255,8 @@ impl<'input> Type<'input> {
             | TypeKind::Function(..)
             | TypeKind::Unspecified(..)
             | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..) => &[],
+            | TypeKind::Modifier(..)
+            | TypeKind::Subrange(..) => &[],
         }
     }
 
@@ -280,6 +287,7 @@ impl<'input> Type<'input> {
                 PointerToMemberType::cmp_id(hash_a, a, hash_b, b)
             }
             (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(hash_a, a, hash_b, b),
+            (&Subrange(ref a), &Subrange(ref b)) => SubrangeType::cmp_id(hash_a, a, hash_b, b),
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
                 let discr_b = type_b.kind.discriminant_value();
@@ -1190,6 +1198,81 @@ impl<'input> ArrayType<'input> {
             (None, None) => {}
         }
         a.count.cmp(&b.count)
+    }
+}
+
+/// A subrange of another type.
+#[derive(Debug, Default, Clone)]
+pub struct SubrangeType<'input> {
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: TypeOffset,
+    pub(crate) lower: Option<u64>,
+    pub(crate) upper: Option<u64>,
+    pub(crate) byte_size: Size,
+}
+
+impl<'input> SubrangeType<'input> {
+    /// The name of the subrange.
+    #[inline]
+    pub fn name(&self) -> Option<&'input str> {
+        self.name
+    }
+
+    /// The underlying type of the subrange.
+    #[inline]
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        Type::from_offset(hash, self.ty)
+    }
+
+    /// The lower bound of the subrange (inclusive).
+    #[inline]
+    pub fn lower(&self) -> Option<u64> {
+        self.lower
+    }
+
+    /// The upper bound of the subrange (inclusive).
+    #[inline]
+    pub fn upper(&self) -> Option<u64> {
+        self.upper
+    }
+
+    /// The size in bytes of an instance of this type.
+    pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
+        if self.byte_size.is_some() {
+            self.byte_size.get()
+        } else {
+            self.ty(hash).and_then(|v| v.byte_size(hash))
+        }
+    }
+
+    /// Compare the identifying information of two types.
+    ///
+    /// Subrange types are considered equal if the underlying type and bounds are equal.
+    ///
+    /// This can be used to sort, and to determine if two types refer to the same definition
+    /// (even if there are differences in the definitions).
+    pub fn cmp_id(
+        hash_a: &FileHash,
+        a: &SubrangeType,
+        hash_b: &FileHash,
+        b: &SubrangeType,
+    ) -> cmp::Ordering {
+        match (a.ty(hash_a), b.ty(hash_b)) {
+            (Some(ref ty_a), Some(ref ty_b)) => {
+                let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
+                if ord != cmp::Ordering::Equal {
+                    return ord;
+                }
+            }
+            (Some(_), None) => {
+                return cmp::Ordering::Less;
+            }
+            (None, Some(_)) => {
+                return cmp::Ordering::Greater;
+            }
+            (None, None) => {}
+        }
+        a.lower.cmp(&b.lower).then_with(|| a.upper.cmp(&b.upper))
     }
 }
 
