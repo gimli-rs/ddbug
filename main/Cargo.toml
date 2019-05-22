@@ -11,8 +11,8 @@ license = "Apache-2.0/MIT"
 edition = "2018"
 
 [dependencies]
-capstone = "0.5"
-capstone-sys = "0.9"
+capstone = { git = "https://github.com/capstone-rust/capstone-rs.git", rev = "5044ace8022b1651d1b7c93d41ad56993e0225f5" }
+capstone-sys = { git = "https://github.com/capstone-rust/capstone-rs.git", rev = "5044ace8022b1651d1b7c93d41ad56993e0225f5" }
 clap = "2.26"
 env_logger = "0.6"
 fnv = "1.0"
