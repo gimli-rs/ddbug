@@ -180,12 +180,18 @@ impl<'input> DiffList for Variant<'input> {
     fn diff_cost(
         _state: &DiffState,
         _arg_a: &Self::Arg,
-        _a: &Self,
+        a: &Self,
         _arg_b: &Self::Arg,
-        _b: &Self,
+        b: &Self,
     ) -> usize {
-        // TODO
-        2
+        let mut cost = 0;
+        if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
+            cost += 1;
+        }
+        if a.discriminant_value() != b.discriminant_value() {
+            cost += 1;
+        }
+        cost
     }
 }
 
@@ -265,8 +271,9 @@ impl<'input, 'member> DiffList for Layout<'input, 'member> {
                 Member::diff_cost(state, unit_a, a, unit_b, b)
             }
             (&LayoutItem::VariantPart(ref _a), &LayoutItem::VariantPart(ref _b)) => {
-                // TODO
-                2
+                // TODO: for now we assume there is only one variant part
+                // Later we should compare `VariantPart::discr`
+                0
             }
             (&LayoutItem::Inherit(ref a), &LayoutItem::Inherit(ref b)) => {
                 Inherit::diff_cost(state, &(), a, &(), b)
