@@ -60,11 +60,7 @@ where
         }
     }
 
-    fn get_register_name(
-        &self,
-        machine: object::Machine,
-        register: Register,
-    ) -> Option<&'static str> {
+    fn get_register_name(&self, machine: Architecture, register: Register) -> Option<&'static str> {
         match self {
             DebugInfo::Dwarf(dwarf) => dwarf.get_register_name(machine, register),
         }
@@ -92,12 +88,12 @@ impl StringCache {
     }
 }
 
-pub use object::Machine;
+pub use object::target_lexicon::Architecture;
 
 /// The parsed debuginfo for a single file.
 pub struct File<'input> {
     pub(crate) path: &'input str,
-    pub(crate) machine: Machine,
+    pub(crate) machine: Architecture,
     pub(crate) segments: Vec<Segment<'input>>,
     pub(crate) sections: Vec<Section<'input>>,
     pub(crate) symbols: Vec<Symbol<'input>>,
@@ -202,7 +198,7 @@ impl<'input> File<'input> {
     where
         Cb: FnOnce(&File) -> Result<()>,
     {
-        let machine = object.machine();
+        let machine = object.architecture();
         let mut segments = Vec::new();
         for segment in object.segments() {
             segments.push(Segment {
@@ -233,7 +229,7 @@ impl<'input> File<'input> {
 
         // TODO: symbols from debug_object too?
         let mut symbols = Vec::new();
-        for symbol in object.symbols() {
+        for (_, symbol) in object.symbols() {
             // TODO: handle relocatable objects
             let address = symbol.address();
             if address == 0 {
@@ -403,7 +399,7 @@ impl<'input> File<'input> {
 
     /// The machine type that the file contains debuginfo for.
     #[inline]
-    pub fn machine(&self) -> Machine {
+    pub fn machine(&self) -> Architecture {
         self.machine
     }
 

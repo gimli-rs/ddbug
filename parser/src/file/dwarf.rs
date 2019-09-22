@@ -10,7 +10,7 @@ use gimli::Reader as GimliReader;
 use object::{self, ObjectSection};
 
 use crate::cfi::{Cfi, CfiDirective};
-use crate::file::{DebugInfo, FileHash, StringCache};
+use crate::file::{Architecture, DebugInfo, FileHash, StringCache};
 use crate::function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
 };
@@ -31,7 +31,7 @@ type RelocationMap = HashMap<usize, object::Relocation>;
 
 fn add_relocations<'input, 'file, Object>(
     relocations: &mut RelocationMap,
-    file: &Object,
+    file: &'file Object,
     section: &Object::Section,
 ) where
     Object: object::Object<'input, 'file>,
@@ -42,21 +42,41 @@ fn add_relocations<'input, 'file, Object>(
             continue;
         }
         let offset = offset as usize;
-        match relocation.kind() {
-            object::RelocationKind::Direct32 | object::RelocationKind::Direct64 => {
-                if let Some(symbol) = file.symbol_by_index(relocation.symbol()) {
-                    let addend = symbol.address().wrapping_add(relocation.addend() as u64);
-                    relocation.set_addend(addend as i64);
-                    if relocations.insert(offset, relocation).is_some() {
-                        println!(
-                            "Multiple relocations for section {} at offset 0x{:08x}",
-                            section.name().unwrap(),
-                            offset
-                        );
-                    }
+        let target = match relocation.target() {
+            object::RelocationTarget::Symbol(index) => {
+                if let Some(symbol) = file.symbol_by_index(index) {
+                    symbol.address()
                 } else {
                     println!(
-                        "Relocation with invalid symbol for section {} at offset 0x{:08x}",
+                        "Relocation with invalid symbol index {} for section {} at offset 0x{:08x}",
+                        index.0,
+                        section.name().unwrap(),
+                        offset
+                    );
+                    continue;
+                }
+            }
+            object::RelocationTarget::Section(index) => {
+                if let Some(section) = file.section_by_index(index) {
+                    section.address()
+                } else {
+                    println!(
+                        "Relocation with invalid section index {} for section {} at offset 0x{:08x}",
+                        index.0,
+                        section.name().unwrap(),
+                        offset
+                    );
+                    continue;
+                }
+            }
+        };
+        match relocation.kind() {
+            object::RelocationKind::Absolute => {
+                let addend = target.wrapping_add(relocation.addend() as u64);
+                relocation.set_addend(addend as i64);
+                if relocations.insert(offset, relocation).is_some() {
+                    println!(
+                        "Multiple relocations for section {} at offset 0x{:08x}",
                         section.name().unwrap(),
                         offset
                     );
@@ -84,7 +104,7 @@ impl<'a, R: gimli::Reader<Offset = usize>> Relocate<'a, R> {
     fn relocate(&self, offset: usize, value: u64) -> u64 {
         if let Some(relocation) = self.relocations.get(&offset) {
             match relocation.kind() {
-                object::RelocationKind::Direct32 | object::RelocationKind::Direct64 => {
+                object::RelocationKind::Absolute => {
                     if relocation.has_implicit_addend() {
                         // Use the explicit addend too, because it may have the symbol value.
                         return value.wrapping_add(relocation.addend() as u64);
@@ -306,13 +326,13 @@ where
 
     pub(crate) fn get_register_name(
         &self,
-        machine: object::Machine,
+        machine: Architecture,
         register: Register,
     ) -> Option<&'static str> {
         let register_name = match machine {
-            object::Machine::Arm | object::Machine::Arm64 => gimli::Arm::register_name,
-            object::Machine::X86 => gimli::X86::register_name,
-            object::Machine::X86_64 => gimli::X86_64::register_name,
+            Architecture::Arm(_) => gimli::Arm::register_name,
+            Architecture::I386 => gimli::X86::register_name,
+            Architecture::X86_64 => gimli::X86_64::register_name,
             _ => return None,
         };
         register_name(gimli::Register(register.0))

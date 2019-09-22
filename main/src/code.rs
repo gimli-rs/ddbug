@@ -4,7 +4,7 @@ use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
 
 use crate::print::{self, PrintState, ValuePrinter};
 use crate::Result;
-use parser::{Address, File, FunctionDetails, Machine, Range, Register};
+use parser::{Address, Architecture, File, FunctionDetails, Range, Register};
 
 #[derive(Debug)]
 pub(crate) struct Code<'code> {
@@ -28,8 +28,8 @@ pub(crate) struct Call {
 impl<'code> Code<'code> {
     pub(crate) fn new(file: &File<'code>) -> Option<Self> {
         let (arch, mode) = match file.machine() {
-            Machine::X86 => (Arch::X86, Mode::Mode32),
-            Machine::X86_64 => (Arch::X86, Mode::Mode64),
+            Architecture::I386 => (Arch::X86, Mode::Mode32),
+            Architecture::X86_64 => (Arch::X86, Mode::Mode64),
             _ => return None,
         };
         let mut regions = Vec::new();
