@@ -192,6 +192,16 @@ impl<'a, R: gimli::Reader<Offset = usize>> gimli::Reader for Relocate<'a, R> {
     }
 
     #[inline]
+    fn offset_id(&self) -> gimli::ReaderOffsetId {
+        self.reader.offset_id()
+    }
+
+    #[inline]
+    fn lookup_offset_id(&self, id: gimli::ReaderOffsetId) -> Option<Self::Offset> {
+        self.reader.lookup_offset_id(id)
+    }
+
+    #[inline]
     fn find(&self, byte: u8) -> gimli::Result<Self::Offset> {
         self.reader.find(byte)
     }
