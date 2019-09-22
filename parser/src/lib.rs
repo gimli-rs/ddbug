@@ -112,7 +112,7 @@ mod address {
 
     /// An optional address.
     ///
-    /// This is similar to `Option<u64>`, but uses `0` to encode the `None` case.
+    /// This is similar to `Option<u64>`, but uses `!0` to encode the `None` case.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct Address(u64);
 
@@ -127,7 +127,7 @@ mod address {
         /// Create an unknown or absent address value.
         #[inline]
         pub fn none() -> Address {
-            Address(0)
+            Address(!0)
         }
 
         /// Return true if the address is unknown or absent.

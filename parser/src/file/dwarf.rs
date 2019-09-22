@@ -82,6 +82,20 @@ fn add_relocations<'input, 'file, Object>(
                     );
                 }
             }
+            object::RelocationKind::Relative => {
+                let addend = target
+                    .wrapping_add(relocation.addend() as u64)
+                    .wrapping_sub(section.address())
+                    .wrapping_sub(offset as u64);
+                relocation.set_addend(addend as i64);
+                if relocations.insert(offset, relocation).is_some() {
+                    println!(
+                        "Multiple relocations for section {} at offset 0x{:08x}",
+                        section.name().unwrap(),
+                        offset
+                    );
+                }
+            }
             _ => {
                 println!(
                     "Unsupported relocation for section {} at offset 0x{:08x}",
@@ -104,7 +118,7 @@ impl<'a, R: gimli::Reader<Offset = usize>> Relocate<'a, R> {
     fn relocate(&self, offset: usize, value: u64) -> u64 {
         if let Some(relocation) = self.relocations.get(&offset) {
             match relocation.kind() {
-                object::RelocationKind::Absolute => {
+                object::RelocationKind::Absolute | object::RelocationKind::Relative => {
                     if relocation.has_implicit_addend() {
                         // Use the explicit addend too, because it may have the symbol value.
                         return value.wrapping_add(relocation.addend() as u64);
@@ -475,10 +489,7 @@ where
             }
             gimli::DW_AT_low_pc => {
                 if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    // TODO: is address 0 ever valid?
-                    if addr != 0 {
-                        unit.low_pc = Some(addr);
-                    }
+                    unit.low_pc = Some(addr);
                 }
             }
             gimli::DW_AT_high_pc => match attr.value() {
@@ -2164,10 +2175,7 @@ where
             }
             gimli::DW_AT_low_pc => {
                 if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    // TODO: is address 0 ever valid?
-                    if addr != 0 {
-                        function.address = Address::new(addr);
-                    }
+                    function.address = Address::new(addr);
                 }
             }
             gimli::DW_AT_high_pc => match attr.value() {
@@ -3215,15 +3223,12 @@ where
                         pieces
                     );
                 } else {
-                    // TODO: is address 0 ever valid?
-                    if address != 0 {
-                        let address = Address::new(address);
-                        let size = match piece.size_in_bits.map(|x| (x + 7) / 8) {
-                            Some(size) => Size::new(size),
-                            None => Size::none(),
-                        };
-                        result = Some((address, size));
-                    }
+                    let address = Address::new(address);
+                    let size = match piece.size_in_bits.map(|x| (x + 7) / 8) {
+                        Some(size) => Size::new(size),
+                        None => Size::none(),
+                    };
+                    result = Some((address, size));
                 }
             }
             gimli::Location::Empty

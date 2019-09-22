@@ -33,6 +33,8 @@ impl<'code> Code<'code> {
             _ => return None,
         };
         let mut regions = Vec::new();
+        // TODO: handle object files (no segments)
+        // TODO: handle relocations
         for segment in file.segments() {
             regions.push(Region {
                 address: segment.address,
@@ -223,6 +225,10 @@ impl<'a> Instruction<'a> {
             };
             if let Some(imm) = is_imm(&op) {
                 if is_jump(&detail) && range.contains(imm) {
+                    continue;
+                }
+                // TODO: handle relocations
+                if imm == 0 {
                     continue;
                 }
                 // TODO: lookup variables too
