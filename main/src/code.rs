@@ -1,6 +1,7 @@
 use capstone::arch::x86::X86OperandType;
 use capstone::arch::ArchOperand;
 use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
+use std::convert::TryInto;
 
 use crate::print::{self, PrintState, ValuePrinter};
 use crate::Result;
@@ -49,9 +50,7 @@ impl<'code> Code<'code> {
     }
 
     pub(crate) fn calls(&self, range: Range) -> Vec<Call> {
-        self.range(range)
-            .and_then(|code| calls(self.arch, self.mode, code, range.begin))
-            .unwrap_or(Vec::new())
+        calls(self, range).unwrap_or(Vec::new())
     }
 
     pub(crate) fn disassembler<'a>(&'a self) -> Option<Disassembler<'a>> {
@@ -70,34 +69,52 @@ impl<'code> Code<'code> {
         }
         None
     }
+
+    fn read_mem(&self, address: u64, size: u64) -> Option<u64> {
+        let range = self.range(Range {
+            begin: address,
+            end: address + size,
+        })?;
+        match size {
+            4 => Some(u32::from_le_bytes(range.try_into().unwrap()) as u64),
+            8 => Some(u64::from_le_bytes(range.try_into().unwrap())),
+            _ => None,
+        }
+    }
 }
 
-fn calls(arch: Arch, mode: Mode, code: &[u8], addr: u64) -> Option<Vec<Call>> {
-    let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
+fn calls(code: &Code, range: Range) -> Option<Vec<Call>> {
+    let bytes = code.range(range)?;
+    let mut cs = Capstone::new_raw(code.arch, code.mode, capstone::NO_EXTRA_MODE, None).ok()?;
     cs.set_detail(true).ok()?;
-    let insns = cs.disasm_all(code, addr).ok()?;
-    Some(insns.iter().filter_map(|x| call(arch, &cs, &x)).collect())
+    let insns = cs.disasm_all(bytes, range.begin).ok()?;
+    Some(insns.iter().filter_map(|x| call(code, &cs, &x)).collect())
 }
 
-fn call(arch: Arch, cs: &Capstone, insn: &Insn) -> Option<Call> {
-    match arch {
-        Arch::X86 => call_x86(cs, insn),
+fn call(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
+    match code.arch {
+        Arch::X86 => call_x86(code, cs, insn),
         _ => None,
     }
 }
 
-fn call_x86(cs: &Capstone, insn: &Insn) -> Option<Call> {
+fn call_x86(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
     let detail = cs.insn_detail(insn).ok()?;
     if !is_call(&detail) {
         return None;
     }
     let arch_detail = detail.arch_detail();
     for op in arch_detail.operands() {
-        if let ArchOperand::X86Operand(op) = op {
-            if let X86OperandType::Imm(imm) = op.op_type {
+        if let Some(imm) = is_imm(&op) {
+            return Some(Call {
+                from: insn.address(),
+                to: imm as u64,
+            });
+        } else if let Some((_offset, address, size)) = is_ip_offset(insn, &op) {
+            if let Some(value) = code.read_mem(address, size) {
                 return Some(Call {
                     from: insn.address(),
-                    to: imm as u64,
+                    to: value,
                 });
             }
         }
@@ -321,6 +338,21 @@ impl<'a> Instruction<'a> {
                     }
                 }
             }
+            if let Some((offset, address, size)) = is_ip_offset(&self.insn, &op) {
+                if let Some(value) = d.code.read_mem(address, size) {
+                    state.line(|w, hash| {
+                        pad_address(w)?;
+                        pad_mnemonic(w)?;
+                        // TODO: show register name
+                        write!(w, "[ip + 0x{:x}] = 0x{:x}", offset, value)?;
+                        if let Some(function) = hash.functions_by_address.get(&value) {
+                            write!(w, " = ")?;
+                            print::function::print_ref(function, w)?;
+                        }
+                        Ok(())
+                    })?;
+                }
+            }
             // TODO: keep track of pointer types, and lookup X86OperandType::Mem offsets
         }
 
@@ -366,6 +398,27 @@ fn is_reg_offset(op: &ArchOperand) -> Option<(Register, i64)> {
     if let ArchOperand::X86Operand(op) = op {
         if let X86OperandType::Mem(op) = op.op_type {
             return convert_reg(op.base()).map(|reg| (reg, op.disp()));
+        }
+    }
+    None
+}
+
+// Option<(offset, address, size)>
+fn is_ip_offset(insn: &Insn, op: &ArchOperand) -> Option<(i64, u64, u64)> {
+    if let ArchOperand::X86Operand(op) = op {
+        if let X86OperandType::Mem(op) = op.op_type {
+            use capstone::arch::x86::X86Reg;
+            let reg = op.base().0 as u32;
+            let size = if reg == X86Reg::X86_REG_RIP {
+                8
+            } else if reg == X86Reg::X86_REG_EIP {
+                4
+            } else {
+                return None;
+            };
+            let offset = op.disp();
+            let address = (insn.address() + insn.bytes().len() as u64).wrapping_add(offset as u64);
+            return Some((offset, address, size));
         }
     }
     None
