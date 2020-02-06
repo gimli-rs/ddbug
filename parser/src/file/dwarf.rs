@@ -19,9 +19,10 @@ use crate::namespace::{Namespace, NamespaceKind};
 use crate::range::Range;
 use crate::source::Source;
 use crate::types::{
-    ArrayType, BaseType, EnumerationType, Enumerator, FunctionType, Inherit, Member, MemberOffset,
-    ParameterType, PointerToMemberType, StructType, SubrangeType, Type, TypeDef, TypeKind,
-    TypeModifier, TypeModifierKind, TypeOffset, UnionType, UnspecifiedType, Variant, VariantPart,
+    ArrayType, BaseType, BaseTypeEncoding, Endianity, EnumerationType, Enumerator, FunctionType,
+    Inherit, Member, MemberOffset, ParameterType, PointerToMemberType, StructType, SubrangeType,
+    Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType,
+    UnspecifiedType, Variant, VariantPart,
 };
 use crate::unit::Unit;
 use crate::variable::{LocalVariable, Variable, VariableOffset};
@@ -888,6 +889,7 @@ where
     let offset = offset.to_unit_section_offset(dwarf_unit);
     ty.offset = offset.into();
     ty.kind = match tag {
+        gimli::DW_TAG_base_type => TypeKind::Base(parse_base_type(dwarf, dwarf_unit, node)?),
         gimli::DW_TAG_typedef => TypeKind::Def(parse_typedef(dwarf, dwarf_unit, namespace, node)?),
         // TODO: distinguish between class and structure
         gimli::DW_TAG_class_type | gimli::DW_TAG_structure_type => {
@@ -944,7 +946,6 @@ where
     let offset = offset.to_unit_section_offset(dwarf_unit);
     ty.offset = offset.into();
     ty.kind = match tag {
-        gimli::DW_TAG_base_type => TypeKind::Base(parse_base_type(dwarf, dwarf_unit, node)?),
         gimli::DW_TAG_array_type => TypeKind::Array(parse_array_type(dwarf, dwarf_unit, node)?),
         gimli::DW_TAG_subrange_type => {
             TypeKind::Subrange(parse_subrange_type(dwarf, dwarf_unit, node)?)
@@ -1088,7 +1089,37 @@ where
                     ty.byte_size = Size::new(byte_size);
                 }
             }
-            gimli::DW_AT_artificial | gimli::DW_AT_decimal_scale | gimli::DW_AT_encoding => {}
+            gimli::DW_AT_encoding => {
+                if let gimli::AttributeValue::Encoding(val) = attr.value() {
+                    ty.encoding = match val {
+                        gimli::DW_ATE_boolean => BaseTypeEncoding::Boolean,
+                        gimli::DW_ATE_address => BaseTypeEncoding::Address,
+                        gimli::DW_ATE_signed => BaseTypeEncoding::Signed,
+                        gimli::DW_ATE_signed_char => BaseTypeEncoding::SignedChar,
+                        gimli::DW_ATE_unsigned => BaseTypeEncoding::Unsigned,
+                        gimli::DW_ATE_unsigned_char => BaseTypeEncoding::UnsignedChar,
+                        gimli::DW_ATE_float => BaseTypeEncoding::Float,
+                        _ => {
+                            debug!("unknown base type encoding: {} {:?}", attr.name(), val);
+                            BaseTypeEncoding::Other
+                        }
+                    }
+                }
+            }
+            gimli::DW_AT_endianity => {
+                if let gimli::AttributeValue::Endianity(val) = attr.value() {
+                    ty.endianity = match val {
+                        gimli::DW_END_default => Endianity::Default,
+                        gimli::DW_END_big => Endianity::Big,
+                        gimli::DW_END_little => Endianity::Little,
+                        _ => {
+                            debug!("unknown base type endianity: {} {:?}", attr.name(), val);
+                            Endianity::Default
+                        }
+                    }
+                }
+            }
+            gimli::DW_AT_artificial | gimli::DW_AT_decimal_scale => {}
             _ => debug!(
                 "unknown base type attribute: {} {:?}",
                 attr.name(),

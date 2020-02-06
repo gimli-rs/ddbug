@@ -14,6 +14,7 @@ pub use self::text::TextPrinter;
 mod html;
 pub use self::html::HtmlPrinter;
 
+pub(crate) mod base_type;
 pub(crate) mod enumeration;
 pub(crate) mod file;
 pub(crate) mod frame_location;

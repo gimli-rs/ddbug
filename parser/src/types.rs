@@ -437,11 +437,57 @@ impl<'input> TypeModifier<'input> {
     }
 }
 
+/// The endianity of an object.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Endianity {
+    /// Default endianity encoding.
+    Default,
+    /// Big-endian encoding.
+    Big,
+    /// Little-endian encoding.
+    Little,
+}
+
+impl Default for Endianity {
+    fn default() -> Self {
+        Self::Default
+    }
+}
+
+/// The encoding of a base type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaseTypeEncoding {
+    /// Unsupported or unspecified encoding.
+    Other,
+    /// True or false.
+    Boolean,
+    /// Linear machine address.
+    Address,
+    /// Signed binary integer.
+    Signed,
+    /// Signed character.
+    SignedChar,
+    /// Unsigned binary integer.
+    Unsigned,
+    /// Unsigned character.
+    UnsignedChar,
+    /// Binary floating-point number.
+    Float,
+}
+
+impl Default for BaseTypeEncoding {
+    fn default() -> Self {
+        Self::Other
+    }
+}
+
 /// A base type.
 #[derive(Debug, Default, Clone)]
 pub struct BaseType<'input> {
     pub(crate) name: Option<&'input str>,
     pub(crate) byte_size: Size,
+    pub(crate) encoding: BaseTypeEncoding,
+    pub(crate) endianity: Endianity,
 }
 
 impl<'input> BaseType<'input> {
@@ -455,6 +501,18 @@ impl<'input> BaseType<'input> {
     #[inline]
     pub fn byte_size(&self) -> Option<u64> {
         self.byte_size.get()
+    }
+
+    /// How the base type is encoded an interpreted.
+    #[inline]
+    pub fn encoding(&self) -> BaseTypeEncoding {
+        self.encoding
+    }
+
+    /// The endianity of the value, if applicable.
+    #[inline]
+    pub fn endianity(&self) -> Endianity {
+        self.endianity
     }
 
     /// Compare the identifying information of two types.

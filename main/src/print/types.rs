@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::cmp;
 
 use parser::{
-    ArrayType, BaseType, FileHash, FunctionType, PointerToMemberType, SubrangeType, Type, TypeKind,
+    ArrayType, FileHash, FunctionType, PointerToMemberType, SubrangeType, Type, TypeKind,
     TypeModifier, TypeModifierKind, Unit, UnspecifiedType,
 };
 
@@ -12,12 +12,12 @@ use crate::{Options, Result, Sort};
 pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()> {
     let id = ty.id();
     match *ty.kind() {
+        TypeKind::Base(ref val) => print::base_type::print(val, state, id),
         TypeKind::Def(ref val) => print::type_def::print(val, state, unit, id),
         TypeKind::Struct(ref val) => print::struct_type::print(val, state, unit, id),
         TypeKind::Union(ref val) => print::union_type::print(val, state, unit, id),
         TypeKind::Enumeration(ref val) => print::enumeration::print(val, state, unit, id),
         TypeKind::Void
-        | TypeKind::Base(..)
         | TypeKind::Array(..)
         | TypeKind::Function(..)
         | TypeKind::Unspecified(..)
@@ -41,7 +41,7 @@ pub(crate) fn print_ref(
             let id = ty.id();
             match *ty.kind() {
                 TypeKind::Void => print_ref_void(w),
-                TypeKind::Base(ref val) => print_ref_base(val, w),
+                TypeKind::Base(ref val) => print::base_type::print_ref(val, w, id),
                 TypeKind::Def(ref val) => print::type_def::print_ref(val, w, id),
                 TypeKind::Struct(ref val) => print::struct_type::print_ref(val, w, id),
                 TypeKind::Union(ref val) => print::union_type::print_ref(val, w, id),
@@ -59,11 +59,6 @@ pub(crate) fn print_ref(
 
 fn print_ref_void(w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "void")?;
-    Ok(())
-}
-
-fn print_ref_base(ty: &BaseType, w: &mut dyn ValuePrinter) -> Result<()> {
-    write!(w, "{}", ty.name().unwrap_or("<anon-base-type>"))?;
     Ok(())
 }
 
@@ -167,6 +162,7 @@ pub(crate) fn diff(
     use self::TypeKind::*;
     let id = type_a.id();
     match (type_a.kind(), type_b.kind()) {
+        (&Base(ref a), &Base(ref b)) => print::base_type::diff(state, id, a, b),
         (&Def(ref a), &Def(ref b)) => print::type_def::diff(state, id, unit_a, a, unit_b, b),
         (&Struct(ref a), &Struct(ref b)) => {
             print::struct_type::diff(state, id, unit_a, a, unit_b, b)

@@ -2,8 +2,8 @@ use std::cmp;
 use std::collections::HashSet;
 
 use parser::{
-    EnumerationType, File, FileHash, Function, StructType, Type, TypeDef, TypeKind, TypeOffset,
-    UnionType, Unit, UnspecifiedType, Variable,
+    BaseType, EnumerationType, File, FileHash, Function, StructType, Type, TypeDef, TypeKind,
+    TypeOffset, UnionType, Unit, UnspecifiedType, Variable,
 };
 
 use crate::Options;
@@ -73,9 +73,11 @@ pub(crate) fn filter_types<'input, 'unit>(
                     return false;
                 }
             }
-            TypeKind::Def(..) | TypeKind::Union(..) | TypeKind::Enumeration(..) => {}
+            TypeKind::Base(..)
+            | TypeKind::Def(..)
+            | TypeKind::Union(..)
+            | TypeKind::Enumeration(..) => {}
             TypeKind::Void
-            | TypeKind::Base(..)
             | TypeKind::Array(..)
             | TypeKind::Function(..)
             | TypeKind::Unspecified(..)
@@ -131,19 +133,23 @@ fn filter_variable(v: &Variable, options: &Options) -> bool {
 
 fn filter_type(ty: &Type, options: &Options) -> bool {
     match *ty.kind() {
+        TypeKind::Base(ref val) => filter_base(val, options),
         TypeKind::Def(ref val) => filter_type_def(val, options),
         TypeKind::Struct(ref val) => filter_struct(val, options),
         TypeKind::Union(ref val) => filter_union(val, options),
         TypeKind::Enumeration(ref val) => filter_enumeration(val, options),
         TypeKind::Unspecified(ref val) => filter_unspecified(val, options),
         TypeKind::Void
-        | TypeKind::Base(..)
         | TypeKind::Array(..)
         | TypeKind::Function(..)
         | TypeKind::PointerToMember(..)
         | TypeKind::Modifier(..)
         | TypeKind::Subrange(..) => options.filter_name.is_none(),
     }
+}
+
+fn filter_base(ty: &BaseType, options: &Options) -> bool {
+    options.filter_name(ty.name()) && options.filter_namespace(None)
 }
 
 fn filter_type_def(ty: &TypeDef, options: &Options) -> bool {
