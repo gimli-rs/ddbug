@@ -11,14 +11,13 @@ edition = "2018"
 
 [dependencies]
 fnv = "1.0"
-gimli = "0.19"
+gimli = "0.23"
 log = "0.4"
 memmap = "0.7"
-moria = { git = "https://github.com/gimli-rs/moria", rev = "9f944d62a092f057169e1dce74937d50afc53c89" }
-#moria = { path = "../../moria" }
-object = "0.14"
-#object = { version = "0.17", path = "../../object" }
-typed-arena = "1.3"
+#moria = { git = "https://github.com/gimli-rs/moria", rev = "9f944d62a092f057169e1dce74937d50afc53c89" }
+moria = { path = "../../moria" }
+object = { version = "0.22", path = "../../object" }
+typed-arena = "2"
 
 [features]
 default = []

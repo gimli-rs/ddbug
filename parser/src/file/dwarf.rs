@@ -7,7 +7,7 @@ use std::u32;
 
 use gimli;
 use gimli::Reader as GimliReader;
-use object::{self, ObjectSection};
+use object::{self, ObjectSection, ObjectSymbol};
 
 use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{Architecture, DebugInfo, FileHash, StringCache};
@@ -45,7 +45,7 @@ fn add_relocations<'input, 'file, Object>(
         let offset = offset as usize;
         let target = match relocation.target() {
             object::RelocationTarget::Symbol(index) => {
-                if let Some(symbol) = file.symbol_by_index(index) {
+                if let Ok(symbol) = file.symbol_by_index(index) {
                     symbol.address()
                 } else {
                     println!(
@@ -58,7 +58,7 @@ fn add_relocations<'input, 'file, Object>(
                 }
             }
             object::RelocationTarget::Section(index) => {
-                if let Some(section) = file.section_by_index(index) {
+                if let Ok(section) = file.section_by_index(index) {
                     section.address()
                 } else {
                     println!(
@@ -69,6 +69,9 @@ fn add_relocations<'input, 'file, Object>(
                     );
                     continue;
                 }
+            }
+            object::RelocationTarget::Absolute => {
+                continue;
             }
         };
         match relocation.kind() {
@@ -355,7 +358,7 @@ where
         register: Register,
     ) -> Option<&'static str> {
         let register_name = match machine {
-            Architecture::Arm(_) => gimli::Arm::register_name,
+            Architecture::Arm => gimli::Arm::register_name,
             Architecture::I386 => gimli::X86::register_name,
             Architecture::X86_64 => gimli::X86_64::register_name,
             _ => return None,
@@ -379,7 +382,7 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub(crate) fn parse<'input, 'file, Endian, Object, Cb>(
+pub(crate) fn parse<'input: 'file, 'file, Endian, Object, Cb>(
     endian: Endian,
     object: &'file Object,
     strings: &'input StringCache,
@@ -396,7 +399,7 @@ where
         let data = match object.section_by_name(id.name()) {
             Some(ref section) => {
                 add_relocations(&mut relocations, object, section);
-                section.uncompressed_data()
+                section.uncompressed_data()?
             }
             None => Cow::Borrowed(&[][..]),
         };
@@ -2477,7 +2480,7 @@ where
                 gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
                 _ => panic!("unexpected offset"),
             };
-            let header_offset = match dwarf_unit.offset {
+            let header_offset = match dwarf_unit.header.offset() {
                 gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
                 _ => panic!("unexpected offset"),
             };
@@ -2595,7 +2598,7 @@ where
                 gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
                 _ => panic!("unexpected offset"),
             };
-            let header_offset = match dwarf_unit.offset {
+            let header_offset = match dwarf_unit.header.offset() {
                 gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
                 _ => panic!("unexpected offset"),
             };
@@ -3199,7 +3202,7 @@ where
                 gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
                 _ => panic!("unexpected offset"),
             };
-            let header_offset = match dwarf_unit.offset {
+            let header_offset = match dwarf_unit.header.offset() {
                 gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
                 _ => panic!("unexpected offset"),
             };
@@ -3353,7 +3356,6 @@ where
     } else {
         (1 << (8 * u64::from(encoding.address_size))) - 1
     };
-    let bytecode = expression.0;
     let mut bytes = expression.0;
 
     let mut pieces = Vec::new();
@@ -3382,7 +3384,7 @@ where
 
     let mut location = None;
     while !bytes.is_empty() {
-        match gimli::Operation::parse(&mut bytes, &bytecode, encoding)? {
+        match gimli::Operation::parse(&mut bytes, encoding)? {
             gimli::Operation::Nop => {}
             gimli::Operation::Register { register } => {
                 location = Some((
@@ -3410,8 +3412,13 @@ where
                 // Unimplemented.
                 stack.push(Location::Other);
             }
-            gimli::Operation::Literal { value } => {
+            gimli::Operation::UnsignedConstant { value } => {
                 stack.push(Location::Literal { value });
+            }
+            gimli::Operation::SignedConstant { value } => {
+                stack.push(Location::Literal {
+                    value: value as u64,
+                });
             }
             gimli::Operation::RegisterOffset {
                 register, offset, ..
@@ -3600,7 +3607,7 @@ where
                 }
                 add_piece(&mut pieces, location, 0, is_value, Size::none());
             } else {
-                match gimli::Operation::parse(&mut bytes, &bytecode, encoding)? {
+                match gimli::Operation::parse(&mut bytes, encoding)? {
                     gimli::Operation::Piece {
                         size_in_bits,
                         bit_offset,

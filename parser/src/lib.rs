@@ -96,6 +96,12 @@ impl From<gimli::Error> for Error {
     }
 }
 
+impl From<object::Error> for Error {
+    fn from(e: object::Error) -> Error {
+        Error(Cow::Owned(format!("object error: {}", e)))
+    }
+}
+
 /*
 impl From<crate_pdb::Error> for Error {
     fn from(e: crate_pdb::Error) -> Error {

@@ -9,7 +9,7 @@ use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
 use moria;
-use object::{self, Object, ObjectSection, ObjectSegment};
+use object::{self, Object, ObjectSection, ObjectSegment, ObjectSymbol};
 use typed_arena::Arena;
 
 use crate::cfi::Cfi;
@@ -88,7 +88,7 @@ impl StringCache {
     }
 }
 
-pub use object::target_lexicon::Architecture;
+pub use object::Architecture;
 
 /// The parsed debuginfo for a single file.
 pub struct File<'input> {
@@ -201,16 +201,18 @@ impl<'input> File<'input> {
         let machine = object.architecture();
         let mut segments = Vec::new();
         for segment in object.segments() {
-            segments.push(Segment {
-                address: segment.address(),
-                bytes: segment.data(),
-            });
+            if let Ok(bytes) = segment.data() {
+                segments.push(Segment {
+                    address: segment.address(),
+                    bytes,
+                });
+            }
         }
 
         let mut sections = Vec::new();
         for section in object.sections() {
-            let name = section.name().map(|x| Cow::Owned(x.to_string()));
-            let segment = section.segment_name().map(|x| Cow::Owned(x.to_string()));
+            let name = Some(section.name()?).map(|x| Cow::Owned(x.to_string()));
+            let segment = section.segment_name()?.map(|x| Cow::Owned(x.to_string()));
             let address = if section.address() != 0 {
                 Some(section.address())
             } else {
@@ -229,7 +231,7 @@ impl<'input> File<'input> {
 
         // TODO: symbols from debug_object too?
         let mut symbols = Vec::new();
-        for (_, symbol) in object.symbols() {
+        for symbol in object.symbols() {
             // TODO: handle relocatable objects
             let address = symbol.address();
             if address == 0 {
@@ -248,7 +250,7 @@ impl<'input> File<'input> {
                 _ => continue,
             };
 
-            let name = symbol.name();
+            let name = Some(symbol.name()?);
 
             symbols.push(Symbol {
                 name,
