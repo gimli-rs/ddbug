@@ -9,7 +9,7 @@ use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
 use moria;
-use object::{self, Object, ObjectSection, ObjectSegment, ObjectSymbol};
+use object::{self, Object, ObjectSection, ObjectSegment, ObjectSymbol, ObjectSymbolTable};
 use typed_arena::Arena;
 
 use crate::cfi::Cfi;
@@ -97,6 +97,7 @@ pub struct File<'input> {
     pub(crate) segments: Vec<Segment<'input>>,
     pub(crate) sections: Vec<Section<'input>>,
     pub(crate) symbols: Vec<Symbol<'input>>,
+    pub(crate) relocations: Vec<Relocation<'input>>,
     pub(crate) units: Vec<Unit<'input>>,
     debug_info: DebugInfo<'input, gimli::RunTimeEndian>,
 }
@@ -260,6 +261,27 @@ impl<'input> File<'input> {
             });
         }
 
+        let mut relocations = Vec::new();
+        if let (Some(dynamic_symbols), Some(dynamic_relocations)) =
+            (object.dynamic_symbol_table(), object.dynamic_relocations())
+        {
+            for (address, relocation) in dynamic_relocations {
+                let size = relocation.size();
+                match relocation.target() {
+                    object::RelocationTarget::Symbol(index) => {
+                        if let Ok(symbol) = dynamic_symbols.symbol_by_index(index) {
+                            relocations.push(Relocation {
+                                address,
+                                size,
+                                symbol: symbol.name()?,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         let endian = if debug_object.is_little_endian() {
             gimli::RunTimeEndian::Little
         } else {
@@ -274,6 +296,7 @@ impl<'input> File<'input> {
                 segments,
                 sections,
                 symbols,
+                relocations,
                 units,
                 debug_info,
             };
@@ -405,6 +428,20 @@ impl<'input> File<'input> {
         self.machine
     }
 
+    /// Find the segment data for the given address range.
+    pub fn segment_bytes(&self, range: Range) -> Option<&'input [u8]> {
+        for segment in &self.segments {
+            if range.begin >= segment.address
+                && range.end <= segment.address + segment.bytes.len() as u64
+            {
+                let begin = (range.begin - segment.address) as usize;
+                let len = (range.end - range.begin) as usize;
+                return Some(&segment.bytes[begin..][..len]);
+            }
+        }
+        None
+    }
+
     /// A list of segments in the file.
     #[inline]
     pub fn segments(&self) -> &[Segment<'input>] {
@@ -415,6 +452,12 @@ impl<'input> File<'input> {
     #[inline]
     pub fn sections(&self) -> &[Section<'input>] {
         &self.sections
+    }
+
+    /// A list of relocations in the file.
+    #[inline]
+    pub fn relocations(&self) -> &[Relocation<'input>] {
+        &self.relocations
     }
 
     /// A list of compilation units in the file.
@@ -629,5 +672,33 @@ impl<'input> Symbol<'input> {
     #[inline]
     pub fn size(&self) -> u64 {
         self.size
+    }
+}
+
+/// A relocation.
+#[derive(Debug, Clone)]
+pub struct Relocation<'input> {
+    pub(crate) address: u64,
+    pub(crate) size: u8,
+    pub(crate) symbol: &'input str,
+}
+
+impl<'input> Relocation<'input> {
+    /// The relocation address.
+    #[inline]
+    pub fn address(&self) -> u64 {
+        self.address
+    }
+
+    /// The relocation size.
+    #[inline]
+    pub fn size(&self) -> u8 {
+        self.size
+    }
+
+    /// The name of the symbol referenced by the relocation.
+    #[inline]
+    pub fn symbol(&self) -> &'input str {
+        self.symbol
     }
 }

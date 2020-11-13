@@ -1,6 +1,7 @@
 use capstone::arch::x86::X86OperandType;
 use capstone::arch::ArchOperand;
 use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
+use std::collections::HashMap;
 use std::convert::TryInto;
 
 use crate::print::{self, PrintState, ValuePrinter};
@@ -12,6 +13,8 @@ pub(crate) struct Code<'code> {
     arch: Arch,
     mode: Mode,
     regions: Vec<Region<'code>>,
+    relocations: HashMap<u64, &'code str>,
+    plts: HashMap<u64, &'code str>,
 }
 
 #[derive(Debug)]
@@ -33,6 +36,7 @@ impl<'code> Code<'code> {
             Architecture::X86_64 => (Arch::X86, Mode::Mode64),
             _ => return None,
         };
+
         let mut regions = Vec::new();
         // TODO: handle object files (no segments)
         // TODO: handle relocations
@@ -42,19 +46,38 @@ impl<'code> Code<'code> {
                 code: segment.bytes,
             });
         }
+
+        // Create symbols for relocations and PLT entries.
+        let mut relocations = HashMap::new();
+        for relocation in file.relocations() {
+            relocations.insert(relocation.address(), relocation.symbol());
+        }
+        let mut plts = HashMap::new();
+        find_plts(&mut plts, &relocations, file, arch, mode);
+
         Some(Code {
             arch,
             mode,
             regions,
+            relocations,
+            plts,
         })
+    }
+
+    pub(crate) fn relocation(&self, address: u64) -> Option<&'code str> {
+        self.relocations.get(&address).copied()
+    }
+
+    pub(crate) fn plt(&self, address: u64) -> Option<&'code str> {
+        self.plts.get(&address).copied()
     }
 
     pub(crate) fn calls(&self, range: Range) -> Vec<Call> {
         calls(self, range).unwrap_or(Vec::new())
     }
 
-    pub(crate) fn disassembler<'a>(&'a self) -> Option<Disassembler<'a>> {
-        Disassembler::new(self, self.arch, self.mode)
+    pub(crate) fn disassembler(&self) -> Option<Disassembler> {
+        Disassembler::new(self.arch, self.mode)
     }
 
     fn range(&self, range: Range) -> Option<&'code [u8]> {
@@ -81,6 +104,39 @@ impl<'code> Code<'code> {
             _ => None,
         }
     }
+}
+
+fn find_plts<'data>(
+    plts: &mut HashMap<u64, &'data str>,
+    relocations: &HashMap<u64, &'data str>,
+    file: &File<'data>,
+    arch: Arch,
+    mode: Mode,
+) -> Option<()> {
+    let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
+    cs.set_detail(true).ok()?;
+    for section in file.sections() {
+        if let (Some(name), Some(address)) = (section.name(), section.address()) {
+            if name.starts_with(".plt") {
+                if let Some(bytes) = file.segment_bytes(address) {
+                    let insns = cs.disasm_all(bytes, address.begin).ok()?;
+                    for insn in insns.iter() {
+                        let detail = cs.insn_detail(&insn).ok()?;
+                        let arch_detail = detail.arch_detail();
+                        for op in arch_detail.operands() {
+                            if let Some((_offset, target, _size)) = is_ip_offset(&insn, &op) {
+                                if let Some(symbol) = relocations.get(&target) {
+                                    // HACK: assume PLT is aligned to 16 bytes
+                                    plts.insert(insn.address() & !0xf, symbol);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Some(())
 }
 
 fn calls(code: &Code, range: Range) -> Option<Vec<Call>> {
@@ -122,21 +178,23 @@ fn call_x86(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
     None
 }
 
-pub(crate) struct Disassembler<'a> {
-    code: &'a Code<'a>,
+pub(crate) struct Disassembler {
     cs: capstone::Capstone,
 }
 
-impl<'a> Disassembler<'a> {
-    pub(crate) fn new(code: &'a Code<'a>, arch: Arch, mode: Mode) -> Option<Disassembler<'a>> {
+impl Disassembler {
+    pub(crate) fn new(arch: Arch, mode: Mode) -> Option<Disassembler> {
         let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
         cs.set_detail(true).ok()?;
-        Some(Disassembler { code, cs })
+        Some(Disassembler { cs })
     }
 
-    pub(crate) fn instructions(&'a self, range: Range) -> Option<Instructions<'a>> {
-        self.code
-            .range(range)
+    pub(crate) fn instructions<'a>(
+        &'a self,
+        code: &Code<'a>,
+        range: Range,
+    ) -> Option<Instructions<'a>> {
+        code.range(range)
             .and_then(|code| self.cs.disasm_all(code, range.begin).ok())
             .map(|instructions| Instructions { instructions })
     }
@@ -177,7 +235,8 @@ impl<'a> Instruction<'a> {
     pub(crate) fn print(
         &self,
         state: &mut PrintState,
-        d: &Disassembler<'a>,
+        code: &Code,
+        d: &Disassembler,
         f: &FunctionDetails,
         range: Range,
     ) -> Result<()> {
@@ -255,6 +314,20 @@ impl<'a> Instruction<'a> {
                         pad_mnemonic(w)?;
                         write!(w, "0x{:x} = ", imm)?;
                         print::function::print_ref(function, w)
+                    })?;
+                } else if let Some(symbol) = code.plt(imm) {
+                    state.line(|w, _hash| {
+                        pad_address(w)?;
+                        pad_mnemonic(w)?;
+                        write!(w, "0x{:x} = {}@plt", imm, symbol)?;
+                        Ok(())
+                    })?;
+                } else if let Some(symbol) = code.relocation(imm) {
+                    state.line(|w, _hash| {
+                        pad_address(w)?;
+                        pad_mnemonic(w)?;
+                        write!(w, "[0x{:x}] = {}", imm, symbol)?;
+                        Ok(())
                     })?;
                 }
             }
@@ -339,7 +412,15 @@ impl<'a> Instruction<'a> {
                 }
             }
             if let Some((offset, address, size)) = is_ip_offset(&self.insn, &op) {
-                if let Some(value) = d.code.read_mem(address, size) {
+                // TODO: lookup variables too
+                if let Some(symbol) = code.relocation(address) {
+                    state.line(|w, _hash| {
+                        pad_address(w)?;
+                        pad_mnemonic(w)?;
+                        write!(w, "[ip + 0x{:x}] = {}", offset, symbol)?;
+                        Ok(())
+                    })?;
+                } else if let Some(value) = code.read_mem(address, size) {
                     state.line(|w, hash| {
                         pad_address(w)?;
                         pad_mnemonic(w)?;

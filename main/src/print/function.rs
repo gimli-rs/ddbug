@@ -388,7 +388,7 @@ fn print_instructions(
         Some(x) => x,
         None => return Ok(()),
     };
-    let insns = match disassembler.instructions(range) {
+    let insns = match disassembler.instructions(code, range) {
         Some(x) => x,
         None => return Ok(()),
     };
@@ -406,12 +406,12 @@ fn print_instructions(
                     print_cfi(state, cfi, range)?;
                     cfi_next = cfis.next();
                 } else {
-                    insn.print(state, &disassembler, details, range)?;
+                    insn.print(state, code, &disassembler, details, range)?;
                     insn_next = insns.next();
                 }
             }
             (&Some(ref insn), None) => {
-                insn.print(state, &disassembler, details, range)?;
+                insn.print(state, code, &disassembler, details, range)?;
                 insn_next = insns.next();
             }
             (&None, Some(cfi)) => {
