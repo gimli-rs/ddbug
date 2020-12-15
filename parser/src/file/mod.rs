@@ -8,7 +8,6 @@ mod dwarf;
 use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
-use moria;
 use object::{self, Object, ObjectSection, ObjectSegment, ObjectSymbol, ObjectSymbolTable};
 use typed_arena::Arena;
 
@@ -153,41 +152,9 @@ impl<'input> File<'input> {
 
         let object = object::File::parse(&*map)?;
 
-        if object.has_debug_symbols() {
-            File::parse_object(&object, &object, path, cb)
-        } else {
-            let debug_path = match moria::locate_debug_symbols(&object, path) {
-                Ok(debug_path) => debug_path,
-                Err(e) => {
-                    return Err(format!("unable to locate debug file: {}", e).into());
-                }
-            };
-
-            let handle = match fs::File::open(debug_path) {
-                Ok(handle) => handle,
-                Err(e) => {
-                    return Err(format!("open failed: {}", e).into());
-                }
-            };
-
-            let map = match unsafe { memmap::Mmap::map(&handle) } {
-                Ok(map) => map,
-                Err(e) => {
-                    return Err(format!("memmap failed: {}", e).into());
-                }
-            };
-
-            let debug_object = object::File::parse(&*map)?;
-            File::parse_object(&object, &debug_object, path, cb)
-        }
-        /*
-        let input = &*map;
-        if input.starts_with(b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00") {
-            pdb::parse(input, path, cb)
-        } else {
-            File::parse_object(input, path, cb)
-        }
-        */
+        // TODO: split DWARF
+        // TODO: PDB
+        File::parse_object(&object, &object, path, cb)
     }
 
     fn parse_object<Cb>(
