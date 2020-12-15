@@ -1,11 +1,11 @@
 [package]
 name = "ddbug"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Philip Craig <philipjcraig@gmail.com>"]
 description = "Display debugging information"
 repository = "https://github.com/philipc/ddbug"
 readme = "README.md"
-keywords = ["debug", "DWARF", "PDB"]
+keywords = ["debug", "DWARF"]
 categories = ["development-tools::debugging"]
 license = "Apache-2.0/MIT"
 edition = "2018"
@@ -20,7 +20,7 @@ log = "0.4"
 marksman_escape = "0.1"
 memmap = "0.7"
 typed-arena = "2"
-parser = { package = "ddbug_parser", path = "../parser" }
+parser = { package = "ddbug_parser", version = "0.3.0", path = "../parser" }
 
 [features]
 system_alloc = []

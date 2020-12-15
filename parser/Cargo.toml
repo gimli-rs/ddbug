@@ -1,10 +1,10 @@
 [package]
 name = "ddbug_parser"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Philip Craig <philipjcraig@gmail.com>"]
 description = "Unified debug information parser"
 repository = "https://github.com/philipc/ddbug"
-keywords = ["debug", "DWARF", "PDB"]
+keywords = ["debug", "DWARF"]
 categories = ["development-tools::debugging"]
 license = "Apache-2.0/MIT"
 edition = "2018"
