@@ -148,7 +148,11 @@ pub fn print(file: &File, printer: &mut dyn Printer, options: &Options) -> Resul
                 let size = ranges.size();
                 let fn_size = file.function_size();
                 let var_size = file.variable_size(state.hash());
-                let other_size = size - fn_size - var_size;
+                let other_size = size.checked_sub(fn_size + var_size).unwrap_or_else(|| {
+                    // TODO: fix our calculations so this doesn't happen
+                    debug!("function or variable sizes are too large");
+                    0
+                });
                 if options.print_file_address {
                     state.field_collapsed("addresses", |state| state.list(&(), ranges.list()))?;
                 }
