@@ -421,6 +421,12 @@ impl<'input> File<'input> {
         &self.sections
     }
 
+    /// A list of symbols in the file.
+    #[inline]
+    pub fn symbols(&self) -> &[Symbol<'input>] {
+        &self.symbols
+    }
+
     /// A list of relocations in the file.
     #[inline]
     pub fn relocations(&self) -> &[Relocation<'input>] {
