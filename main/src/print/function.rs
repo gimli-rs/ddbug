@@ -302,6 +302,7 @@ fn print_call(
     call: &Call,
     w: &mut dyn ValuePrinter,
     hash: &FileHash,
+    code: Option<&Code>,
     options: &Options,
 ) -> Result<()> {
     if !options.ignore_function_address {
@@ -311,6 +312,8 @@ fn print_call(
     }
     if let Some(function) = hash.functions_by_address.get(&call.to) {
         print_ref(function, w)?;
+    } else if let Some(plt) = code.and_then(|code| code.plt(call.to)) {
+        write!(w, "{}", plt)?;
     } else if options.ignore_function_address {
         // We haven't displayed an address yet, so we need to display something.
         write!(w, "0x{:x}", call.to)?;
@@ -322,13 +325,18 @@ impl Print for Call {
     type Arg = ();
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
+        let code = state.code;
         let options = state.options();
-        state.line(|w, hash| print_call(self, w, hash, options))
+        state.line(|w, hash| print_call(self, w, hash, code, options))
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
         let options = state.options();
-        state.line(a, b, |w, hash, x| print_call(x, w, hash, options))
+        state.line(
+            (a, state.code_a),
+            (b, state.code_b),
+            |w, hash, (x, code)| print_call(x, w, hash, code, options),
+        )
     }
 }
 
