@@ -521,6 +521,7 @@ where
     // Find ranges from attributes in order of preference:
     // DW_AT_stmt_list, DW_AT_ranges, DW_AT_high_pc, DW_AT_size.
     // TODO: include variables in ranges.
+    // TODO: copy logic from addr2line
     if let Some(program) = dwarf_unit.line_program.clone() {
         let mut rows = program.rows();
         let mut seq_addr = None;
@@ -545,9 +546,7 @@ where
     } else if let Some(offset) = ranges {
         let mut ranges = dwarf.read.ranges(&dwarf_unit, offset)?;
         while let Some(range) = ranges.next()? {
-            // Ranges starting at 0 are probably invalid.
-            // TODO: is this always desired?
-            if range.begin != 0 {
+            if range.begin < range.end {
                 unit.ranges.push(Range {
                     begin: range.begin,
                     end: range.end,
@@ -568,6 +567,8 @@ where
         }
     }
     unit.ranges.sort();
+    // Ignore low_pc attribute if there is any range.
+    unit.low_pc = unit.ranges.list().first().map(|range| range.begin);
 
     let namespace = None;
     parse_namespace_children(
@@ -2209,7 +2210,9 @@ where
             }
             gimli::DW_AT_low_pc => {
                 if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    function.address = Address::new(addr);
+                    if addr != 0 || unit.low_pc == Some(0) {
+                        function.address = Address::new(addr);
+                    }
                 }
             }
             gimli::DW_AT_high_pc => match attr.value() {
