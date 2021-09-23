@@ -65,8 +65,10 @@ pub struct Options<'a> {
     pub ignore_function_address: bool,
     pub ignore_function_size: bool,
     pub ignore_function_inline: bool,
+    pub ignore_function_linkage_name: bool,
     pub ignore_function_symbol_name: bool,
     pub ignore_variable_address: bool,
+    pub ignore_variable_linkage_name: bool,
     pub ignore_variable_symbol_name: bool,
     pub prefix_map: Vec<(&'a str, &'a str)>,
 }

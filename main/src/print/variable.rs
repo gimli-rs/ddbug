@@ -34,8 +34,11 @@ pub(crate) fn diff(
     state.collapsed(
         |state| state.line(a, b, |w, state, x| print_name(x, w, state)),
         |state| {
-            state.field("linkage name", a, b, |w, _state, x| {
-                print_linkage_name(x, w)
+            let flag = state.options().ignore_variable_linkage_name;
+            state.ignore_diff(flag, |state| {
+                state.field("linkage name", a, b, |w, _state, x| {
+                    print_linkage_name(x, w)
+                })
             })?;
             let flag = state.options().ignore_variable_symbol_name;
             state.ignore_diff(flag, |state| {

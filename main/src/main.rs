@@ -68,6 +68,7 @@ const OPT_IGNORE: &str = "ignore";
 const OPT_IGNORE_ADDED: &str = "added";
 const OPT_IGNORE_DELETED: &str = "deleted";
 const OPT_IGNORE_ADDRESS: &str = "address";
+const OPT_IGNORE_LINKAGE_NAME: &str = "linkage-name";
 const OPT_IGNORE_SYMBOL_NAME: &str = "symbol-name";
 const OPT_IGNORE_FUNCTION_ADDRESS: &str = "function-address";
 const OPT_IGNORE_FUNCTION_SIZE: &str = "function-size";
@@ -186,6 +187,7 @@ fn main() {
                     OPT_IGNORE_ADDED,
                     OPT_IGNORE_DELETED,
                     OPT_IGNORE_ADDRESS,
+                    OPT_IGNORE_LINKAGE_NAME,
                     OPT_IGNORE_SYMBOL_NAME,
                     OPT_IGNORE_FUNCTION_ADDRESS,
                     OPT_IGNORE_FUNCTION_SIZE,
@@ -361,6 +363,10 @@ fn main() {
                 OPT_IGNORE_ADDRESS => {
                     options.ignore_function_address = true;
                     options.ignore_variable_address = true;
+                }
+                OPT_IGNORE_LINKAGE_NAME => {
+                    options.ignore_function_linkage_name = true;
+                    options.ignore_variable_linkage_name = true;
                 }
                 OPT_IGNORE_SYMBOL_NAME => {
                     options.ignore_function_symbol_name = true;

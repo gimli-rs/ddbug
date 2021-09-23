@@ -149,8 +149,11 @@ impl<'input> Print for Function<'input> {
         state.collapsed(
             |state| state.id(a.id(), a, b, |w, _state, x| print_name(x, w)),
             |state| {
-                state.field("linkage name", a, b, |w, _state, x| {
-                    print_linkage_name(x, w)
+                let flag = state.options().ignore_function_linkage_name;
+                state.ignore_diff(flag, |state| {
+                    state.field("linkage name", a, b, |w, _state, x| {
+                        print_linkage_name(x, w)
+                    })
                 })?;
                 let flag = state.options().ignore_function_symbol_name;
                 state.ignore_diff(flag, |state| {
