@@ -31,6 +31,8 @@ impl<'input> Print for InlinedFunction<'input> {
 
     fn print(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
         state.collapsed(
+            // TODO: for html, print_size_and_decl includes the function ID,
+            // which requires that there are no duplicate functions
             |state| state.line(|w, state| print_size_and_decl(self, w, state)),
             |state| {
                 if state.options().print_source {
@@ -98,7 +100,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
     // functions. Probably not ideal, but seemed to help for one test case.
     fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         // Ensure cost is at least 1.
-        1 + 4 * self.size().unwrap_or(0) as usize
+        2 + 4 * self.size().unwrap_or(0) as usize
     }
 
     // TODO: other options to consider:
@@ -135,7 +137,7 @@ impl<'input> DiffList for InlinedFunction<'input> {
             cost += 1;
         }
 
-        // max diff_cost needs be a.step_cost + b.step_cost = 2 + 4 * a.size + 4 * b.size
+        // max diff_cost needs be a.step_cost + b.step_cost = 4 + 4 * a.size + 4 * b.size
         // max cost so far is 4
         cost *= 1 + (a.size().unwrap_or(0) + b.size().unwrap_or(0)) as usize;
         cost
