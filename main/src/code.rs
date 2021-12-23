@@ -212,7 +212,7 @@ impl<'a> Instructions<'a> {
 }
 
 pub(crate) struct InstructionIterator<'a> {
-    instructions: capstone::InstructionIterator<'a>,
+    instructions: std::slice::Iter<'a, capstone::Insn<'a>>,
 }
 
 impl<'a> Iterator for InstructionIterator<'a> {
@@ -224,7 +224,7 @@ impl<'a> Iterator for InstructionIterator<'a> {
 }
 
 pub(crate) struct Instruction<'a> {
-    insn: capstone::Insn<'a>,
+    insn: &'a capstone::Insn<'a>,
 }
 
 impl<'a> Instruction<'a> {
@@ -444,12 +444,14 @@ impl<'a> Instruction<'a> {
 fn is_call(detail: &InsnDetail) -> bool {
     detail
         .groups()
+        .iter()
         .any(|group| group.0 as u32 == InsnGroupType::CS_GRP_CALL)
 }
 
 fn is_jump(detail: &InsnDetail) -> bool {
     detail
         .groups()
+        .iter()
         .any(|group| group.0 as u32 == InsnGroupType::CS_GRP_JUMP)
 }
 

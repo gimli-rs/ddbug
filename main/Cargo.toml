@@ -11,10 +11,10 @@ license = "Apache-2.0/MIT"
 edition = "2018"
 
 [dependencies]
-capstone = "0.7"
-capstone-sys = "0.11"
+capstone = "0.10"
+capstone-sys = "0.14"
 clap = "2.26"
-env_logger = "0.8"
+env_logger = "0.9"
 fnv = "1.0"
 log = "0.4"
 marksman_escape = "0.1"
