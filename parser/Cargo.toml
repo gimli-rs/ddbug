@@ -11,10 +11,10 @@ edition = "2018"
 
 [dependencies]
 fnv = "1.0"
-gimli = "0.23"
+gimli = "0.26"
 log = "0.4"
 memmap = "0.7"
-object = "0.23"
+object = "0.28"
 typed-arena = "2"
 
 [features]

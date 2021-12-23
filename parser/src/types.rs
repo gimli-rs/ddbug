@@ -805,7 +805,6 @@ impl<'input> VariantPart<'input> {
 /// and a list of members that are valid when the variant is selected.
 #[derive(Debug, Default, Clone)]
 pub struct Variant<'input> {
-    pub(crate) discr: MemberOffset,
     pub(crate) discr_value: Option<u64>,
     pub(crate) name: Option<&'input str>,
     pub(crate) members: Vec<Member<'input>>,

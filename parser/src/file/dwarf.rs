@@ -70,7 +70,7 @@ fn add_relocations<'input, 'file, Object>(
                     continue;
                 }
             }
-            object::RelocationTarget::Absolute => {
+            _ => {
                 continue;
             }
         };
@@ -393,7 +393,6 @@ where
     Object: object::Object<'input, 'file>,
     Cb: FnOnce(Vec<Unit>, DebugInfo<Endian>) -> Result<()>,
 {
-    let no_section = |_| Ok((Cow::Borrowed(&[][..]), RelocationMap::default()));
     let get_section = |id: gimli::SectionId| -> Result<_> {
         let mut relocations = RelocationMap::default();
         let data = match object.section_by_name(id.name()) {
@@ -415,7 +414,7 @@ where
                 reader,
             }
         };
-    let sections = gimli::Dwarf::load(get_section, no_section)?;
+    let sections = gimli::Dwarf::load(get_section)?;
     let read = sections.borrow(get_reader);
 
     let debug_frame = get_section(gimli::SectionId::DebugFrame)?;
@@ -544,6 +543,7 @@ where
             }
         }
     } else if let Some(offset) = ranges {
+        let offset = dwarf.read.ranges_offset_from_raw(&dwarf_unit, offset);
         let mut ranges = dwarf.read.ranges(&dwarf_unit, offset)?;
         while let Some(range) = ranges.next()? {
             if range.begin < range.end {
@@ -2947,6 +2947,7 @@ where
 
     if let Some(offset) = ranges {
         let mut size = 0;
+        let offset = dwarf.read.ranges_offset_from_raw(dwarf_unit, offset);
         let mut ranges = dwarf.read.ranges(dwarf_unit, offset)?;
         while let Some(range) = ranges.next()? {
             size += range.end.wrapping_sub(range.begin);
@@ -3601,6 +3602,12 @@ where
                 // We can't even push Location::Other for Bra.
                 // Skip and Call could be implemented if needed.
                 return Ok(pieces);
+            }
+            gimli::Operation::WasmLocal { .. }
+            | gimli::Operation::WasmGlobal { .. }
+            | gimli::Operation::WasmStack { .. } => {
+                // Unimplemented.
+                location = Some((Location::Other, false));
             }
         }
         if let Some((location, is_value)) = location {
