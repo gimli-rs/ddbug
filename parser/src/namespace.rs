@@ -1,5 +1,5 @@
 use std::cmp;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /// A namespace kind.
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -15,18 +15,18 @@ pub enum NamespaceKind {
 /// A nestable namspace.
 #[derive(Debug)]
 pub struct Namespace<'input> {
-    pub(crate) parent: Option<Rc<Namespace<'input>>>,
+    pub(crate) parent: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) kind: NamespaceKind,
 }
 
 impl<'input> Namespace<'input> {
     pub(crate) fn new(
-        parent: &Option<Rc<Namespace<'input>>>,
+        parent: &Option<Arc<Namespace<'input>>>,
         name: Option<&'input str>,
         kind: NamespaceKind,
-    ) -> Rc<Namespace<'input>> {
-        Rc::new(Namespace {
+    ) -> Arc<Namespace<'input>> {
+        Arc::new(Namespace {
             parent: parent.clone(),
             name,
             kind,
@@ -68,7 +68,7 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    pub(crate) fn is_anon_type(namespace: &Option<Rc<Namespace>>) -> bool {
+    pub(crate) fn is_anon_type(namespace: &Option<Arc<Namespace>>) -> bool {
         match *namespace {
             Some(ref namespace) => {
                 namespace.kind == NamespaceKind::Type

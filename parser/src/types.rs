@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::cmp;
 use std::marker;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::usize;
 
 use crate::file::FileHash;
@@ -528,7 +528,7 @@ impl<'input> BaseType<'input> {
 /// A type alias definition.
 #[derive(Debug, Default, Clone)]
 pub struct TypeDef<'input> {
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) ty: TypeOffset,
     pub(crate) source: Source<'input>,
@@ -578,7 +578,7 @@ impl<'input> TypeDef<'input> {
 /// A struct type.
 #[derive(Debug, Default, Clone)]
 pub struct StructType<'input> {
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) source: Source<'input>,
     pub(crate) byte_size: Size,
@@ -673,7 +673,7 @@ impl<'input> StructType<'input> {
 /// A union type.
 #[derive(Debug, Default, Clone)]
 pub struct UnionType<'input> {
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) source: Source<'input>,
     pub(crate) byte_size: Size,
@@ -1104,7 +1104,7 @@ fn layout<'input, 'item>(
 #[derive(Debug, Default, Clone)]
 pub struct EnumerationType<'input> {
     pub(crate) offset: TypeOffset,
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) source: Source<'input>,
     pub(crate) declaration: bool,
@@ -1447,7 +1447,7 @@ impl<'input> ParameterType<'input> {
 /// An unspecified type.
 #[derive(Debug, Default, Clone)]
 pub struct UnspecifiedType<'input> {
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
 }
 

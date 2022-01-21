@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::cmp;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::usize;
 
 use crate::cfi::Cfi;
@@ -63,7 +63,7 @@ impl Default for FunctionOffset {
 pub struct Function<'input> {
     pub(crate) id: Id,
     pub(crate) offset: FunctionOffset,
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) linkage_name: Option<&'input str>,
     pub(crate) symbol_name: Option<&'input str>,

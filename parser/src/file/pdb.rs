@@ -1,7 +1,7 @@
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::io;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use crate_pdb as pdb;
 use crate_pdb::FallibleIterator;
@@ -237,7 +237,7 @@ fn add_primitive_type<'input>(
 fn parse_class<'input>(
     unit: &mut Unit<'input>,
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
-    namespace: &Option<Rc<Namespace<'input>>>,
+    namespace: &Option<Arc<Namespace<'input>>>,
     index: usize,
     data: &pdb::ClassType<'input>,
 ) -> Result<()> {
@@ -279,7 +279,7 @@ fn parse_class<'input>(
 fn parse_union<'input>(
     unit: &mut Unit<'input>,
     member_lists: &BTreeMap<usize, Vec<Member<'input>>>,
-    namespace: &Option<Rc<Namespace<'input>>>,
+    namespace: &Option<Arc<Namespace<'input>>>,
     index: usize,
     data: &pdb::UnionType<'input>,
 ) -> Result<()> {
@@ -320,7 +320,7 @@ fn parse_union<'input>(
 fn parse_enumeration<'input>(
     unit: &mut Unit<'input>,
     enumerator_lists: &BTreeMap<usize, Vec<Enumerator<'input>>>,
-    namespace: &Option<Rc<Namespace<'input>>>,
+    namespace: &Option<Arc<Namespace<'input>>>,
     index: usize,
     data: &pdb::EnumerationType<'input>,
 ) -> Result<()> {

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::cmp;
-use std::rc::Rc;
+use std::sync::Arc;
 use std::usize;
 
 use crate::file::FileHash;
@@ -42,7 +42,7 @@ impl Default for VariableOffset {
 pub struct Variable<'input> {
     pub(crate) id: Id,
     pub(crate) offset: VariableOffset,
-    pub(crate) namespace: Option<Rc<Namespace<'input>>>,
+    pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) linkage_name: Option<&'input str>,
     pub(crate) symbol_name: Option<&'input str>,
