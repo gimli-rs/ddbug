@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 use std::usize;
@@ -12,7 +11,7 @@ use crate::range::Range;
 use crate::source::Source;
 use crate::types::{ParameterType, Type, TypeOffset};
 use crate::variable::LocalVariable;
-use crate::{Address, Size};
+use crate::{Address, Id, Size};
 
 /// The debuginfo offset of a function.
 ///
@@ -62,7 +61,7 @@ impl Default for FunctionOffset {
 /// A function.
 #[derive(Debug, Default)]
 pub struct Function<'input> {
-    pub(crate) id: Cell<usize>,
+    pub(crate) id: Id,
     pub(crate) offset: FunctionOffset,
     pub(crate) namespace: Option<Rc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,

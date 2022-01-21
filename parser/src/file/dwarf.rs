@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::rc::Rc;
@@ -26,7 +25,7 @@ use crate::types::{
 };
 use crate::unit::Unit;
 use crate::variable::{LocalVariable, Variable, VariableOffset};
-use crate::{Address, Result, Size};
+use crate::{Address, Id, Result, Size};
 
 type RelocationMap = HashMap<usize, object::Relocation>;
 
@@ -2164,7 +2163,7 @@ where
 {
     let offset = node.entry().offset();
     let mut function = Function {
-        id: Cell::new(0),
+        id: Id::new(0),
         offset: offset.to_unit_section_offset(dwarf_unit).into(),
         namespace: namespace.clone(),
         name: None,

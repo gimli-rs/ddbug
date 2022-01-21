@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cmp;
 use std::marker;
 use std::rc::Rc;
@@ -9,7 +8,7 @@ use crate::file::FileHash;
 use crate::function::ParameterOffset;
 use crate::namespace::Namespace;
 use crate::source::Source;
-use crate::Size;
+use crate::{Id, Size};
 
 /// The kind of a type.
 #[derive(Debug, Clone)]
@@ -109,7 +108,7 @@ impl Default for TypeOffset {
 /// A type.
 #[derive(Debug, Clone)]
 pub struct Type<'input> {
-    pub(crate) id: Cell<usize>,
+    pub(crate) id: Id,
     pub(crate) offset: TypeOffset,
     pub(crate) kind: TypeKind<'input>,
 }
@@ -117,7 +116,7 @@ pub struct Type<'input> {
 impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
-            id: Cell::new(0),
+            id: Id::new(0),
             offset: TypeOffset::none(),
             kind: TypeKind::Base(BaseType::default()),
         }
@@ -143,7 +142,7 @@ impl<'input> Type<'input> {
 
     pub(crate) fn void() -> Type<'static> {
         Type {
-            id: Cell::new(usize::MAX),
+            id: Id::new(usize::MAX),
             offset: TypeOffset(usize::MAX),
             kind: TypeKind::Void,
         }

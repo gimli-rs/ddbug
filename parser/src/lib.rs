@@ -55,6 +55,7 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::result;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 /// A parsing error.
 #[derive(Debug)]
@@ -233,3 +234,26 @@ mod size {
 }
 
 pub use crate::size::Size;
+
+#[derive(Debug, Default)]
+struct Id(AtomicUsize);
+
+impl Clone for Id {
+    fn clone(&self) -> Self {
+        Id(AtomicUsize::new(self.get()))
+    }
+}
+
+impl Id {
+    fn new(id: usize) -> Self {
+        Id(AtomicUsize::new(id))
+    }
+
+    fn get(&self) -> usize {
+        self.0.load(Ordering::Acquire)
+    }
+
+    fn set(&self, id: usize) {
+        self.0.store(id, Ordering::Release)
+    }
+}

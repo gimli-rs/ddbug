@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::cmp;
 use std::rc::Rc;
 use std::usize;
@@ -10,7 +9,7 @@ use crate::namespace::Namespace;
 use crate::range::Range;
 use crate::source::Source;
 use crate::types::{Type, TypeOffset};
-use crate::{Address, Size};
+use crate::{Address, Id, Size};
 
 /// The debuginfo offset of a variable.
 ///
@@ -41,7 +40,7 @@ impl Default for VariableOffset {
 /// A global variable.
 #[derive(Debug, Default)]
 pub struct Variable<'input> {
-    pub(crate) id: Cell<usize>,
+    pub(crate) id: Id,
     pub(crate) offset: VariableOffset,
     pub(crate) namespace: Option<Rc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
