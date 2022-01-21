@@ -1,9 +1,8 @@
 [package]
 name = "ddbug"
 version = "0.3.0"
-authors = ["Philip Craig <philipjcraig@gmail.com>"]
 description = "Display debugging information"
-repository = "https://github.com/philipc/ddbug"
+repository = "https://github.com/gimli-rs/ddbug"
 readme = "../README.md"
 keywords = ["debug", "DWARF"]
 categories = ["development-tools::debugging"]
