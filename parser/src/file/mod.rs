@@ -1,7 +1,9 @@
 use std::borrow::Cow;
 use std::default::Default;
 use std::fs;
+use std::mem;
 use std::ops::Deref;
+use std::sync::Mutex;
 
 mod dwarf;
 
@@ -67,13 +69,13 @@ where
 }
 
 pub(crate) struct StringCache {
-    strings: Arena<String>,
+    strings: Mutex<Arena<String>>,
 }
 
 impl StringCache {
     fn new() -> Self {
         StringCache {
-            strings: Arena::new(),
+            strings: Mutex::new(Arena::new()),
         }
     }
 
@@ -82,7 +84,11 @@ impl StringCache {
         // fix by avoiding duplicates
         match String::from_utf8_lossy(bytes) {
             Cow::Borrowed(s) => s,
-            Cow::Owned(s) => &*self.strings.alloc(s),
+            Cow::Owned(s) => {
+                let strings = self.strings.lock().unwrap();
+                let s = strings.alloc(s);
+                unsafe { mem::transmute::<&str, &'input str>(s) }
+            }
         }
     }
 }
