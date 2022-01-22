@@ -3,17 +3,19 @@
 //! ## Example usage
 //!
 //! ```rust,no_run
-//! # let a_file_path = "";
-//! ddbug_parser::File::parse(a_file_path, |file| {
-//!     for unit in file.units() {
-//!         for function in unit.functions() {
-//!             if let Some(name) = function.name() {
-//!                 println!("{}", name);
-//!             }
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! # let a_file_path = String::new();
+//! let ctx = ddbug_parser::File::parse(a_file_path)?;
+//! let file = ctx.file();
+//! for unit in file.units() {
+//!     for function in unit.functions() {
+//!         if let Some(name) = function.name() {
+//!             println!("{}", name);
 //!         }
 //!     }
-//!     Ok(())
-//! });
+//! }
+//! Ok(())
+//! }
 //! ```
 #![deny(missing_docs)]
 // Enable some rust 2018 idioms.

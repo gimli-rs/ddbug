@@ -2,13 +2,10 @@ fn diff(name: &str, expect: &str) {
     let mut options = options();
     options.unit("src/diff.c").name(name);
     let mut diff = Vec::new();
-    ddbug::File::parse("tests/bin/diff1", |output_1| {
-        ddbug::File::parse("tests/bin/diff2", |output_2| {
-            let mut printer = ddbug::TextPrinter::new(&mut diff, &options);
-            ddbug::diff(&mut printer, output_1, output_2, &options)
-        })
-    })
-    .unwrap();
+    let output_1 = ddbug::File::parse("tests/bin/diff1".into()).unwrap();
+    let output_2 = ddbug::File::parse("tests/bin/diff2".into()).unwrap();
+    let mut printer = ddbug::TextPrinter::new(&mut diff, &options);
+    ddbug::diff(&mut printer, output_1.file(), output_2.file(), &options).unwrap();
     let diff = String::from_utf8(diff).unwrap();
     if !equal(&diff, expect) {
         println!("\nDiff:");

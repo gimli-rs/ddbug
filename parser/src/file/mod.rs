@@ -11,7 +11,6 @@ use fnv::FnvHashMap as HashMap;
 use gimli;
 use memmap;
 use object::{self, Object, ObjectSection, ObjectSegment, ObjectSymbol, ObjectSymbolTable};
-use typed_arena::Arena;
 
 use crate::cfi::Cfi;
 use crate::function::{Function, FunctionDetails, FunctionOffset};
@@ -26,7 +25,7 @@ pub(crate) enum DebugInfo<'input, Endian>
 where
     Endian: gimli::Endianity + 'input,
 {
-    Dwarf(&'input dwarf::DwarfDebugInfo<'input, Endian>),
+    Dwarf(dwarf::DwarfDebugInfo<'input, Endian>),
 }
 
 impl<'input, Endian> DebugInfo<'input, Endian>
@@ -68,36 +67,94 @@ where
     }
 }
 
-pub(crate) struct StringCache {
-    strings: Mutex<Arena<String>>,
+pub(crate) struct Arena {
+    // TODO: can these be a single `Vec<Box<dyn ??>>`?
+    buffers: Mutex<Vec<Vec<u8>>>,
+    strings: Mutex<Vec<String>>,
+    relocations: Mutex<Vec<Box<dwarf::RelocationMap>>>,
 }
 
-impl StringCache {
+impl Arena {
     fn new() -> Self {
-        StringCache {
-            strings: Mutex::new(Arena::new()),
+        Arena {
+            buffers: Mutex::new(Vec::new()),
+            strings: Mutex::new(Vec::new()),
+            relocations: Mutex::new(Vec::new()),
         }
     }
 
-    fn get<'input>(&'input self, bytes: &'input [u8]) -> &'input str {
+    fn add_buffer<'input>(&'input self, bytes: Vec<u8>) -> &'input [u8] {
+        let mut buffers = self.buffers.lock().unwrap();
+        let i = buffers.len();
+        buffers.push(bytes);
+        let b = &buffers[i];
+        unsafe { mem::transmute::<&[u8], &'input [u8]>(b) }
+    }
+
+    fn add_string<'input>(&'input self, bytes: &'input [u8]) -> &'input str {
         // FIXME: this is effectively leaking strings that require lossy conversion,
         // fix by avoiding duplicates
         match String::from_utf8_lossy(bytes) {
             Cow::Borrowed(s) => s,
             Cow::Owned(s) => {
-                let strings = self.strings.lock().unwrap();
-                let s = strings.alloc(s);
+                let mut strings = self.strings.lock().unwrap();
+                let i = strings.len();
+                strings.push(s);
+                let s = &strings[i];
                 unsafe { mem::transmute::<&str, &'input str>(s) }
             }
         }
+    }
+
+    fn add_relocations<'input>(
+        &'input self,
+        entry: Box<dwarf::RelocationMap>,
+    ) -> &'input dwarf::RelocationMap {
+        let mut relocations = self.relocations.lock().unwrap();
+        let i = relocations.len();
+        relocations.push(entry);
+        let entry = &relocations[i];
+        unsafe { mem::transmute::<&dwarf::RelocationMap, &'input dwarf::RelocationMap>(entry) }
     }
 }
 
 pub use object::Architecture;
 
+/// The context needed for a parsed file.
+///
+/// The parsed file references the context, so it is included here as well.
+pub struct FileContext {
+    // Self-referential, not actually `static.
+    file: File<'static>,
+    _map: memmap::Mmap,
+    _arena: Box<Arena>,
+}
+
+impl FileContext {
+    fn new<F>(map: memmap::Mmap, f: F) -> Result<FileContext>
+    where
+        F: for<'a> FnOnce(&'a [u8], &'a Arena) -> Result<File<'a>>,
+    {
+        let arena = Box::new(Arena::new());
+        let file = f(&map, &arena)?;
+        Ok(FileContext {
+            // `file` only borrows from `map` and `arena`, which we are preserving
+            // without moving.
+            file: unsafe { mem::transmute::<File<'_>, File<'static>>(file) },
+            _map: map,
+            _arena: arena,
+        })
+    }
+
+    /// Return the parsed debuginfo for the file.
+    pub fn file<'a>(&'a self) -> &'a File<'a> {
+        unsafe { mem::transmute::<&'a File<'static>, &'a File<'a>>(&self.file) }
+    }
+}
+
 /// The parsed debuginfo for a single file.
 pub struct File<'input> {
-    pub(crate) path: &'input str,
+    pub(crate) path: String,
     pub(crate) machine: Architecture,
     pub(crate) segments: Vec<Segment<'input>>,
     pub(crate) sections: Vec<Section<'input>>,
@@ -135,14 +192,8 @@ impl<'input> File<'input> {
     }
 
     /// Parse the file with the given path.
-    ///
-    /// `cb` is a callback function that is called with the parsed File.
-    /// It requires a callback so that memory management is simplified.
-    pub fn parse<Cb>(path: &str, cb: Cb) -> Result<()>
-    where
-        Cb: FnOnce(&File) -> Result<()>,
-    {
-        let handle = match fs::File::open(path) {
+    pub fn parse(path: String) -> Result<FileContext> {
+        let handle = match fs::File::open(&path) {
             Ok(handle) => handle,
             Err(e) => {
                 return Err(format!("open failed: {}", e).into());
@@ -156,22 +207,20 @@ impl<'input> File<'input> {
             }
         };
 
-        let object = object::File::parse(&*map)?;
-
         // TODO: split DWARF
         // TODO: PDB
-        File::parse_object(&object, &object, path, cb)
+        FileContext::new(map, |data, strings| {
+            let object = object::File::parse(data)?;
+            File::parse_object(&object, &object, path, strings)
+        })
     }
 
-    fn parse_object<Cb>(
-        object: &object::File,
-        debug_object: &object::File,
-        path: &str,
-        cb: Cb,
-    ) -> Result<()>
-    where
-        Cb: FnOnce(&File) -> Result<()>,
-    {
+    fn parse_object(
+        object: &object::File<'input>,
+        debug_object: &object::File<'input>,
+        path: String,
+        arena: &'input Arena,
+    ) -> Result<File<'input>> {
         let machine = object.architecture();
         let mut segments = Vec::new();
         for segment in object.segments() {
@@ -261,21 +310,19 @@ impl<'input> File<'input> {
             gimli::RunTimeEndian::Big
         };
 
-        let strings = &StringCache::new();
-        dwarf::parse(endian, debug_object, strings, |units, debug_info| {
-            let mut file = File {
-                path,
-                machine,
-                segments,
-                sections,
-                symbols,
-                relocations,
-                units,
-                debug_info,
-            };
-            file.normalize();
-            cb(&file)
-        })
+        let (units, debug_info) = dwarf::parse(endian, debug_object, arena)?;
+        let mut file = File {
+            path,
+            machine,
+            segments,
+            sections,
+            symbols,
+            relocations,
+            units,
+            debug_info,
+        };
+        file.normalize();
+        Ok(file)
     }
 
     fn normalize(&mut self) {
@@ -391,8 +438,8 @@ impl<'input> File<'input> {
 
     /// The file path.
     #[inline]
-    pub fn path(&self) -> &'input str {
-        self.path
+    pub fn path(&self) -> &str {
+        &self.path
     }
 
     /// The machine type that the file contains debuginfo for.

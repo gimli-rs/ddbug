@@ -9,7 +9,7 @@ use gimli::Reader as GimliReader;
 use object::{self, ObjectSection, ObjectSymbol};
 
 use crate::cfi::{Cfi, CfiDirective};
-use crate::file::{Architecture, DebugInfo, FileHash, StringCache};
+use crate::file::{Architecture, Arena, DebugInfo, FileHash};
 use crate::function::{
     Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
 };
@@ -27,7 +27,7 @@ use crate::unit::Unit;
 use crate::variable::{LocalVariable, Variable, VariableOffset};
 use crate::{Address, Id, Result, Size};
 
-type RelocationMap = HashMap<usize, object::Relocation>;
+pub(crate) type RelocationMap = HashMap<usize, object::Relocation>;
 
 fn add_relocations<'input, 'file, Object>(
     relocations: &mut RelocationMap,
@@ -258,7 +258,7 @@ where
     endian: Endian,
     read: gimli::Dwarf<Reader<'input, Endian>>,
     frame: DwarfFrame<Reader<'input, Endian>>,
-    strings: &'input StringCache,
+    arena: &'input Arena,
     units: Vec<gimli::Unit<Reader<'input, Endian>, usize>>,
 }
 
@@ -273,7 +273,7 @@ where
     ) -> Option<&'input str> {
         self.read
             .attr_string(dwarf_unit, value)
-            .map(|r| self.strings.get(r.slice()))
+            .map(|r| self.arena.add_string(r.slice()))
             .ok()
     }
 
@@ -381,40 +381,36 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub(crate) fn parse<'input: 'file, 'file, Endian, Object, Cb>(
+pub(crate) fn parse<'input: 'file, 'file, Endian, Object>(
     endian: Endian,
     object: &'file Object,
-    strings: &'input StringCache,
-    cb: Cb,
-) -> Result<()>
+    arena: &'input Arena,
+) -> Result<(Vec<Unit<'input>>, DebugInfo<'input, Endian>)>
 where
     Endian: gimli::Endianity,
     Object: object::Object<'input, 'file>,
-    Cb: FnOnce(Vec<Unit>, DebugInfo<Endian>) -> Result<()>,
 {
     let get_section = |id: gimli::SectionId| -> Result<_> {
         let mut relocations = RelocationMap::default();
         let data = match object.section_by_name(id.name()) {
             Some(ref section) => {
                 add_relocations(&mut relocations, object, section);
-                section.uncompressed_data()?
+                match section.uncompressed_data()? {
+                    Cow::Borrowed(bytes) => bytes,
+                    Cow::Owned(bytes) => arena.add_buffer(bytes),
+                }
             }
-            None => Cow::Borrowed(&[][..]),
+            None => &[],
         };
-        Ok((data, relocations))
+        let relocations = arena.add_relocations(Box::new(relocations));
+        let reader = gimli::EndianSlice::new(data, endian);
+        Ok(Relocate {
+            relocations,
+            section: reader,
+            reader,
+        })
     };
-    let get_reader: &dyn for<'a> Fn(&'a (Cow<[u8]>, RelocationMap)) -> Reader<'a, Endian> =
-        &|section| {
-            let relocations = &section.1;
-            let reader = gimli::EndianSlice::new(&section.0, endian);
-            Relocate {
-                relocations,
-                section: reader,
-                reader,
-            }
-        };
-    let sections = gimli::Dwarf::load(get_section)?;
-    let read = sections.borrow(get_reader);
+    let read = gimli::Dwarf::load(get_section)?;
 
     let debug_frame = get_section(gimli::SectionId::DebugFrame)?;
     let eh_frame = get_section(gimli::SectionId::EhFrame)?;
@@ -428,17 +424,13 @@ where
     if let Some(section) = object.section_by_name(".got") {
         bases = bases.set_got(section.address());
     }
-    let frame = DwarfFrame::new(
-        get_reader(&debug_frame).into(),
-        get_reader(&eh_frame).into(),
-        bases,
-    );
+    let frame = DwarfFrame::new(debug_frame.into(), eh_frame.into(), bases);
 
     let mut dwarf = DwarfDebugInfo {
         endian,
         read,
         frame,
-        strings,
+        arena,
         units: Vec::new(),
     };
 
@@ -448,7 +440,7 @@ where
         let dwarf_unit = dwarf.read.unit(unit_header)?;
         units.push(parse_unit(&mut dwarf, dwarf_unit)?);
     }
-    cb(units, DebugInfo::Dwarf(&dwarf))
+    Ok((units, DebugInfo::Dwarf(dwarf)))
 }
 
 fn parse_unit<'input, Endian>(

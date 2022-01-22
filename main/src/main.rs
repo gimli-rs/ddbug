@@ -408,19 +408,23 @@ fn main() {
         let path_a = paths.next().unwrap();
         let path_b = paths.next().unwrap();
 
-        if let Err(e) = ddbug::File::parse(path_a, |file_a| {
-            if let Err(e) = ddbug::File::parse(path_b, |file_b| diff_file(file_a, file_b, &options))
-            {
-                error!("{}: {}", path_b, e);
-            }
-            Ok(())
-        }) {
-            error!("{}: {}", path_a, e);
+        match ddbug::File::parse(path_a.to_string()) {
+            Err(e) => error!("{}: {}", path_a, e),
+            Ok(file_a) => match ddbug::File::parse(path_b.to_string()) {
+                Err(e) => error!("{}: {}", path_b, e),
+                Ok(file_b) => {
+                    if let Err(e) = diff_file(file_a.file(), file_b.file(), &options) {
+                        error!("{}", e);
+                    }
+                }
+            },
         }
     } else {
         let path = matches.value_of(OPT_FILE).unwrap();
 
-        if let Err(e) = ddbug::File::parse(path, |file| print_file(file, &options)) {
+        if let Err(e) =
+            ddbug::File::parse(path.to_string()).and_then(|file| print_file(file.file(), &options))
+        {
             error!("{}: {}", path, e);
         }
     }

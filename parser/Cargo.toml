@@ -14,7 +14,6 @@ gimli = "0.26"
 log = "0.4"
 memmap = "0.7"
 object = "0.28"
-typed-arena = "2"
 
 [features]
 default = []
