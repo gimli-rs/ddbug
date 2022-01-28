@@ -6,7 +6,9 @@ use parser::{
 };
 
 use crate::code::{Call, Code};
-use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
+use crate::print::{
+    self, DiffList, DiffState, Print, PrintHeader, PrintState, SortList, ValuePrinter,
+};
 use crate::{Options, Result, Sort};
 
 pub(crate) fn print_ref(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
@@ -87,53 +89,59 @@ fn print_return_type(f: &Function, w: &mut dyn ValuePrinter, hash: &FileHash) ->
     Ok(())
 }
 
+impl<'input> PrintHeader for Function<'input> {
+    fn print_header(&self, state: &mut PrintState) -> Result<()> {
+        state.line(|w, _state| print_name(self, w))
+    }
+
+    fn print_body(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.field("linkage name", |w, _state| print_linkage_name(self, w))?;
+        state.field("symbol name", |w, _state| print_symbol_name(self, w))?;
+        if state.options().print_source {
+            state.field("source", |w, _state| print_source(self, w, unit))?;
+        }
+        state.field("address", |w, _state| print_address(self, w))?;
+        state.field("size", |w, _state| print_size(self, w))?;
+        state.field("inline", |w, _state| print_inline(self, w))?;
+        state.field("declaration", |w, _state| print_declaration(self, w))?;
+        state.field_expanded("return type", |state| {
+            state.line(|w, state| print_return_type(self, w, state))
+        })?;
+        let details = self.details(state.hash());
+        state.field_expanded("parameters", |state| state.list(unit, details.parameters()))?;
+        if state.options().print_function_variables {
+            state.field_collapsed("variables", |state| state.list(unit, details.variables()))?;
+        }
+        if state.options().print_function_stack_frame {
+            let variables = frame_variables(&details, state.hash());
+            state.field_collapsed("stack frame", |state| state.list(&(), &variables))?;
+        }
+        state.inline(|state| {
+            state.field_collapsed("inlined functions", |state| {
+                state.list(unit, details.inlined_functions())
+            })
+        })?;
+        if state.options().print_function_calls {
+            let calls = calls(self, state.code);
+            state.field_collapsed("calls", |state| state.list(&(), &calls))?;
+        }
+        if state.options().print_function_instructions {
+            state.field_collapsed("instructions", |state| {
+                print_instructions(state, self, &details)
+            })?;
+        }
+        Ok(())
+    }
+}
+
 impl<'input> Print for Function<'input> {
     type Arg = Unit<'input>;
 
     fn print(&self, state: &mut PrintState, unit: &Self::Arg) -> Result<()> {
-        state.collapsed(
-            |state| state.id(self.id(), |w, _state| print_name(self, w)),
-            |state| {
-                state.field("linkage name", |w, _state| print_linkage_name(self, w))?;
-                state.field("symbol name", |w, _state| print_symbol_name(self, w))?;
-                if state.options().print_source {
-                    state.field("source", |w, _state| print_source(self, w, unit))?;
-                }
-                state.field("address", |w, _state| print_address(self, w))?;
-                state.field("size", |w, _state| print_size(self, w))?;
-                state.field("inline", |w, _state| print_inline(self, w))?;
-                state.field("declaration", |w, _state| print_declaration(self, w))?;
-                state.field_expanded("return type", |state| {
-                    state.line(|w, state| print_return_type(self, w, state))
-                })?;
-                let details = self.details(state.hash());
-                state
-                    .field_expanded("parameters", |state| state.list(unit, details.parameters()))?;
-                if state.options().print_function_variables {
-                    state.field_collapsed("variables", |state| {
-                        state.list(unit, details.variables())
-                    })?;
-                }
-                if state.options().print_function_stack_frame {
-                    let variables = frame_variables(&details, state.hash());
-                    state.field_collapsed("stack frame", |state| state.list(&(), &variables))?;
-                }
-                state.inline(|state| {
-                    state.field_collapsed("inlined functions", |state| {
-                        state.list(unit, details.inlined_functions())
-                    })
-                })?;
-                if state.options().print_function_calls {
-                    let calls = calls(self, state.code);
-                    state.field_collapsed("calls", |state| state.list(&(), &calls))?;
-                }
-                if state.options().print_function_instructions {
-                    state.field_collapsed("instructions", |state| {
-                        print_instructions(state, self, &details)
-                    })?;
-                }
-                Ok(())
-            },
+        state.id(
+            self.id(),
+            |state| self.print_header(state),
+            |state| self.print_body(state, unit),
         )?;
         state.line_break()?;
         Ok(())

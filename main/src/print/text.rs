@@ -56,7 +56,7 @@ impl<'w> Printer for TextPrinter<'w> {
         writeln!(self.w).map_err(From::from)
     }
 
-    fn line(&mut self, _id: usize, label: &str, buf: &[u8]) -> Result<()> {
+    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
         match self.prefix {
             DiffPrefix::None => {}
             DiffPrefix::Equal | DiffPrefix::Modify => write!(self.w, "  ")?,
@@ -81,11 +81,11 @@ impl<'w> Printer for TextPrinter<'w> {
         Ok(())
     }
 
-    fn line_diff(&mut self, id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, _id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         self.prefix = DiffPrefix::Delete;
-        self.line(id, label, a)?;
+        self.line(label, a)?;
         self.prefix = DiffPrefix::Add;
-        self.line(id, label, b)
+        self.line(label, b)
     }
 
     fn indent_body(
@@ -111,6 +111,22 @@ impl<'w> Printer for TextPrinter<'w> {
         header(self)?;
         self.write_buf(body)?;
         Ok(())
+    }
+
+    fn indent_id(
+        &mut self,
+        _id: usize,
+        header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
+        body: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
+    ) -> Result<()> {
+        header(self)?;
+        let mut printer = TextPrinter {
+            w: self.w,
+            indent: self.indent + 1,
+            prefix: self.prefix,
+            inline_depth: self.inline_depth,
+        };
+        body(&mut printer)
     }
 
     fn prefix(&mut self, prefix: DiffPrefix) {

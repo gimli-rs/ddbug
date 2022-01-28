@@ -2,17 +2,51 @@ use parser::{File, FileHash, Unit};
 
 use crate::code::Code;
 use crate::filter;
-use crate::print::{self, DiffState, MergeIterator, MergeResult, PrintState, Printer, SortList};
+use crate::print::{
+    self, DiffState, Id, MergeIterator, MergeResult, PrintHeader, PrintState, Printer, SortList,
+};
 use crate::{Options, Result};
 
-fn assign_ids(file: &File, options: &Options) {
-    let mut id = 0;
-    for unit in file.units() {
-        id = assign_ids_in_unit(unit, options, id);
+pub fn assign_ids(file: &File, options: &Options) -> Vec<Id> {
+    let mut ids = Vec::new();
+    for (unit_index, unit) in file.units().iter().enumerate() {
+        unit.set_id(ids.len());
+        ids.push(Id::Unit { unit_index });
+        assign_ids_in_unit(unit_index, unit, options, &mut ids);
+    }
+    ids
+}
+
+pub(crate) fn assign_ids_in_unit(
+    unit_index: usize,
+    unit: &Unit,
+    _options: &Options,
+    ids: &mut Vec<Id>,
+) {
+    for (type_index, ty) in unit.types().iter().enumerate() {
+        ty.set_id(ids.len());
+        ids.push(Id::Type {
+            unit_index,
+            type_index,
+        });
+    }
+    for (function_index, function) in unit.functions().iter().enumerate() {
+        function.set_id(ids.len());
+        ids.push(Id::Function {
+            unit_index,
+            function_index,
+        });
+    }
+    for (variable_index, variable) in unit.variables().iter().enumerate() {
+        variable.set_id(ids.len());
+        ids.push(Id::Variable {
+            unit_index,
+            variable_index,
+        });
     }
 }
 
-pub(crate) fn assign_ids_in_unit(unit: &Unit, _options: &Options, mut id: usize) -> usize {
+pub(crate) fn assign_unmerged_ids_in_unit(unit: &Unit, _options: &Options, mut id: usize) -> usize {
     for ty in unit.types() {
         id += 1;
         ty.set_id(id);
@@ -42,10 +76,10 @@ fn assign_merged_ids(
                 id = assign_merged_ids_in_unit(hash_a, a, hash_b, b, options, id);
             }
             MergeResult::Left(a) => {
-                id = assign_ids_in_unit(a, options, id);
+                id = assign_unmerged_ids_in_unit(a, options, id);
             }
             MergeResult::Right(b) => {
-                id = assign_ids_in_unit(b, options, id);
+                id = assign_unmerged_ids_in_unit(b, options, id);
             }
         }
     }
@@ -130,7 +164,6 @@ fn merged_units<'a, 'input>(
 }
 
 pub fn print(file: &File, printer: &mut dyn Printer, options: &Options) -> Result<()> {
-    assign_ids(file, options);
     let hash = FileHash::new(file);
     let code = Code::new(file);
     let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
@@ -168,6 +201,48 @@ pub fn print(file: &File, printer: &mut dyn Printer, options: &Options) -> Resul
     }
 
     state.sort_list(&(), &mut filter::filter_units(file, options))
+}
+
+pub fn print_id(id: Id, file: &File, printer: &mut dyn Printer, options: &Options) -> Result<()> {
+    match id {
+        Id::Unit { unit_index } => {
+            if let Some(unit) = file.units().get(unit_index) {
+                let hash = FileHash::new(file);
+                let code = Code::new(file);
+                let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
+                return super::unit::print_body(unit, &mut state);
+            }
+        }
+        Id::Type {
+            unit_index,
+            type_index,
+        } => {
+            if let Some(unit) = file.units().get(unit_index) {
+                if let Some(ty) = unit.types().get(type_index) {
+                    let hash = FileHash::new(file);
+                    let code = Code::new(file);
+                    let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
+                    let kind = super::types::kind(ty)?;
+                    return kind.print_body(&mut state, unit);
+                }
+            }
+        }
+        Id::Function {
+            unit_index,
+            function_index,
+        } => {
+            if let Some(unit) = file.units().get(unit_index) {
+                if let Some(function) = unit.functions().get(function_index) {
+                    let hash = FileHash::new(file);
+                    let code = Code::new(file);
+                    let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
+                    return function.print_body(&mut state, unit);
+                }
+            }
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 pub fn diff(

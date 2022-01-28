@@ -78,7 +78,7 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    fn _is_within(&self, namespace: &[&str]) -> (bool, usize) {
+    fn _is_within<T: AsRef<str>>(&self, namespace: &[T]) -> (bool, usize) {
         let (ret, offset) = match self.parent {
             Some(ref parent) => parent._is_within(namespace),
             None => (true, 0),
@@ -87,7 +87,7 @@ impl<'input> Namespace<'input> {
         if ret {
             if offset < namespace.len() {
                 match self.name() {
-                    Some(name) => (name == namespace[offset], offset + 1),
+                    Some(name) => (name == namespace[offset].as_ref(), offset + 1),
                     None => (false, offset + 1),
                 }
             } else {
@@ -101,7 +101,7 @@ impl<'input> Namespace<'input> {
     /// Return true if this namespace is within the given namespace.
     ///
     /// `namespace` is a slice of names, starting with the root namespace name.
-    pub fn is_within(&self, namespace: &[&str]) -> bool {
+    pub fn is_within<T: AsRef<str>>(&self, namespace: &[T]) -> bool {
         self._is_within(namespace) == (true, namespace.len())
     }
 

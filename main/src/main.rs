@@ -16,6 +16,8 @@ extern crate log;
 
 use std::io::BufWriter;
 
+use warp::Filter;
+
 // Mode
 const OPT_FILE: &str = "file";
 const OPT_DIFF: &str = "diff";
@@ -24,6 +26,7 @@ const OPT_DIFF: &str = "diff";
 const OPT_OUTPUT: &str = "format";
 const OPT_OUTPUT_TEXT: &str = "text";
 const OPT_OUTPUT_HTML: &str = "html";
+const OPT_OUTPUT_HTTP: &str = "http";
 
 // Print categories
 const OPT_CATEGORY: &str = "category";
@@ -106,7 +109,7 @@ fn main() {
                 .help("Output format")
                 .takes_value(true)
                 .value_name("FORMAT")
-                .possible_values(&[OPT_OUTPUT_TEXT, OPT_OUTPUT_HTML]),
+                .possible_values(&[OPT_OUTPUT_TEXT, OPT_OUTPUT_HTML, OPT_OUTPUT_HTTP]),
         )
         .arg(
             clap::Arg::with_name(OPT_CATEGORY)
@@ -218,6 +221,24 @@ fn main() {
 
     let mut options = ddbug::Options::default();
 
+    if let Some(value) = matches.value_of(OPT_OUTPUT) {
+        match value {
+            OPT_OUTPUT_TEXT => options.html = false,
+            OPT_OUTPUT_HTML => options.html = true,
+            OPT_OUTPUT_HTTP => {
+                options.html = true;
+                options.http = true;
+            }
+            _ => clap::Error::with_description(
+                &format!("invalid {} value: {}", OPT_OUTPUT, value),
+                clap::ErrorKind::InvalidValue,
+            )
+            .exit(),
+        }
+    } else {
+        options.html = false;
+    }
+
     options.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => inline_depth,
@@ -232,20 +253,6 @@ fn main() {
     } else {
         1
     };
-
-    if let Some(value) = matches.value_of(OPT_OUTPUT) {
-        match value {
-            OPT_OUTPUT_TEXT => options.html = false,
-            OPT_OUTPUT_HTML => options.html = true,
-            _ => clap::Error::with_description(
-                &format!("invalid {} value: {}", OPT_OUTPUT, value),
-                clap::ErrorKind::InvalidValue,
-            )
-            .exit(),
-        }
-    } else {
-        options.html = false;
-    }
 
     if let Some(values) = matches.values_of(OPT_CATEGORY) {
         for value in values {
@@ -325,9 +332,11 @@ fn main() {
                             .exit(),
                         };
                     }
-                    OPT_FILTER_NAME => options.filter_name = Some(value),
-                    OPT_FILTER_NAMESPACE => options.filter_namespace = value.split("::").collect(),
-                    OPT_FILTER_UNIT => options.filter_unit = Some(value),
+                    OPT_FILTER_NAME => options.filter_name = Some(value.into()),
+                    OPT_FILTER_NAMESPACE => {
+                        options.filter_namespace = value.split("::").map(String::from).collect()
+                    }
+                    OPT_FILTER_UNIT => options.filter_unit = Some(value.into()),
                     _ => clap::Error::with_description(
                         &format!("invalid {} key: {}", OPT_FILTER, key),
                         clap::ErrorKind::InvalidValue,
@@ -392,7 +401,7 @@ fn main() {
             if let Some(index) = value.bytes().position(|c| c == b'=') {
                 let old = &value[..index];
                 let new = &value[index + 1..];
-                options.prefix_map.push((old, new));
+                options.prefix_map.push((old.into(), new.into()));
             } else {
                 clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_PREFIX_MAP, value),
@@ -422,9 +431,14 @@ fn main() {
     } else {
         let path = matches.value_of(OPT_FILE).unwrap();
 
-        if let Err(e) =
-            ddbug::File::parse(path.to_string()).and_then(|file| print_file(file.file(), &options))
-        {
+        if let Err(e) = ddbug::File::parse(path.to_string()).and_then(|file| {
+            let ids = ddbug::assign_ids(file.file(), &options);
+            if options.http {
+                serve_file(file, options, ids)
+            } else {
+                print_file(file.file(), &options)
+            }
+        }) {
             error!("{}: {}", path, e);
         }
     }
@@ -463,3 +477,57 @@ where
         f(&mut printer)
     }
 }
+
+fn serve_file(
+    file: parser::FileContext,
+    options: ddbug::Options,
+    ids: Vec<ddbug::Id>,
+) -> ddbug::Result<()> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_io()
+        .build()
+        .unwrap();
+    rt.block_on(async move {
+        let file = std::sync::Arc::new(file);
+        let options = std::sync::Arc::new(options);
+        let ids = std::sync::Arc::new(ids);
+
+        let route_root = {
+            let file = file.clone();
+            let options = options.clone();
+            warp::path::end().map(move || {
+                let mut writer = Vec::new();
+                let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
+                printer.begin().unwrap();
+                ddbug::print(file.file(), &mut printer, &options).unwrap();
+                printer.end().unwrap();
+                warp::reply::html(writer)
+            })
+        };
+        let route_id = {
+            warp::path!("id" / usize).map(move |id| {
+                let mut writer = Vec::new();
+                if let Some(id) = ids.get(id) {
+                    let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
+                    ddbug::print_id(*id, file.file(), &mut printer, &options).unwrap();
+                }
+                writer
+            })
+        };
+        let route = warp::get().and(route_root.or(route_id));
+
+        let (addr, serve) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
+        println!("Listening on http://{}", addr);
+        // TODO: support other OS
+        #[cfg(target_os = "linux")]
+        std::process::Command::new("xdg-open")
+            .arg(format!("http://{}", addr))
+            .status()
+            .unwrap();
+        serve.await;
+    });
+
+    Ok(())
+}
+
+mod www {}

@@ -8,10 +8,12 @@ use crate::function::Function;
 use crate::range::RangeList;
 use crate::types::Type;
 use crate::variable::Variable;
+use crate::Id;
 
 /// A compilation unit.
 #[derive(Debug, Default)]
 pub struct Unit<'input> {
+    pub(crate) id: Id,
     pub(crate) dir: Option<Cow<'input, str>>,
     pub(crate) name: Option<Cow<'input, str>>,
     pub(crate) language: Option<gimli::DwLang>,
@@ -24,6 +26,18 @@ pub struct Unit<'input> {
 }
 
 impl<'input> Unit<'input> {
+    /// The user defined id for this type.
+    #[inline]
+    pub fn id(&self) -> usize {
+        self.id.get()
+    }
+
+    /// Set a user defined id for this type.
+    #[inline]
+    pub fn set_id(&self, id: usize) {
+        self.id.set(id)
+    }
+
     /// The working directory when the unit was compiled.
     pub fn dir(&self) -> Option<&str> {
         self.dir.as_ref().map(Cow::deref)
