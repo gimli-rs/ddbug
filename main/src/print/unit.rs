@@ -80,15 +80,15 @@ fn print_ref(unit: &Unit, w: &mut dyn ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn print(unit: &Unit, state: &mut PrintState) -> Result<()> {
-    let options = state.options();
+pub(crate) fn print_header(unit: &Unit, state: &mut PrintState) -> Result<()> {
+    state.line(|w, _state| {
+        write!(w, "unit ")?;
+        print_ref(unit, w)
+    })
+}
 
-    let print_header = |state: &mut PrintState| {
-        state.line(|w, _state| {
-            write!(w, "unit ")?;
-            print_ref(unit, w)
-        })
-    };
+pub(crate) fn print_body(unit: &Unit, state: &mut PrintState) -> Result<()> {
+    let options = state.options();
 
     let print_unit = |state: &mut PrintState| {
         let unknown_ranges = unit.unknown_ranges(state.hash());
@@ -149,22 +149,33 @@ pub(crate) fn print(unit: &Unit, state: &mut PrintState) -> Result<()> {
     };
 
     if options.html {
-        state.collapsed(print_header, |state| {
-            if options.category_unit {
-                print_unit(state)?;
-            }
-            state.field_collapsed("types", &print_types)?;
-            state.field_collapsed("functions", &print_functions)?;
-            state.field_collapsed("variables", &print_variables)?;
-            Ok(())
-        })?;
+        if options.category_unit {
+            print_unit(state)?;
+        }
+        state.field_collapsed("types", &print_types)?;
+        state.field_collapsed("functions", &print_functions)?;
+        state.field_collapsed("variables", &print_variables)?;
     } else {
         if options.category_unit {
-            state.collapsed(print_header, print_unit)?;
+            state.expanded(|state| print_header(unit, state), print_unit)?;
         }
         print_types(state)?;
         print_functions(state)?;
         print_variables(state)?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn print(unit: &Unit, state: &mut PrintState) -> Result<()> {
+    if state.options().html {
+        state.id(
+            unit.id(),
+            |state| print_header(unit, state),
+            |state| print_body(unit, state),
+        )?;
+    } else {
+        print_body(unit, state)?;
     }
     Ok(())
 }

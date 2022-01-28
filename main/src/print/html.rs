@@ -11,33 +11,33 @@ const HEADER: &str = r##"<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <style>
-ul.collapsible {
+ul.treeroot {
     list-style: none;
 }
-ul.collapsible ul {
+ul.treeroot ul {
     list-style: none;
 }
-ul.collapsible li {
+ul.treeroot li {
     white-space: nowrap;
     cursor: default;
 }
-ul.collapsible li.collapsible {
+ul.treeroot li.treebranch {
     cursor: pointer;
     border: 1px solid black;
 }
-ul.collapsible span {
+ul.treeroot span {
     white-space: normal;
 }
-ul.collapsible .del {
+ul.treeroot .del {
     background-color: #ffdce0;
 }
-ul.collapsible .add {
+ul.treeroot .add {
     background-color: #cdffd8;
 }
-ul.collapsible .mod {
+ul.treeroot .mod {
     background-color: #ffffa0;
 }
-ul.collapsible a {
+ul.treeroot a {
     color: black;
 }
 span.field {
@@ -47,70 +47,99 @@ span.field {
 </style>
 <script language="javascript">
 window.onload = function () {
-    var uls = document.querySelectorAll(".collapsible li > ul");
-    [].forEach.call(uls, function(ul) {
-        var li = ul.parentNode;
-        li.classList.add("collapsible");
-        li.addEventListener("click", toggle);
+    [].forEach.call(document.querySelectorAll(".treeroot"), function(node) {
+        node.addEventListener("click", toggle);
     });
 
     function toggle (e) {
         var node = e.target;
         while (node.nodeName !== "LI") {
             node = node.parentNode;
+            if (node === undefined) {
+                return;
+            }
         }
-        if (node === e.currentTarget) {
-            var uls = node.getElementsByTagName("ul");
-            [].forEach.call(uls, function(ul) {
-                var li = ul;
-                while (li !== null && li.nodeName !== "LI") {
-                    li = li.parentNode;
-                }
-                if (li === node) {
-                    if (ul.style.display == "none") {
-                        ul.style.display = "block";
-                    } else {
-                        ul.style.display = "none";
-                    }
-                }
-            });
+        if (!node.classList.contains("treebranch")) {
+            return;
+        }
+
+        var uls = node.getElementsByTagName("ul");
+        var ul = [].find.call(uls, function(ul) {
+            var li = ul;
+            while (li !== null && li.nodeName !== "LI") {
+                li = li.parentNode;
+            }
+            return li === node;
+        });
+        if (ul === undefined) {
+            return;
+        }
+        if (node.classList.contains("lazy")) {
+            node.classList.remove("lazy");
+            fetch('/id/' + node.id)
+                .then((response) => { return response.text(); })
+                .then((html) => {
+                    ul.innerHTML = html;
+                    ul.style.display = "block";
+                });
+        } else {
+            if (ul.style.display == "none") {
+                ul.style.display = "block";
+            } else {
+                ul.style.display = "none";
+            }
         }
     }
 }
 
 function link(anchor, id) {
+    // TODO: unit may not have loaded yet
     node = document.getElementById(id);
     if (node !== null) {
-        // Find LI
-        while (node && node.nodeName !== "LI") {
-            node = node.parentNode;
-        }
-        // Expand node
+        // Find UL
         var uls = node.getElementsByTagName("ul");
-        [].forEach.call(uls, function(ul) {
+        var ul = [].find.call(uls, function(ul) {
             var li = ul;
             while (li !== null && li.nodeName !== "LI") {
                 li = li.parentNode;
             }
-            if (li === node) {
-                ul.style.display = "block";
-            }
+            return li === node;
         });
-        // Display node and parents
-        while (node && node.nodeName !== "BODY") {
-            if (node.style.display == "none") {
-                node.style.display = "block";
-            }
-            node = node.parentNode;
+        if (ul === undefined) {
+            return;
         }
-        // So that history works nicer
-        anchor.scrollIntoView();
+        // Expand node
+        if (node.classList.contains("lazy")) {
+            node.classList.remove("lazy");
+            fetch('/id/' + node.id)
+                .then((response) => { return response.text(); })
+                .then((html) => {
+                    ul.innerHTML = html;
+                    done();
+                });
+        } else {
+            done();
+        }
+        function done() {
+            ul.style.display = "block";
+            // Display node and parents
+            while (node && node.nodeName !== "BODY") {
+                if (node.style.display == "none") {
+                    node.style.display = "block";
+                }
+                node = node.parentNode;
+            }
+            // So that history works nicer
+            anchor.scrollIntoView();
+            document.location.href = '#' + id;
+        }
     }
+    return false;
 }
 </script>
 </head>
 <body>
-<ul class="collapsible">"##;
+<ul class="treeroot">"##;
 
 const FOOTER: &str = r#"</ul>
 </body>
@@ -123,6 +152,7 @@ pub struct HtmlPrinter<'w> {
     inline_depth: usize,
     // Hack to allow indented <ul> to be included within parent <li>.
     line_started: bool,
+    http: bool,
 }
 
 impl<'w> HtmlPrinter<'w> {
@@ -133,6 +163,7 @@ impl<'w> HtmlPrinter<'w> {
             prefix: DiffPrefix::None,
             inline_depth: options.inline_depth,
             line_started: false,
+            http: options.http,
         }
     }
 
@@ -170,6 +201,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
             prefix: self.prefix,
             inline_depth: self.inline_depth,
             line_started: self.line_started,
+            http: self.http,
         };
         f(&mut p)?;
         Ok(())
@@ -184,15 +216,12 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn line(&mut self, id: usize, label: &str, buf: &[u8]) -> Result<()> {
+    fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
         if !self.line_started {
             write!(self.w, "<li>")?;
         }
         if buf.is_empty() {
             write!(self.w, "<span")?;
-            if id != 0 {
-                write!(self.w, " id=\"{}\"", id)?;
-            }
             if self.prefix == DiffPrefix::Modify {
                 write!(self.w, " class=\"field mod\"")?;
             }
@@ -202,9 +231,6 @@ impl<'w> Printer for HtmlPrinter<'w> {
                 write!(self.w, "<span class=\"field\">{}:</span> ", label)?;
             }
             write!(self.w, "<span")?;
-            if id != 0 {
-                write!(self.w, " id=\"{}\"", id)?;
-            }
             match self.prefix {
                 DiffPrefix::None | DiffPrefix::Equal => write!(self.w, " class=\"field\"")?,
                 DiffPrefix::Modify => {
@@ -261,6 +287,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
             prefix: self.prefix,
             inline_depth: self.inline_depth,
             line_started: false,
+            http: self.http,
         };
         body(&mut printer)?;
         Ok(())
@@ -273,7 +300,7 @@ impl<'w> Printer for HtmlPrinter<'w> {
         header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()> {
         debug_assert!(!self.line_started);
-        write!(self.w, "<li>")?;
+        write!(self.w, "<li class=\"treebranch\">")?;
         self.line_started = true;
         header(self)?;
         if collapsed {
@@ -282,6 +309,30 @@ impl<'w> Printer for HtmlPrinter<'w> {
             writeln!(self.w, "<ul>")?;
         }
         self.write_buf(body)?;
+        writeln!(self.w, "</ul></li>")?;
+        self.line_started = false;
+        Ok(())
+    }
+
+    fn indent_id(
+        &mut self,
+        id: usize,
+        header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
+        body: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
+    ) -> Result<()> {
+        debug_assert!(!self.line_started);
+        write!(
+            self.w,
+            "<li class=\"treebranch{}\" id=\"{}\">",
+            if self.http { " lazy" } else { "" },
+            id,
+        )?;
+        self.line_started = true;
+        header(self)?;
+        writeln!(self.w, "<ul style=\"display:none\">")?;
+        if !self.http {
+            body(self)?;
+        }
         writeln!(self.w, "</ul></li>")?;
         self.line_started = false;
         Ok(())
@@ -339,8 +390,8 @@ impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
         } else {
             write!(
                 self.w,
-                "<a onclick=\"link(this, \'{}');\" href=\"#{}\">",
-                id, id
+                "<a onclick=\"return link(this, \'{}');\" href=\"#{}\">",
+                id, id,
             )?;
             f(self)?;
             write!(self.w, "</a>")?;

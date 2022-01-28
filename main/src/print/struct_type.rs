@@ -1,6 +1,6 @@
 use parser::{FileHash, StructType, Unit};
 
-use crate::print::{self, DiffState, PrintState, ValuePrinter};
+use crate::print::{self, DiffState, PrintHeader, PrintState, ValuePrinter};
 use crate::Result;
 
 fn print_name(ty: &StructType, w: &mut dyn ValuePrinter) -> Result<()> {
@@ -16,21 +16,20 @@ pub(crate) fn print_ref(ty: &StructType, w: &mut dyn ValuePrinter, id: usize) ->
     w.link(id, &mut |w| print_name(ty, w))
 }
 
-pub(crate) fn print(ty: &StructType, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
-    state.collapsed(
-        |state| state.id(id, |w, _state| print_name(ty, w)),
-        |state| {
-            if state.options().print_source {
-                state.field("source", |w, _state| print_source(ty, w, unit))?;
-            }
-            state.field("declaration", |w, state| print_declaration(ty, w, state))?;
-            state.field("size", |w, state| print_byte_size(ty, w, state))?;
-            print::inherit::print_list(state, ty.inherits())?;
-            state.field_expanded("members", |state| print_members(ty, state, unit))
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+impl<'input> PrintHeader for StructType<'input> {
+    fn print_header(&self, state: &mut PrintState) -> Result<()> {
+        state.line(|w, _state| print_name(self, w))
+    }
+
+    fn print_body(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        if state.options().print_source {
+            state.field("source", |w, _state| print_source(self, w, unit))?;
+        }
+        state.field("declaration", |w, state| print_declaration(self, w, state))?;
+        state.field("size", |w, state| print_byte_size(self, w, state))?;
+        print::inherit::print_list(state, self.inherits())?;
+        state.field_expanded("members", |state| print_members(self, state, unit))
+    }
 }
 
 pub(crate) fn diff(

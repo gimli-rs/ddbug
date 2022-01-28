@@ -1,6 +1,6 @@
-use parser::{BaseType, BaseTypeEncoding, Endianity, FileHash};
+use parser::{BaseType, BaseTypeEncoding, Endianity, FileHash, Unit};
 
-use crate::print::{DiffState, PrintState, ValuePrinter};
+use crate::print::{DiffState, PrintHeader, PrintState, ValuePrinter};
 use crate::Result;
 
 fn print_name(ty: &BaseType, w: &mut dyn ValuePrinter) -> Result<()> {
@@ -15,17 +15,16 @@ pub(crate) fn print_ref(ty: &BaseType, w: &mut dyn ValuePrinter, id: usize) -> R
     })
 }
 
-pub(crate) fn print(ty: &BaseType, state: &mut PrintState, id: usize) -> Result<()> {
-    state.collapsed(
-        |state| state.id(id, |w, _state| print_name(ty, w)),
-        |state| {
-            state.field("size", |w, state| print_byte_size(ty, w, state))?;
-            state.field("encoding", |w, state| print_encoding(ty, w, state))?;
-            state.field("endianity", |w, state| print_endianity(ty, w, state))
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+impl<'input> PrintHeader for BaseType<'input> {
+    fn print_header(&self, state: &mut PrintState) -> Result<()> {
+        state.line(|w, _state| print_name(self, w))
+    }
+
+    fn print_body(&self, state: &mut PrintState, _unit: &Unit) -> Result<()> {
+        state.field("size", |w, state| print_byte_size(self, w, state))?;
+        state.field("encoding", |w, state| print_encoding(self, w, state))?;
+        state.field("endianity", |w, state| print_endianity(self, w, state))
+    }
 }
 
 pub(crate) fn diff(state: &mut DiffState, id: usize, a: &BaseType, b: &BaseType) -> Result<()> {

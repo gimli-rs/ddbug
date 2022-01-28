@@ -16,7 +16,7 @@ fn diff(name: &str, expect: &str) {
     }
 }
 
-fn options<'a>() -> ddbug::Options<'a> {
+fn options<'a>() -> ddbug::Options {
     ddbug::Options {
         print_function_variables: true,
         inline_depth: 1,

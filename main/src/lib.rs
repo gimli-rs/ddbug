@@ -17,8 +17,8 @@ mod code;
 mod filter;
 
 mod print;
-pub use self::print::file::{diff, print};
-pub use self::print::{DiffPrefix, HtmlPrinter, Printer, TextPrinter};
+pub use self::print::file::{assign_ids, diff, print, print_id};
+pub use self::print::{DiffPrefix, HtmlPrinter, Id, Printer, TextPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
@@ -34,7 +34,7 @@ impl Default for Sort {
 }
 
 #[derive(Debug, Default, Clone)]
-pub struct Options<'a> {
+pub struct Options {
     pub print_source: bool,
     pub print_file_address: bool,
     pub print_unit_address: bool,
@@ -46,6 +46,7 @@ pub struct Options<'a> {
     pub print_variable_locations: bool,
     pub inline_depth: usize,
     pub html: bool,
+    pub http: bool,
 
     pub category_file: bool,
     pub category_unit: bool,
@@ -54,9 +55,9 @@ pub struct Options<'a> {
     pub category_variable: bool,
 
     pub filter_function_inline: Option<bool>,
-    pub filter_name: Option<&'a str>,
-    pub filter_namespace: Vec<&'a str>,
-    pub filter_unit: Option<&'a str>,
+    pub filter_name: Option<String>,
+    pub filter_namespace: Vec<String>,
+    pub filter_unit: Option<String>,
 
     pub sort: Sort,
 
@@ -70,17 +71,17 @@ pub struct Options<'a> {
     pub ignore_variable_address: bool,
     pub ignore_variable_linkage_name: bool,
     pub ignore_variable_symbol_name: bool,
-    pub prefix_map: Vec<(&'a str, &'a str)>,
+    pub prefix_map: Vec<(String, String)>,
 }
 
-impl<'a> Options<'a> {
-    pub fn unit(&mut self, unit: &'a str) -> &mut Self {
-        self.filter_unit = Some(unit);
+impl Options {
+    pub fn unit(&mut self, unit: &str) -> &mut Self {
+        self.filter_unit = Some(unit.into());
         self
     }
 
-    pub fn name(&mut self, name: &'a str) -> &mut Self {
-        self.filter_name = Some(name);
+    pub fn name(&mut self, name: &str) -> &mut Self {
+        self.filter_name = Some(name.into());
         self
     }
 
@@ -89,7 +90,7 @@ impl<'a> Options<'a> {
     }
 
     fn filter_name(&self, name: Option<&str>) -> bool {
-        self.filter_name.is_none() || self.filter_name == name
+        self.filter_name.is_none() || self.filter_name.as_ref().map(String::as_ref) == name
     }
 
     fn filter_namespace(&self, namespace: Option<&Namespace>) -> bool {
@@ -101,10 +102,10 @@ impl<'a> Options<'a> {
         }
     }
 
-    fn prefix_map<'name>(&self, name: &'name str) -> (&'a str, &'name str) {
-        for &(old, new) in &self.prefix_map {
-            if name.starts_with(old) {
-                return (new, &name[old.len()..]);
+    fn prefix_map<'name>(&self, name: &'name str) -> (&str, &'name str) {
+        for (old, new) in &self.prefix_map {
+            if name.starts_with(&*old) {
+                return (&new, &name[old.len()..]);
             }
         }
         ("", name)

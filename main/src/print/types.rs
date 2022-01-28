@@ -6,25 +6,35 @@ use parser::{
     TypeModifier, TypeModifierKind, Unit, UnspecifiedType,
 };
 
-use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
+use crate::print::{self, DiffState, Print, PrintHeader, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 
-pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()> {
-    let id = ty.id();
-    match *ty.kind() {
-        TypeKind::Base(ref val) => print::base_type::print(val, state, id),
-        TypeKind::Def(ref val) => print::type_def::print(val, state, unit, id),
-        TypeKind::Struct(ref val) => print::struct_type::print(val, state, unit, id),
-        TypeKind::Union(ref val) => print::union_type::print(val, state, unit, id),
-        TypeKind::Enumeration(ref val) => print::enumeration::print(val, state, unit, id),
+pub(crate) fn kind<'me>(ty: &'me Type) -> Result<&'me dyn PrintHeader> {
+    Ok(match *ty.kind() {
+        TypeKind::Base(ref val) => val,
+        TypeKind::Def(ref val) => val,
+        TypeKind::Struct(ref val) => val,
+        TypeKind::Union(ref val) => val,
+        TypeKind::Enumeration(ref val) => val,
         TypeKind::Void
         | TypeKind::Array(..)
         | TypeKind::Function(..)
         | TypeKind::Unspecified(..)
         | TypeKind::PointerToMember(..)
         | TypeKind::Modifier(..)
-        | TypeKind::Subrange(..) => Err(format!("can't print {:?}", ty).into()),
-    }
+        | TypeKind::Subrange(..) => return Err(format!("can't print {:?}", ty).into()),
+    })
+}
+
+pub(crate) fn print(ty: &Type, state: &mut PrintState, unit: &Unit) -> Result<()> {
+    let kind = kind(ty)?;
+    state.id(
+        ty.id(),
+        |state| kind.print_header(state),
+        |state| kind.print_body(state, unit),
+    )?;
+    state.line_break()?;
+    Ok(())
 }
 
 pub(crate) fn print_ref(

@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use parser::{FileHash, TypeDef, Unit};
 
-use crate::print::{self, DiffState, PrintState, ValuePrinter};
+use crate::print::{self, DiffState, PrintHeader, PrintState, ValuePrinter};
 use crate::Result;
 
 fn print_name(ty: &TypeDef, w: &mut dyn ValuePrinter) -> Result<()> {
@@ -37,27 +37,26 @@ fn print_byte_size(ty: &TypeDef, w: &mut dyn ValuePrinter, hash: &FileHash) -> R
     Ok(())
 }
 
-pub(crate) fn print(x: &TypeDef, state: &mut PrintState, unit: &Unit, id: usize) -> Result<()> {
-    let ty = x.ty(state.hash());
-    state.collapsed(
-        |state| state.id(id, |w, state| print_def(x, w, state)),
-        |state| {
-            if state.options().print_source {
-                state.field("source", |w, _state| print_source(x, w, unit))?;
+impl<'input> PrintHeader for TypeDef<'input> {
+    fn print_header(&self, state: &mut PrintState) -> Result<()> {
+        state.line(|w, state| print_def(self, w, state))
+    }
+
+    fn print_body(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        let ty = self.ty(state.hash());
+        if state.options().print_source {
+            state.field("source", |w, _state| print_source(self, w, unit))?;
+        }
+        state.field("size", |w, state| print_byte_size(self, w, state))?;
+        if let Some(ref ty) = ty {
+            if ty.is_anon() {
+                state.field_expanded("members", |state| {
+                    print::types::print_members(state, unit, Some(ty))
+                })?;
             }
-            state.field("size", |w, state| print_byte_size(x, w, state))?;
-            if let Some(ref ty) = ty {
-                if ty.is_anon() {
-                    state.field_expanded("members", |state| {
-                        print::types::print_members(state, unit, Some(ty))
-                    })?;
-                }
-            }
-            Ok(())
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+        }
+        Ok(())
+    }
 }
 
 pub(crate) fn diff(
