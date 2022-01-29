@@ -48,6 +48,7 @@ pub enum DiffPrefix {
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Id {
+    None,
     Unit {
         unit_index: usize,
     },
@@ -83,7 +84,7 @@ pub trait Printer {
     fn line_break(&mut self) -> Result<()>;
 
     fn line(&mut self, label: &str, buf: &[u8]) -> Result<()>;
-    fn line_diff(&mut self, id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()>;
+    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()>;
 
     fn indent_body(
         &mut self,
@@ -153,6 +154,34 @@ impl<'a> PrintState<'a> {
         }
     }
 
+    pub fn id<FHeader, FBody>(
+        &mut self,
+        id: usize,
+        mut header: FHeader,
+        mut body: FBody,
+    ) -> Result<()>
+    where
+        FHeader: FnMut(&mut PrintState) -> Result<()>,
+        FBody: FnMut(&mut PrintState) -> Result<()>,
+    {
+        let hash = self.hash;
+        let code = self.code;
+        let options = self.options;
+        self.printer.indent_id(
+            id,
+            &mut |printer| {
+                let mut state = PrintState::new(printer, hash, code, options);
+                header(&mut state)?;
+                Ok(())
+            },
+            &mut |printer| {
+                let mut state = PrintState::new(printer, hash, code, options);
+                body(&mut state)?;
+                Ok(())
+            },
+        )
+    }
+
     // Output the header with an indented body.
     // If optional is true, then only output if the body is not empty.
     fn indent_impl<FHeader, FBody>(
@@ -194,34 +223,6 @@ impl<'a> PrintState<'a> {
         FBody: FnMut(&mut PrintState) -> Result<()>,
     {
         self.indent_impl(false, true, header, body)
-    }
-
-    pub fn id<FHeader, FBody>(
-        &mut self,
-        id: usize,
-        mut header: FHeader,
-        mut body: FBody,
-    ) -> Result<()>
-    where
-        FHeader: FnMut(&mut PrintState) -> Result<()>,
-        FBody: FnMut(&mut PrintState) -> Result<()>,
-    {
-        let hash = self.hash;
-        let code = self.code;
-        let options = self.options;
-        self.printer.indent_id(
-            id,
-            &mut |printer| {
-                let mut state = PrintState::new(printer, hash, code, options);
-                header(&mut state)?;
-                Ok(())
-            },
-            &mut |printer| {
-                let mut state = PrintState::new(printer, hash, code, options);
-                body(&mut state)?;
-                Ok(())
-            },
-        )
     }
 
     pub fn expanded<FHeader, FBody>(&mut self, header: FHeader, body: FBody) -> Result<()>
@@ -405,9 +406,7 @@ impl<'a> DiffState<'a> {
             diff = state.diff;
             Ok(())
         })?;
-        if diff {
-            self.diff = true;
-        }
+        self.diff |= diff;
         if diff || options.html {
             self.printer.write_buf(&*buf)?;
         }
@@ -424,6 +423,56 @@ impl<'a> DiffState<'a> {
         if flag {
             self.diff = diff;
         }
+        Ok(())
+    }
+
+    pub fn id<FHeader, FBody>(
+        &mut self,
+        id: usize,
+        mut header: FHeader,
+        mut body: FBody,
+    ) -> Result<()>
+    where
+        FHeader: FnMut(&mut DiffState) -> Result<()>,
+        FBody: FnMut(&mut DiffState) -> Result<()>,
+    {
+        let hash_a = self.hash_a;
+        let hash_b = self.hash_b;
+        let code_a = self.code_a;
+        let code_b = self.code_b;
+        let options = self.options;
+        let mut diff_header = false;
+        let mut diff_body = false;
+        self.printer.indent_id(
+            id,
+            &mut |printer| {
+                /*
+                FIXME: need to have already rendered the body
+                if diff_body {
+                    printer.prefix(DiffPrefix::Modify);
+                } else {
+                    printer.prefix(DiffPrefix::Equal);
+                }
+                */
+                printer.prefix(DiffPrefix::Equal);
+                let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
+                header(&mut state)?;
+                if state.diff {
+                    diff_header = true;
+                }
+                Ok(())
+            },
+            &mut |printer| {
+                printer.prefix(DiffPrefix::Equal);
+                let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
+                body(&mut state)?;
+                if state.diff {
+                    diff_body = true;
+                }
+                Ok(())
+            },
+        )?;
+        self.diff |= diff_header | diff_body;
         Ok(())
     }
 
@@ -474,9 +523,7 @@ impl<'a> DiffState<'a> {
                     }
                     Ok(())
                 })?;
-            if diff {
-                self.diff = diff;
-            }
+            self.diff |= diff;
         } else if !optional {
             header(self)?;
         }
@@ -586,14 +633,7 @@ impl<'a> DiffState<'a> {
         self.printer.line(label, &[])
     }
 
-    fn line_impl<F, T>(
-        &mut self,
-        id: usize,
-        label: &str,
-        arg_a: T,
-        arg_b: T,
-        mut f: F,
-    ) -> Result<()>
+    fn line_impl<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, mut f: F) -> Result<()>
     where
         F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
@@ -623,7 +663,7 @@ impl<'a> DiffState<'a> {
                 self.printer.prefix(DiffPrefix::Delete);
                 self.printer.line(label, &*a)?;
             } else {
-                self.printer.line_diff(id, label, &*a, &*b)?;
+                self.printer.line_diff(label, &*a, &*b)?;
             }
             self.diff = true;
         }
@@ -635,15 +675,7 @@ impl<'a> DiffState<'a> {
         F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
-        self.line_impl(0, "", arg_a, arg_b, f)
-    }
-
-    pub fn id<F, T>(&mut self, id: usize, arg_a: T, arg_b: T, f: F) -> Result<()>
-    where
-        F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
-        T: Copy,
-    {
-        self.line_impl(id, "", arg_a, arg_b, f)
+        self.line_impl("", arg_a, arg_b, f)
     }
 
     pub fn field<F, T>(&mut self, label: &str, arg_a: T, arg_b: T, f: F) -> Result<()>
@@ -651,7 +683,7 @@ impl<'a> DiffState<'a> {
         F: FnMut(&mut dyn ValuePrinter, &FileHash, T) -> Result<()>,
         T: Copy,
     {
-        self.line_impl(0, label, arg_a, arg_b, f)
+        self.line_impl(label, arg_a, arg_b, f)
     }
 
     pub fn field_u64(&mut self, label: &str, arg_a: u64, arg_b: u64) -> Result<()> {
@@ -813,6 +845,18 @@ where
 pub(crate) trait PrintHeader {
     fn print_header(&self, state: &mut PrintState) -> Result<()>;
     fn print_body(&self, state: &mut PrintState, unit: &parser::Unit) -> Result<()>;
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()>
+    where
+        Self: Sized;
+    fn diff_body(
+        state: &mut DiffState,
+        unit_a: &parser::Unit,
+        a: &Self,
+        unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()>
+    where
+        Self: Sized;
 }
 
 pub(crate) trait DiffList: Print {

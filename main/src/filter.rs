@@ -18,6 +18,17 @@ pub(crate) fn filter_units<'input, 'file>(
         .collect()
 }
 
+pub(crate) fn enumerate_and_filter_units<'input, 'file>(
+    file: &'file File<'input>,
+    options: &Options,
+) -> Vec<(usize, &'file Unit<'input>)> {
+    file.units()
+        .iter()
+        .enumerate()
+        .filter(|a| filter_unit(a.1, options))
+        .collect()
+}
+
 /// Return true if this unit matches the filter options.
 fn filter_unit(unit: &Unit, options: &Options) -> bool {
     if let Some(filter) = options.filter_unit.as_ref() {
@@ -59,36 +70,24 @@ pub(crate) fn filter_types<'input, 'unit>(
     diff: bool,
 ) -> Vec<&'unit Type<'input>> {
     let inline_types = inline_types(unit, hash);
-    let filter_type = |t: &Type| {
-        // Filter by user options.
-        if !filter_type(t, options) {
-            return false;
-        }
-        match *t.kind() {
-            TypeKind::Struct(ref t) => {
-                // Hack for rust closures
-                // TODO: is there better way of identifying these, or a
-                // a way to match pairs for diffing?
-                if diff && t.name() == Some("closure") {
-                    return false;
-                }
-            }
-            TypeKind::Base(..)
-            | TypeKind::Def(..)
-            | TypeKind::Union(..)
-            | TypeKind::Enumeration(..) => {}
-            TypeKind::Void
-            | TypeKind::Array(..)
-            | TypeKind::Function(..)
-            | TypeKind::Unspecified(..)
-            | TypeKind::PointerToMember(..)
-            | TypeKind::Modifier(..)
-            | TypeKind::Subrange(..) => return false,
-        }
-        // Filter out inline types.
-        t.offset().is_some() && !inline_types.contains(&t.offset())
-    };
-    unit.types().iter().filter(|a| filter_type(a)).collect()
+    unit.types()
+        .iter()
+        .filter(|a| filter_type(a, options, diff, &inline_types))
+        .collect()
+}
+
+pub(crate) fn enumerate_and_filter_types<'input, 'unit>(
+    unit: &'unit Unit<'input>,
+    hash: &FileHash,
+    options: &Options,
+    diff: bool,
+) -> Vec<(usize, &'unit Type<'input>)> {
+    let inline_types = inline_types(unit, hash);
+    unit.types()
+        .iter()
+        .enumerate()
+        .filter(|a| filter_type(a.1, options, diff, &inline_types))
+        .collect()
 }
 
 pub(crate) fn filter_functions<'input, 'unit>(
@@ -101,6 +100,17 @@ pub(crate) fn filter_functions<'input, 'unit>(
         .collect()
 }
 
+pub(crate) fn enumerate_and_filter_functions<'input, 'unit>(
+    unit: &'unit Unit<'input>,
+    options: &Options,
+) -> Vec<(usize, &'unit Function<'input>)> {
+    unit.functions()
+        .iter()
+        .enumerate()
+        .filter(|a| filter_function(a.1, options))
+        .collect()
+}
+
 pub(crate) fn filter_variables<'input, 'unit>(
     unit: &'unit Unit<'input>,
     options: &Options,
@@ -108,6 +118,17 @@ pub(crate) fn filter_variables<'input, 'unit>(
     unit.variables()
         .iter()
         .filter(|a| filter_variable(a, options))
+        .collect()
+}
+
+pub(crate) fn enumerate_and_filter_variables<'input, 'unit>(
+    unit: &'unit Unit<'input>,
+    options: &Options,
+) -> Vec<(usize, &'unit Variable<'input>)> {
+    unit.variables()
+        .iter()
+        .enumerate()
+        .filter(|a| filter_variable(a.1, options))
         .collect()
 }
 
@@ -131,8 +152,14 @@ fn filter_variable(v: &Variable, options: &Options) -> bool {
     options.filter_name(v.name()) && options.filter_namespace(v.namespace())
 }
 
-fn filter_type(ty: &Type, options: &Options) -> bool {
-    match *ty.kind() {
+fn filter_type(
+    ty: &Type,
+    options: &Options,
+    diff: bool,
+    inline_types: &HashSet<TypeOffset>,
+) -> bool {
+    // Filter by user options.
+    if !match *ty.kind() {
         TypeKind::Base(ref val) => filter_base(val, options),
         TypeKind::Def(ref val) => filter_type_def(val, options),
         TypeKind::Struct(ref val) => filter_struct(val, options),
@@ -145,7 +172,32 @@ fn filter_type(ty: &Type, options: &Options) -> bool {
         | TypeKind::PointerToMember(..)
         | TypeKind::Modifier(..)
         | TypeKind::Subrange(..) => options.filter_name.is_none(),
+    } {
+        return false;
     }
+    match *ty.kind() {
+        TypeKind::Struct(ref val) => {
+            // Hack for rust closures
+            // TODO: is there better way of identifying these, or a
+            // a way to match pairs for diffing?
+            if diff && val.name() == Some("closure") {
+                return false;
+            }
+        }
+        TypeKind::Base(..)
+        | TypeKind::Def(..)
+        | TypeKind::Union(..)
+        | TypeKind::Enumeration(..) => {}
+        TypeKind::Void
+        | TypeKind::Array(..)
+        | TypeKind::Function(..)
+        | TypeKind::Unspecified(..)
+        | TypeKind::PointerToMember(..)
+        | TypeKind::Modifier(..)
+        | TypeKind::Subrange(..) => return false,
+    }
+    // Filter out inline types.
+    ty.offset().is_some() && !inline_types.contains(&ty.offset())
 }
 
 fn filter_base(ty: &BaseType, options: &Options) -> bool {

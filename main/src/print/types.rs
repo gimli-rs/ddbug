@@ -9,7 +9,7 @@ use parser::{
 use crate::print::{self, DiffState, Print, PrintHeader, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 
-pub(crate) fn kind<'me>(ty: &'me Type) -> Result<&'me dyn PrintHeader> {
+pub(crate) fn kind<'a>(ty: &'a Type) -> Result<&'a dyn PrintHeader> {
     Ok(match *ty.kind() {
         TypeKind::Base(ref val) => val,
         TypeKind::Def(ref val) => val,
@@ -162,7 +162,19 @@ fn print_ref_subrange(ty: &SubrangeType, w: &mut dyn ValuePrinter, hash: &FileHa
     Ok(())
 }
 
-pub(crate) fn diff(
+pub(crate) fn diff_header(state: &mut DiffState, type_a: &Type, type_b: &Type) -> Result<()> {
+    use self::TypeKind::*;
+    match (type_a.kind(), type_b.kind()) {
+        (&Base(ref a), &Base(ref b)) => PrintHeader::diff_header(state, a, b),
+        (&Def(ref a), &Def(ref b)) => PrintHeader::diff_header(state, a, b),
+        (&Struct(ref a), &Struct(ref b)) => PrintHeader::diff_header(state, a, b),
+        (&Union(ref a), &Union(ref b)) => PrintHeader::diff_header(state, a, b),
+        (&Enumeration(ref a), &Enumeration(ref b)) => PrintHeader::diff_header(state, a, b),
+        _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
+    }
+}
+
+pub(crate) fn diff_body(
     state: &mut DiffState,
     unit_a: &Unit,
     type_a: &Type,
@@ -170,19 +182,31 @@ pub(crate) fn diff(
     type_b: &Type,
 ) -> Result<()> {
     use self::TypeKind::*;
-    let id = type_a.id();
     match (type_a.kind(), type_b.kind()) {
-        (&Base(ref a), &Base(ref b)) => print::base_type::diff(state, id, a, b),
-        (&Def(ref a), &Def(ref b)) => print::type_def::diff(state, id, unit_a, a, unit_b, b),
-        (&Struct(ref a), &Struct(ref b)) => {
-            print::struct_type::diff(state, id, unit_a, a, unit_b, b)
-        }
-        (&Union(ref a), &Union(ref b)) => print::union_type::diff(state, id, unit_a, a, unit_b, b),
+        (&Base(ref a), &Base(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (&Def(ref a), &Def(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (&Struct(ref a), &Struct(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (&Union(ref a), &Union(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
         (&Enumeration(ref a), &Enumeration(ref b)) => {
-            print::enumeration::diff(state, id, unit_a, a, unit_b, b)
+            PrintHeader::diff_body(state, unit_a, a, unit_b, b)
         }
         _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
-    }?;
+    }
+}
+
+pub(crate) fn diff(
+    state: &mut DiffState,
+    unit_a: &Unit,
+    a: &Type,
+    unit_b: &Unit,
+    b: &Type,
+) -> Result<()> {
+    state.id(
+        a.id(),
+        |state| diff_header(state, a, b),
+        |state| diff_body(state, unit_a, a, unit_b, b),
+    )?;
+    state.line_break()?;
     Ok(())
 }
 

@@ -132,6 +132,105 @@ impl<'input> PrintHeader for Function<'input> {
         }
         Ok(())
     }
+
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()> {
+        state.line(a, b, |w, _state, x| print_name(x, w))
+    }
+
+    fn diff_body(
+        state: &mut DiffState,
+        unit_a: &parser::Unit,
+        a: &Self,
+        unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()> {
+        let flag = state.options().ignore_function_linkage_name;
+        state.ignore_diff(flag, |state| {
+            state.field("linkage name", a, b, |w, _state, x| {
+                print_linkage_name(x, w)
+            })
+        })?;
+        let flag = state.options().ignore_function_symbol_name;
+        state.ignore_diff(flag, |state| {
+            state.field("symbol name", a, b, |w, _state, x| print_symbol_name(x, w))
+        })?;
+        if state.options().print_source {
+            state.field(
+                "source",
+                (unit_a, a),
+                (unit_b, b),
+                |w, _state, (unit, x)| print_source(x, w, unit),
+            )?;
+        }
+        let flag = state.options().ignore_function_address;
+        state.ignore_diff(flag, |state| {
+            state.field("address", a, b, |w, _state, x| print_address(x, w))
+        })?;
+        let flag = state.options().ignore_function_size;
+        state.ignore_diff(flag, |state| {
+            state.field("size", a, b, |w, _state, x| print_size(x, w))
+        })?;
+        let flag = state.options().ignore_function_inline;
+        state.ignore_diff(flag, |state| {
+            state.field("inline", a, b, |w, _state, x| print_inline(x, w))
+        })?;
+        state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))?;
+        state.field_expanded("return type", |state| {
+            state.line(a, b, |w, state, x| print_return_type(x, w, state))
+        })?;
+        let details_a = a.details(state.hash_a());
+        let details_b = b.details(state.hash_b());
+        state.field_expanded("parameters", |state| {
+            state.list(
+                unit_a,
+                details_a.parameters(),
+                unit_b,
+                details_b.parameters(),
+            )
+        })?;
+        if state.options().print_function_variables {
+            let mut variables_a: Vec<_> = details_a.variables().iter().collect();
+            variables_a.sort_by(|x, y| LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y));
+            let mut variables_b: Vec<_> = details_b.variables().iter().collect();
+            variables_b.sort_by(|x, y| LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y));
+            state.field_collapsed("variables", |state| {
+                state.list(unit_a, &variables_a, unit_b, &variables_b)
+            })?;
+        }
+        if state.options().print_function_stack_frame {
+            let variables_a = frame_variables(&details_a, state.hash_a());
+            let variables_b = frame_variables(&details_b, state.hash_b());
+            state.field_collapsed("stack frame", |state| {
+                state.ord_list(&(), &variables_a, &(), &variables_b)
+            })?;
+        }
+        state.inline(|state| {
+            state.field_collapsed("inlined functions", |state| {
+                state.list(
+                    unit_a,
+                    details_a.inlined_functions(),
+                    unit_b,
+                    details_b.inlined_functions(),
+                )
+            })
+        })?;
+        if state.options().print_function_calls {
+            let calls_a = calls(a, state.code_a);
+            let calls_b = calls(b, state.code_b);
+            state.field_collapsed("calls", |state| state.list(&(), &calls_a, &(), &calls_b))?;
+        }
+        if state.options().print_function_instructions {
+            state.field_collapsed("instructions", |state| {
+                // TODO: diff instructions
+                state.ignore_diff(true, |state| {
+                    state.block((a, &details_a), (b, &details_b), |state, (x, details)| {
+                        print_instructions(state, x, details)
+                    })
+                })
+            })?;
+        }
+        Ok(())
+    }
 }
 
 impl<'input> Print for Function<'input> {
@@ -154,102 +253,10 @@ impl<'input> Print for Function<'input> {
         unit_b: &Self::Arg,
         b: &Self,
     ) -> Result<()> {
-        state.collapsed(
-            |state| state.id(a.id(), a, b, |w, _state, x| print_name(x, w)),
-            |state| {
-                let flag = state.options().ignore_function_linkage_name;
-                state.ignore_diff(flag, |state| {
-                    state.field("linkage name", a, b, |w, _state, x| {
-                        print_linkage_name(x, w)
-                    })
-                })?;
-                let flag = state.options().ignore_function_symbol_name;
-                state.ignore_diff(flag, |state| {
-                    state.field("symbol name", a, b, |w, _state, x| print_symbol_name(x, w))
-                })?;
-                if state.options().print_source {
-                    state.field(
-                        "source",
-                        (unit_a, a),
-                        (unit_b, b),
-                        |w, _state, (unit, x)| print_source(x, w, unit),
-                    )?;
-                }
-                let flag = state.options().ignore_function_address;
-                state.ignore_diff(flag, |state| {
-                    state.field("address", a, b, |w, _state, x| print_address(x, w))
-                })?;
-                let flag = state.options().ignore_function_size;
-                state.ignore_diff(flag, |state| {
-                    state.field("size", a, b, |w, _state, x| print_size(x, w))
-                })?;
-                let flag = state.options().ignore_function_inline;
-                state.ignore_diff(flag, |state| {
-                    state.field("inline", a, b, |w, _state, x| print_inline(x, w))
-                })?;
-                state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))?;
-                state.field_expanded("return type", |state| {
-                    state.line(a, b, |w, state, x| print_return_type(x, w, state))
-                })?;
-                let details_a = a.details(state.hash_a());
-                let details_b = b.details(state.hash_b());
-                state.field_expanded("parameters", |state| {
-                    state.list(
-                        unit_a,
-                        details_a.parameters(),
-                        unit_b,
-                        details_b.parameters(),
-                    )
-                })?;
-                if state.options().print_function_variables {
-                    let mut variables_a: Vec<_> = details_a.variables().iter().collect();
-                    variables_a.sort_by(|x, y| {
-                        LocalVariable::cmp_id(state.hash_a(), x, state.hash_a(), y)
-                    });
-                    let mut variables_b: Vec<_> = details_b.variables().iter().collect();
-                    variables_b.sort_by(|x, y| {
-                        LocalVariable::cmp_id(state.hash_b(), x, state.hash_b(), y)
-                    });
-                    state.field_collapsed("variables", |state| {
-                        state.list(unit_a, &variables_a, unit_b, &variables_b)
-                    })?;
-                }
-                if state.options().print_function_stack_frame {
-                    let variables_a = frame_variables(&details_a, state.hash_a());
-                    let variables_b = frame_variables(&details_b, state.hash_b());
-                    state.field_collapsed("stack frame", |state| {
-                        state.ord_list(&(), &variables_a, &(), &variables_b)
-                    })?;
-                }
-                state.inline(|state| {
-                    state.field_collapsed("inlined functions", |state| {
-                        state.list(
-                            unit_a,
-                            details_a.inlined_functions(),
-                            unit_b,
-                            details_b.inlined_functions(),
-                        )
-                    })
-                })?;
-                if state.options().print_function_calls {
-                    let calls_a = calls(a, state.code_a);
-                    let calls_b = calls(b, state.code_b);
-                    state.field_collapsed("calls", |state| {
-                        state.list(&(), &calls_a, &(), &calls_b)
-                    })?;
-                }
-                if state.options().print_function_instructions {
-                    state.field_collapsed("instructions", |state| {
-                        // TODO: diff instructions
-                        state.ignore_diff(true, |state| {
-                            state.block((a, &details_a), (b, &details_b), |state, (x, details)| {
-                                print_instructions(state, x, details)
-                            })
-                        })
-                    })?;
-                }
-                Ok(())
-            },
+        state.id(
+            unit_a.id(),
+            |state| PrintHeader::diff_header(state, a, b),
+            |state| PrintHeader::diff_body(state, unit_a, a, unit_b, b),
         )?;
         state.line_break()?;
         Ok(())

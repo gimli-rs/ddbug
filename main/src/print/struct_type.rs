@@ -30,38 +30,33 @@ impl<'input> PrintHeader for StructType<'input> {
         print::inherit::print_list(state, self.inherits())?;
         state.field_expanded("members", |state| print_members(self, state, unit))
     }
-}
 
-pub(crate) fn diff(
-    state: &mut DiffState,
-    id: usize,
-    unit_a: &Unit,
-    a: &StructType,
-    unit_b: &Unit,
-    b: &StructType,
-) -> Result<()> {
-    // The names should be the same, but we can't be sure.
-    state.collapsed(
-        |state| state.id(id, a, b, |w, _state, x| print_name(x, w)),
-        |state| {
-            if state.options().print_source {
-                state.field(
-                    "source",
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| print_source(x, w, unit),
-                )?;
-            }
-            state.field("declaration", a, b, |w, state, x| {
-                print_declaration(x, w, state)
-            })?;
-            state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
-            print::inherit::diff_list(state, a.inherits(), b.inherits())?;
-            state.field_expanded("members", |state| diff_members(state, unit_a, a, unit_b, b))
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()> {
+        state.line(a, b, |w, _state, x| print_name(x, w))
+    }
+
+    fn diff_body(
+        state: &mut DiffState,
+        unit_a: &parser::Unit,
+        a: &Self,
+        unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()> {
+        if state.options().print_source {
+            state.field(
+                "source",
+                (unit_a, a),
+                (unit_b, b),
+                |w, _state, (unit, x)| print_source(x, w, unit),
+            )?;
+        }
+        state.field("declaration", a, b, |w, state, x| {
+            print_declaration(x, w, state)
+        })?;
+        state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
+        print::inherit::diff_list(state, a.inherits(), b.inherits())?;
+        state.field_expanded("members", |state| diff_members(state, unit_a, a, unit_b, b))
+    }
 }
 
 fn print_source(ty: &StructType, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
