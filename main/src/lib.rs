@@ -11,13 +11,13 @@ extern crate log;
 
 use parser::Namespace;
 
-pub use parser::{File, Result};
+pub use parser::{Error, File, Result};
 
 mod code;
 mod filter;
 
 mod print;
-pub use self::print::file::{assign_ids, diff, print, print_id};
+pub use self::print::file::{assign_ids, assign_merged_ids, diff, diff_id, print, print_id};
 pub use self::print::{DiffPrefix, HtmlPrinter, Id, Printer, TextPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

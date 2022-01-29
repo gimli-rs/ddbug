@@ -81,7 +81,7 @@ impl<'w> Printer for TextPrinter<'w> {
         Ok(())
     }
 
-    fn line_diff(&mut self, _id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         self.prefix = DiffPrefix::Delete;
         self.line(label, a)?;
         self.prefix = DiffPrefix::Add;

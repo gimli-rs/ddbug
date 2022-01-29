@@ -57,39 +57,35 @@ impl<'input> PrintHeader for TypeDef<'input> {
         }
         Ok(())
     }
-}
 
-pub(crate) fn diff(
-    state: &mut DiffState,
-    id: usize,
-    unit_a: &Unit,
-    a: &TypeDef,
-    unit_b: &Unit,
-    b: &TypeDef,
-) -> Result<()> {
-    state.collapsed(
-        |state| state.id(id, a, b, |w, state, x| print_def(x, w, state)),
-        |state| {
-            if state.options().print_source {
-                state.field(
-                    "source",
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| print_source(x, w, unit),
-                )?;
-            }
-            state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
-            let ty_a = filter_option(a.ty(state.hash_a()), |ty| ty.is_anon());
-            let ty_a = ty_a.as_ref().map(Cow::deref);
-            let ty_b = filter_option(b.ty(state.hash_b()), |ty| ty.is_anon());
-            let ty_b = ty_b.as_ref().map(Cow::deref);
-            state.field_expanded("members", |state| {
-                print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b)
-            })
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()> {
+        state.line(a, b, |w, state, x| print_def(x, w, state))
+    }
+
+    fn diff_body(
+        state: &mut DiffState,
+        unit_a: &parser::Unit,
+        a: &Self,
+        unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()> {
+        if state.options().print_source {
+            state.field(
+                "source",
+                (unit_a, a),
+                (unit_b, b),
+                |w, _state, (unit, x)| print_source(x, w, unit),
+            )?;
+        }
+        state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
+        let ty_a = filter_option(a.ty(state.hash_a()), |ty| ty.is_anon());
+        let ty_a = ty_a.as_ref().map(Cow::deref);
+        let ty_b = filter_option(b.ty(state.hash_b()), |ty| ty.is_anon());
+        let ty_b = ty_b.as_ref().map(Cow::deref);
+        state.field_expanded("members", |state| {
+            print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b)
+        })
+    }
 }
 
 fn filter_option<T, F>(o: Option<T>, f: F) -> Option<T>

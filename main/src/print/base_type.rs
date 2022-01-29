@@ -25,22 +25,24 @@ impl<'input> PrintHeader for BaseType<'input> {
         state.field("encoding", |w, state| print_encoding(self, w, state))?;
         state.field("endianity", |w, state| print_endianity(self, w, state))
     }
-}
 
-pub(crate) fn diff(state: &mut DiffState, id: usize, a: &BaseType, b: &BaseType) -> Result<()> {
-    // The names should be the same, but we can't be sure.
-    state.collapsed(
-        |state| state.id(id, a, b, |w, _state, x| print_name(x, w)),
-        |state| {
-            state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
-            state.field("encoding", a, b, |w, state, x| print_encoding(x, w, state))?;
-            state.field("endianity", a, b, |w, state, x| {
-                print_endianity(x, w, state)
-            })
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()> {
+        state.line(a, b, |w, _state, x| print_name(x, w))
+    }
+
+    fn diff_body(
+        state: &mut DiffState,
+        _unit_a: &parser::Unit,
+        a: &Self,
+        _unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()> {
+        state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
+        state.field("encoding", a, b, |w, state, x| print_encoding(x, w, state))?;
+        state.field("endianity", a, b, |w, state, x| {
+            print_endianity(x, w, state)
+        })
+    }
 }
 
 fn print_byte_size(ty: &BaseType, w: &mut dyn ValuePrinter, _hash: &FileHash) -> Result<()> {

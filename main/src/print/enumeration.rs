@@ -32,40 +32,35 @@ impl<'input> PrintHeader for EnumerationType<'input> {
         let enumerators = self.enumerators(state.hash());
         state.field_expanded("enumerators", |state| state.list(unit, &enumerators))
     }
-}
 
-pub(crate) fn diff(
-    state: &mut DiffState,
-    id: usize,
-    unit_a: &Unit,
-    a: &EnumerationType,
-    unit_b: &Unit,
-    b: &EnumerationType,
-) -> Result<()> {
-    // The names should be the same, but we can't be sure.
-    state.collapsed(
-        |state| state.id(id, a, b, |w, _state, x| print_name(x, w)),
-        |state| {
-            if state.options().print_source {
-                state.field(
-                    "source",
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| print_source(x, w, unit),
-                )?;
-            }
-            state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))?;
-            state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
-            // TODO: handle reordering better
-            let enumerators_a = a.enumerators(state.hash_a());
-            let enumerators_b = b.enumerators(state.hash_b());
-            state.field_expanded("enumerators", |state| {
-                state.list(unit_a, &enumerators_a, unit_b, &enumerators_b)
-            })
-        },
-    )?;
-    state.line_break()?;
-    Ok(())
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()> {
+        state.line(a, b, |w, _state, x| print_name(x, w))
+    }
+
+    fn diff_body(
+        state: &mut DiffState,
+        unit_a: &parser::Unit,
+        a: &Self,
+        unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()> {
+        if state.options().print_source {
+            state.field(
+                "source",
+                (unit_a, a),
+                (unit_b, b),
+                |w, _state, (unit, x)| print_source(x, w, unit),
+            )?;
+        }
+        state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))?;
+        state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
+        // TODO: handle reordering better
+        let enumerators_a = a.enumerators(state.hash_a());
+        let enumerators_b = b.enumerators(state.hash_b());
+        state.field_expanded("enumerators", |state| {
+            state.list(unit_a, &enumerators_a, unit_b, &enumerators_b)
+        })
+    }
 }
 
 fn print_source(ty: &EnumerationType, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {

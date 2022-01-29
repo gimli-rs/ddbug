@@ -180,15 +180,15 @@ pub(crate) fn print(unit: &Unit, state: &mut PrintState) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
-    let options = state.options();
+fn diff_header(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
+    state.line(unit_a, unit_b, |w, _state, unit| {
+        write!(w, "unit ")?;
+        print_ref(unit, w)
+    })
+}
 
-    let diff_header = |state: &mut DiffState| {
-        state.line(unit_a, unit_b, |w, _state, unit| {
-            write!(w, "unit ")?;
-            print_ref(unit, w)
-        })
-    };
+pub(crate) fn diff_body(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
+    let options = state.options();
 
     let diff_unit = |state: &mut DiffState| -> Result<()> {
         let unknown_ranges_a = unit_a.unknown_ranges(state.hash_a());
@@ -259,26 +259,23 @@ pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Resul
     };
 
     if options.html {
-        state.collapsed(diff_header, |state| {
-            if options.category_unit {
-                diff_unit(state)?;
-            }
-            state.field_collapsed("types", &diff_types)?;
-            if options.category_function {
-                let (mut functions, mut inlined_functions) = merged_functions(state);
-                state.field_collapsed("functions", |state| {
-                    state.sort_list(unit_a, unit_b, &mut functions)
-                })?;
-                state.field_collapsed("inlined functions", |state| {
-                    state.sort_list(unit_a, unit_b, &mut inlined_functions)
-                })?;
-            }
-            state.field_collapsed("variables", &diff_variables)?;
-            Ok(())
-        })?;
+        if options.category_unit {
+            diff_unit(state)?;
+        }
+        state.field_collapsed("types", &diff_types)?;
+        if options.category_function {
+            let (mut functions, mut inlined_functions) = merged_functions(state);
+            state.field_collapsed("functions", |state| {
+                state.sort_list(unit_a, unit_b, &mut functions)
+            })?;
+            state.field_collapsed("inlined functions", |state| {
+                state.sort_list(unit_a, unit_b, &mut inlined_functions)
+            })?;
+        }
+        state.field_collapsed("variables", &diff_variables)?;
     } else {
         if options.category_unit {
-            state.collapsed(diff_header, diff_unit)?;
+            state.collapsed(|state| diff_header(state, unit_a, unit_b), diff_unit)?;
         }
         diff_types(state)?;
         if options.category_function {
@@ -287,6 +284,19 @@ pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Resul
             state.sort_list(unit_a, unit_b, &mut inlined_functions)?;
         }
         diff_variables(state)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Result<()> {
+    if state.options().html {
+        state.id(
+            unit_a.id(),
+            |state| diff_header(state, unit_a, unit_b),
+            |state| diff_body(state, unit_a, unit_b),
+        )?;
+    } else {
+        diff_body(state, unit_a, unit_b)?;
     }
     Ok(())
 }

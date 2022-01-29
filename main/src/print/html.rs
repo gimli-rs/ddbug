@@ -253,18 +253,14 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
-    fn line_diff(&mut self, id: usize, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
+    fn line_diff(&mut self, label: &str, a: &[u8], b: &[u8]) -> Result<()> {
         if !self.line_started {
             write!(self.w, "<li>")?;
         }
         if !label.is_empty() {
             write!(self.w, "<span class=\"field\">{}:</span> ", label)?;
         }
-        write!(self.w, "<span class=\"field\"")?;
-        if id != 0 {
-            write!(self.w, " id=\"{}\"", id)?;
-        }
-        write!(self.w, "><span class=\"del\">")?;
+        write!(self.w, "<span class=\"field\"><span class=\"del\">")?;
         self.w.write_all(a)?;
         write!(self.w, "</span><br>\n<span class=\"add\">")?;
         self.w.write_all(b)?;
