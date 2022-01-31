@@ -441,38 +441,38 @@ impl<'a> DiffState<'a> {
         let code_a = self.code_a;
         let code_b = self.code_b;
         let options = self.options;
-        let mut diff_header = false;
-        let mut diff_body = false;
+
+        // Render the body first so that we can determine if there are differences.
+        // TODO: this makes the initial HTTP load much slower than it could be.
+        let mut body_buf = Vec::new();
+        let mut diff = false;
+        self.printer.indent_body(&mut body_buf, &mut |printer| {
+            printer.prefix(DiffPrefix::Equal);
+            let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
+            body(&mut state)?;
+            diff |= state.diff;
+            Ok(())
+        })?;
+
         self.printer.indent_id(
             id,
             &mut |printer| {
-                /*
-                FIXME: need to have already rendered the body
-                if diff_body {
+                if diff {
                     printer.prefix(DiffPrefix::Modify);
                 } else {
                     printer.prefix(DiffPrefix::Equal);
                 }
-                */
-                printer.prefix(DiffPrefix::Equal);
                 let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
                 header(&mut state)?;
-                if state.diff {
-                    diff_header = true;
-                }
+                diff |= state.diff;
                 Ok(())
             },
             &mut |printer| {
-                printer.prefix(DiffPrefix::Equal);
-                let mut state = DiffState::new(printer, hash_a, hash_b, code_a, code_b, options);
-                body(&mut state)?;
-                if state.diff {
-                    diff_body = true;
-                }
+                printer.write_buf(&*body_buf)?;
                 Ok(())
             },
         )?;
-        self.diff |= diff_header | diff_body;
+        self.diff |= diff;
         Ok(())
     }
 
@@ -495,6 +495,8 @@ impl<'a> DiffState<'a> {
         let code_b = self.code_b;
         let options = self.options;
 
+        // Render the body first so that we can determine if there are differences
+        // or if it is empty.
         let mut body_buf = Vec::new();
         let mut diff = false;
         self.printer.indent_body(&mut body_buf, &mut |printer| {
