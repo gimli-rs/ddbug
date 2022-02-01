@@ -11,6 +11,18 @@ const HEADER: &str = r##"<!DOCTYPE html>
 <head>
 <meta charset="utf-8"/>
 <style>
+html, body {
+    margin: 0;
+    height: 100%;
+}
+.layoutrow {
+    display: flex;
+    height: 100%;
+}
+.layoutcol {
+    flex: 1;
+    overflow-y: scroll;
+}
 ul.treeroot {
     list-style: none;
 }
@@ -24,6 +36,9 @@ ul.treeroot li {
 ul.treeroot li.treebranch {
     cursor: pointer;
     border: 1px solid black;
+}
+ul.treeroot li.detail {
+    cursor: pointer;
 }
 ul.treeroot span {
     white-space: normal;
@@ -47,41 +62,57 @@ span.field {
 </style>
 <script language="javascript">
 window.onload = function () {
-    [].forEach.call(document.querySelectorAll(".treeroot"), function(node) {
-        node.addEventListener("click", toggle);
-    });
-
-    function toggle (e) {
+    document.addEventListener("click", function (e) {
         var node = e.target;
         while (node.nodeName !== "LI") {
+            if (node.classList.contains("link")) {
+                link(node);
+                e.preventDefault();
+                return;
+            }
+
             node = node.parentNode;
-            if (node === undefined) {
+            if (node == null) {
                 return;
             }
         }
-        if (!node.classList.contains("treebranch")) {
-            return;
-        }
+    });
+    [].forEach.call(document.querySelectorAll(".treeroot"), function(node) {
+        node.addEventListener("click", function (e) {
+            var node = e.target;
+            while (node.nodeName !== "LI") {
+                node = node.parentNode;
+                if (node == null) {
+                    return;
+                }
+            }
+            if (node.classList.contains("treebranch")) {
+                toggle(node);
+            }
+            if (node.classList.contains("detail")) {
+                detail(node);
+            }
+        });
+    });
 
+    async function toggle (node) {
         var uls = node.getElementsByTagName("ul");
         var ul = [].find.call(uls, function(ul) {
             var li = ul;
-            while (li !== null && li.nodeName !== "LI") {
+            while (li != null && li.nodeName !== "LI") {
                 li = li.parentNode;
             }
             return li === node;
         });
-        if (ul === undefined) {
+        if (ul == null) {
             return;
         }
         if (node.classList.contains("lazy")) {
             node.classList.remove("lazy");
-            fetch('/id/' + node.id)
-                .then((response) => { return response.text(); })
-                .then((html) => {
-                    ul.innerHTML = html;
-                    ul.style.display = "block";
-                });
+            var response = await fetch("/id/" + node.id);
+            var html = await response.text();
+            ul.innerHTML = html;
+            ul.style.display = "block";
         } else {
             if (ul.style.display == "none") {
                 ul.style.display = "block";
@@ -90,58 +121,98 @@ window.onload = function () {
             }
         }
     }
-}
 
-function link(anchor, id) {
-    // TODO: unit may not have loaded yet
-    node = document.getElementById(id);
-    if (node !== null) {
+    async function detail (node) {
+        var parent = node;
+        while (parent != null && parent.id === "") {
+            parent = parent.parentNode;
+        }
+        if (parent == null) {
+            return;
+        }
+        var response = await fetch("/id/" + parent.id + "/" + node.dataset.detail);
+        var html = await response.text();
+        document.getElementById("detail").innerHTML = html;
+    }
+
+    async function link(anchor) {
+        var id = anchor.dataset.link;
+        node = document.getElementById(id);
+        if (node == null) {
+            // Need to load the unit first
+            var response = await fetch("/id/" + id + "/parent");
+            var parent_id = await response.text();
+            if (parent_id === "") {
+                return;
+            }
+            var parent = document.getElementById(parent_id);
+            await toggle(parent);
+            node = document.getElementById(id);
+            if (node == null) {
+                return;
+            }
+        }
         // Find UL
         var uls = node.getElementsByTagName("ul");
         var ul = [].find.call(uls, function(ul) {
             var li = ul;
-            while (li !== null && li.nodeName !== "LI") {
+            while (li != null && li.nodeName !== "LI") {
                 li = li.parentNode;
             }
             return li === node;
         });
-        if (ul === undefined) {
+        if (ul == null) {
             return;
         }
         // Expand node
         if (node.classList.contains("lazy")) {
             node.classList.remove("lazy");
-            fetch('/id/' + node.id)
-                .then((response) => { return response.text(); })
-                .then((html) => {
-                    ul.innerHTML = html;
-                    done();
-                });
-        } else {
-            done();
+            var response = await fetch("/id/" + node.id);
+            var html = await response.text();
+            ul.innerHTML = html;
         }
-        function done() {
-            ul.style.display = "block";
-            // Display node and parents
-            while (node && node.nodeName !== "BODY") {
-                if (node.style.display == "none") {
-                    node.style.display = "block";
-                }
-                node = node.parentNode;
+        ul.style.display = "block";
+
+        // Display node and parents
+        while (node && node.nodeName !== "BODY") {
+            if (node.style.display == "none") {
+                node.style.display = "block";
             }
-            // So that history works nicer
-            anchor.scrollIntoView();
-            document.location.href = '#' + id;
+            node = node.parentNode;
+        }
+        // So that history works nicer
+        node = document.getElementById(id);
+        if (node != null) {
+            while (anchor != null) {
+                if (anchor.id !== "") {
+                    history.replaceState({ id: anchor.id }, "");
+                    break;
+                }
+                anchor = anchor.parentNode;
+            }
+            history.pushState({ id: id }, "", "#" + id);
+            node.scrollIntoView();
         }
     }
-    return false;
+
+    window.addEventListener("popstate", (e) => {
+        if (e.state != null) {
+            document.getElementById(e.state.id).scrollIntoView();
+        }
+    });
 }
 </script>
 </head>
 <body>
+<div class="layoutrow">
+<div id="treecol" class="layoutcol">
 <ul class="treeroot">"##;
 
 const FOOTER: &str = r#"</ul>
+</div>
+<div id="detail" class="layoutcol">
+</div>
+</div>
 </body>
 </html>"#;
 
@@ -334,6 +405,17 @@ impl<'w> Printer for HtmlPrinter<'w> {
         Ok(())
     }
 
+    fn indent_detail(&mut self, id: &str, label: &str) -> Result<()> {
+        debug_assert!(self.http);
+        debug_assert!(!self.line_started);
+        write!(self.w, "<li class=\"detail\" data-detail=\"{}\">", id,)?;
+        self.line_started = true;
+        self.line(label, &[])?;
+        writeln!(self.w, "</li>")?;
+        self.line_started = false;
+        Ok(())
+    }
+
     fn prefix(&mut self, prefix: DiffPrefix) {
         self.prefix = prefix;
     }
@@ -386,7 +468,7 @@ impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
         } else {
             write!(
                 self.w,
-                "<a onclick=\"return link(this, \'{}');\" href=\"#{}\">",
+                "<a class=\"link\" data-link=\"{}\" href=\"#{}\">",
                 id, id,
             )?;
             f(self)?;

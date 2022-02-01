@@ -14,7 +14,7 @@ extern crate clap;
 #[macro_use]
 extern crate log;
 
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 
 use warp::Filter;
 
@@ -220,6 +220,7 @@ fn main() {
         .get_matches();
 
     let mut options = ddbug::Options::default();
+    options.inline_depth = 1;
 
     if let Some(value) = matches.value_of(OPT_OUTPUT) {
         match value {
@@ -228,6 +229,10 @@ fn main() {
             OPT_OUTPUT_HTTP => {
                 options.html = true;
                 options.http = true;
+                options.inline_depth = 100;
+                options.print_source = true;
+                options.print_function_calls = true;
+                options.print_function_instructions = true;
             }
             _ => clap::Error::with_description(
                 &format!("invalid {} value: {}", OPT_OUTPUT, value),
@@ -235,13 +240,11 @@ fn main() {
             )
             .exit(),
         }
-    } else {
-        options.html = false;
     }
 
-    options.inline_depth = if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
+    if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
-            Ok(inline_depth) => inline_depth,
+            Ok(inline_depth) => options.inline_depth = inline_depth,
             Err(_) => {
                 clap::Error::with_description(
                     &format!("invalid {} value: {}", OPT_INLINE_DEPTH, inline_depth),
@@ -250,9 +253,7 @@ fn main() {
                 .exit();
             }
         }
-    } else {
-        1
-    };
+    }
 
     if let Some(values) = matches.values_of(OPT_CATEGORY) {
         for value in values {
@@ -568,16 +569,54 @@ fn serve_print_file(
             })
         };
         let route_id = {
+            let file = file.clone();
+            let options = options.clone();
+            let ids = ids.clone();
             warp::path!("id" / usize).map(move |id| {
                 let mut writer = Vec::new();
                 if let Some(id) = ids.get(id) {
                     let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
-                    ddbug::print_id(*id, file.file(), &mut printer, &options).unwrap();
+                    ddbug::print_id(*id, None, file.file(), &mut printer, &options).unwrap();
                 }
                 writer
             })
         };
-        let route = warp::get().and(route_root.or(route_id));
+        let route_id_parent = {
+            let file = file.clone();
+            let ids = ids.clone();
+            warp::path!("id" / usize / "parent").map(move |id| {
+                let mut writer = Vec::new();
+                if let Some(id) = ids.get(id) {
+                    if let Some(parent_id) = ddbug::parent_id(*id, file.file()) {
+                        write!(&mut writer, "{}", parent_id).unwrap();
+                    }
+                }
+                writer
+            })
+        };
+        let route_id_detail = {
+            warp::path!("id" / usize / String).map(move |id, detail: String| {
+                let mut writer = Vec::new();
+                if let Some(id) = ids.get(id) {
+                    let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
+                    ddbug::print_id(
+                        *id,
+                        Some(detail.as_ref()),
+                        file.file(),
+                        &mut printer,
+                        &options,
+                    )
+                    .unwrap();
+                }
+                writer
+            })
+        };
+        let route = warp::get().and(
+            route_root
+                .or(route_id)
+                .or(route_id_parent)
+                .or(route_id_detail),
+        );
 
         let (addr, serve) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
         println!("Listening on http://{}", addr);

@@ -129,6 +129,10 @@ impl<'w> Printer for TextPrinter<'w> {
         body(&mut printer)
     }
 
+    fn indent_detail(&mut self, _id: &str, _label: &str) -> Result<()> {
+        unreachable!();
+    }
+
     fn prefix(&mut self, prefix: DiffPrefix) {
         self.prefix = prefix;
     }

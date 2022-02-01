@@ -153,7 +153,15 @@ pub(crate) fn print_body(unit: &Unit, state: &mut PrintState) -> Result<()> {
             print_unit(state)?;
         }
         state.field_collapsed("types", &print_types)?;
-        state.field_collapsed("functions", &print_functions)?;
+        if options.category_function {
+            let functions = filter::filter_functions(unit, options);
+            let (mut functions, mut inlined_functions): (Vec<_>, Vec<_>) =
+                functions.into_iter().partition(|f| f.size().is_some());
+            state.field_collapsed("functions", |state| state.sort_list(unit, &mut functions))?;
+            state.field_collapsed("inlined functions", |state| {
+                state.sort_list(unit, &mut inlined_functions)
+            })?;
+        }
         state.field_collapsed("variables", &print_variables)?;
     } else {
         if options.category_unit {

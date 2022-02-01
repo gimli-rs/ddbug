@@ -103,6 +103,7 @@ pub trait Printer {
         header: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
         body: &mut dyn FnMut(&mut dyn Printer) -> Result<()>,
     ) -> Result<()>;
+    fn indent_detail(&mut self, id: &str, label: &str) -> Result<()>;
 
     fn prefix(&mut self, prefix: DiffPrefix);
     fn get_prefix(&self) -> DiffPrefix;
@@ -180,6 +181,17 @@ impl<'a> PrintState<'a> {
                 Ok(())
             },
         )
+    }
+
+    pub fn field_detail<FBody>(&mut self, id: &str, label: &str, body: FBody) -> Result<()>
+    where
+        FBody: FnMut(&mut PrintState) -> Result<()>,
+    {
+        if self.options.http {
+            self.printer.indent_detail(id, label)
+        } else {
+            self.indent_impl(true, true, |state| state.label(label), body)
+        }
     }
 
     // Output the header with an indented body.
