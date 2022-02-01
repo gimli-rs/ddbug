@@ -125,8 +125,8 @@ impl<'input> PrintHeader for Function<'input> {
             let calls = calls(self, state.code);
             state.field_collapsed("calls", |state| state.list(&(), &calls))?;
         }
-        if state.options().print_function_instructions {
-            state.field_collapsed("instructions", |state| {
+        if state.options().print_function_instructions && self.range().is_some() {
+            state.field_detail("code", "instructions", |state| {
                 print_instructions(state, self, &details)
             })?;
         }
@@ -397,7 +397,7 @@ fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
     Vec::new()
 }
 
-fn print_instructions(
+pub(crate) fn print_instructions(
     state: &mut PrintState,
     f: &Function,
     details: &FunctionDetails,

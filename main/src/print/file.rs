@@ -361,7 +361,27 @@ pub fn print(file: &File, printer: &mut dyn Printer, options: &Options) -> Resul
     state.sort_list(&(), &mut filter::filter_units(file, options))
 }
 
-pub fn print_id(id: Id, file: &File, printer: &mut dyn Printer, options: &Options) -> Result<()> {
+pub fn parent_id(id: Id, file: &File) -> Option<usize> {
+    match id {
+        Id::Type { unit_index, .. }
+        | Id::Function { unit_index, .. }
+        | Id::Variable { unit_index, .. } => {
+            if let Some(unit) = file.units().get(unit_index) {
+                return Some(unit.id());
+            }
+        }
+        _ => {}
+    }
+    None
+}
+
+pub fn print_id(
+    id: Id,
+    detail: Option<&str>,
+    file: &File,
+    printer: &mut dyn Printer,
+    options: &Options,
+) -> Result<()> {
     match id {
         Id::Unit { unit_index } => {
             if let Some(unit) = file.units().get(unit_index) {
@@ -394,7 +414,16 @@ pub fn print_id(id: Id, file: &File, printer: &mut dyn Printer, options: &Option
                     let hash = FileHash::new(file);
                     let code = Code::new(file);
                     let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-                    return function.print_body(&mut state, unit);
+                    match detail {
+                        None => return function.print_body(&mut state, unit),
+                        Some("code") => {
+                            let details = function.details(state.hash());
+                            return super::function::print_instructions(
+                                &mut state, function, &details,
+                            );
+                        }
+                        _ => {}
+                    }
                 }
             }
         }

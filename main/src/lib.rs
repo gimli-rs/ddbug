@@ -17,7 +17,9 @@ mod code;
 mod filter;
 
 mod print;
-pub use self::print::file::{assign_ids, assign_merged_ids, diff, diff_id, print, print_id};
+pub use self::print::file::{
+    assign_ids, assign_merged_ids, diff, diff_id, parent_id, print, print_id,
+};
 pub use self::print::{DiffPrefix, HtmlPrinter, Id, Printer, TextPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
