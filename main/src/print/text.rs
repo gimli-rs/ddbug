@@ -20,6 +20,23 @@ impl<'w> TextPrinter<'w> {
             inline_depth: options.inline_depth,
         }
     }
+
+    fn write_indent(&mut self) -> Result<()> {
+        match self.prefix {
+            DiffPrefix::None => {}
+            DiffPrefix::Equal | DiffPrefix::Modify => write!(self.w, "  ")?,
+            DiffPrefix::Delete => {
+                write!(self.w, "- ")?;
+            }
+            DiffPrefix::Add => {
+                write!(self.w, "+ ")?;
+            }
+        }
+        for _ in 0..self.indent {
+            write!(self.w, "\t")?;
+        }
+        Ok(())
+    }
 }
 
 impl<'w> Printer for TextPrinter<'w> {
@@ -57,19 +74,7 @@ impl<'w> Printer for TextPrinter<'w> {
     }
 
     fn line(&mut self, label: &str, buf: &[u8]) -> Result<()> {
-        match self.prefix {
-            DiffPrefix::None => {}
-            DiffPrefix::Equal | DiffPrefix::Modify => write!(self.w, "  ")?,
-            DiffPrefix::Delete => {
-                write!(self.w, "- ")?;
-            }
-            DiffPrefix::Add => {
-                write!(self.w, "+ ")?;
-            }
-        }
-        for _ in 0..self.indent {
-            write!(self.w, "\t")?;
-        }
+        self.write_indent()?;
         if !label.is_empty() {
             write!(self.w, "{}:", label)?;
             if !buf.is_empty() {
@@ -152,6 +157,29 @@ impl<'w> Printer for TextPrinter<'w> {
 
     fn inline_end(&mut self) {
         self.inline_depth += 1;
+    }
+
+    fn instruction(&mut self, address: Option<u64>, mnemonic: &str, buf: &[u8]) -> Result<()> {
+        self.write_indent()?;
+        if let Some(address) = address {
+            write!(self.w, "{:3x}:  ", address)?;
+        } else {
+            write!(self.w, "{:3}   ", "")?;
+        }
+        if mnemonic.is_empty() {
+            // When caller doesn't specify a mnemonic, the operands don't a leading space,
+            // so add one here.
+            // TODO: fix this in callers instead?
+            write!(self.w, "{:6} ", "")?;
+        } else {
+            write!(self.w, "{:6}", mnemonic)?;
+        }
+        if !buf.is_empty() {
+            write!(self.w, " ")?;
+            self.w.write_all(buf)?;
+        }
+        writeln!(self.w)?;
+        Ok(())
     }
 }
 

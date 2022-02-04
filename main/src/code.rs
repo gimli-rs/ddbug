@@ -4,7 +4,7 @@ use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::print::{self, PrintState, ValuePrinter};
+use crate::print::{self, PrintState};
 use crate::Result;
 use parser::{Address, Architecture, File, FunctionDetails, Range, Register};
 
@@ -240,25 +240,15 @@ impl<'a> Instruction<'a> {
         f: &FunctionDetails,
         range: Range,
     ) -> Result<()> {
-        fn pad_address(w: &mut dyn ValuePrinter) -> Result<()> {
-            write!(w, "{:3}   ", "")?;
-            Ok(())
-        }
-        fn pad_mnemonic(w: &mut dyn ValuePrinter) -> Result<()> {
-            write!(w, "{:6} ", "")?;
-            Ok(())
-        }
-
         let detail = match d.cs.insn_detail(&self.insn) {
             Ok(detail) => detail,
             Err(_) => return Ok(()),
         };
         let arch_detail = detail.arch_detail();
 
-        state.line(|w, _hash| {
-            write!(w, "{:3x}:  ", self.insn.address() - range.begin)?;
-            if let Some(mnemonic) = self.insn.mnemonic() {
-                write!(w, "{:6}", mnemonic)?;
+        let address = self.insn.address() - range.begin;
+        if let Some(mnemonic) = self.insn.mnemonic() {
+            state.instruction(Some(address), mnemonic, |w, _hash| {
                 if let Some(op_str) = self.insn.op_str().filter(|s| !s.is_empty()) {
                     let mut ops = arch_detail.operands().into_iter();
                     let mut first = true;
@@ -282,18 +272,22 @@ impl<'a> Instruction<'a> {
                         write!(w, "{}", op_str)?
                     }
                 }
-            } else {
+                Ok(())
+            })?;
+        } else {
+            state.instruction(Some(address), ".byte", |w, _hash| {
                 for b in self.insn.bytes() {
                     write!(w, "{:02x} ", b)?;
                 }
-            }
-            Ok(())
-        })?;
+                Ok(())
+            })?;
+        }
 
         let mut first = true;
         for op in arch_detail.operands() {
             let address = if first {
                 // HACK: assume only first operand is modified, so calculate it after the instruction
+                // TODO: use cs_regs_access
                 first = false;
                 self.insn.address() + self.insn.bytes().len() as u64
             } else {
@@ -309,23 +303,17 @@ impl<'a> Instruction<'a> {
                 }
                 // TODO: lookup variables too
                 if let Some(function) = state.hash().functions_by_address.get(&imm) {
-                    state.line(|w, _hash| {
-                        pad_address(w)?;
-                        pad_mnemonic(w)?;
+                    state.instruction(None, "", |w, _hash| {
                         write!(w, "0x{:x} = ", imm)?;
                         print::function::print_ref(function, w)
                     })?;
                 } else if let Some(symbol) = code.plt(imm) {
-                    state.line(|w, _hash| {
-                        pad_address(w)?;
-                        pad_mnemonic(w)?;
+                    state.instruction(None, "", |w, _hash| {
                         write!(w, "0x{:x} = {}@plt", imm, symbol)?;
                         Ok(())
                     })?;
                 } else if let Some(symbol) = code.relocation(imm) {
-                    state.line(|w, _hash| {
-                        pad_address(w)?;
-                        pad_mnemonic(w)?;
+                    state.instruction(None, "", |w, _hash| {
                         write!(w, "[0x{:x}] = {}", imm, symbol)?;
                         Ok(())
                     })?;
@@ -335,9 +323,7 @@ impl<'a> Instruction<'a> {
                 for parameter in f.parameters() {
                     for (range, register) in parameter.registers() {
                         if reg == register && range.contains(address) {
-                            state.line(|w, hash| {
-                                pad_address(w)?;
-                                pad_mnemonic(w)?;
+                            state.instruction(None, "", |w, hash| {
                                 print::register::print(register, w, hash)?;
                                 write!(w, " = ")?;
                                 print::parameter::print_decl(parameter, w, hash)
@@ -348,9 +334,7 @@ impl<'a> Instruction<'a> {
                 for variable in f.variables() {
                     for (range, register) in variable.registers() {
                         if reg == register && range.contains(address) {
-                            state.line(|w, hash| {
-                                pad_address(w)?;
-                                pad_mnemonic(w)?;
+                            state.instruction(None, "", |w, hash| {
                                 print::register::print(register, w, hash)?;
                                 write!(w, " = ")?;
                                 print::local_variable::print_decl(variable, w, hash)
@@ -368,9 +352,7 @@ impl<'a> Instruction<'a> {
                             && ofs < offset + size
                             && range.contains(address)
                         {
-                            state.line(|w, hash| {
-                                pad_address(w)?;
-                                pad_mnemonic(w)?;
+                            state.instruction(None, "", |w, hash| {
                                 write!(w, "[")?;
                                 print::register::print(register, w, hash)?;
                                 if offset < 0 {
@@ -393,9 +375,7 @@ impl<'a> Instruction<'a> {
                             && ofs < offset + size
                             && range.contains(address)
                         {
-                            state.line(|w, hash| {
-                                pad_address(w)?;
-                                pad_mnemonic(w)?;
+                            state.instruction(None, "", |w, hash| {
                                 write!(w, "[")?;
                                 print::register::print(register, w, hash)?;
                                 if offset < 0 {
@@ -414,16 +394,12 @@ impl<'a> Instruction<'a> {
             if let Some((offset, address, size)) = is_ip_offset(&self.insn, &op) {
                 // TODO: lookup variables too
                 if let Some(symbol) = code.relocation(address) {
-                    state.line(|w, _hash| {
-                        pad_address(w)?;
-                        pad_mnemonic(w)?;
+                    state.instruction(None, "", |w, _hash| {
                         write!(w, "[ip + 0x{:x}] = {}", offset, symbol)?;
                         Ok(())
                     })?;
                 } else if let Some(value) = code.read_mem(address, size) {
-                    state.line(|w, hash| {
-                        pad_address(w)?;
-                        pad_mnemonic(w)?;
+                    state.instruction(None, "", |w, hash| {
                         // TODO: show register name
                         write!(w, "[ip + 0x{:x}] = 0x{:x}", offset, value)?;
                         if let Some(function) = hash.functions_by_address.get(&value) {

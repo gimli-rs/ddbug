@@ -110,6 +110,8 @@ pub trait Printer {
 
     fn inline_begin(&mut self) -> bool;
     fn inline_end(&mut self);
+
+    fn instruction(&mut self, address: Option<u64>, mnemonic: &str, buf: &[u8]) -> Result<()>;
 }
 
 pub trait ValuePrinter: Write {
@@ -322,6 +324,17 @@ impl<'a> PrintState<'a> {
             write!(w, "{}", arg)?;
             Ok(())
         })
+    }
+
+    pub fn instruction<F>(&mut self, address: Option<u64>, mnemonic: &str, mut f: F) -> Result<()>
+    where
+        F: FnMut(&mut dyn ValuePrinter, &FileHash) -> Result<()>,
+    {
+        let mut buf = Vec::new();
+        let hash = self.hash;
+        self.printer
+            .value(&mut buf, &mut |printer| f(printer, hash))?;
+        self.printer.instruction(address, mnemonic, &buf)
     }
 
     pub fn list<T: Print>(&mut self, arg: &T::Arg, list: &[T]) -> Result<()> {
