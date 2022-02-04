@@ -553,6 +553,8 @@ pub struct FileHash<'input> {
     pub functions_by_address: HashMap<u64, &'input Function<'input>>,
     /// All functions by offset.
     pub functions_by_offset: HashMap<FunctionOffset, &'input Function<'input>>,
+    /// All variables by address.
+    pub variables_by_address: HashMap<u64, &'input Variable<'input>>,
     /// All types by offset.
     pub types: HashMap<TypeOffset, &'input Type<'input>>,
     // The type corresponding to `TypeOffset::none()`.
@@ -566,6 +568,7 @@ impl<'input> FileHash<'input> {
             file,
             functions_by_address: FileHash::functions_by_address(file),
             functions_by_offset: FileHash::functions_by_offset(file),
+            variables_by_address: FileHash::variables_by_address(file),
             types: FileHash::types(file),
             void: Type::void(),
         }
@@ -596,6 +599,20 @@ impl<'input> FileHash<'input> {
             }
         }
         functions
+    }
+
+    /// Returns a map from address to function for all functions in the file.
+    fn variables_by_address<'a>(file: &'a File<'input>) -> HashMap<u64, &'a Variable<'input>> {
+        let mut variables = HashMap::default();
+        for unit in &file.units {
+            for variable in &unit.variables {
+                if let Some(address) = variable.address() {
+                    // TODO: handle duplicate addresses
+                    variables.insert(address, variable);
+                }
+            }
+        }
+        variables
     }
 
     /// Returns a map from offset to type for all types in the file.
