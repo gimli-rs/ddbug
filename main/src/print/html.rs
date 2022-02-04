@@ -25,6 +25,9 @@ html, body {
 }
 ul.treeroot {
     list-style: none;
+    padding: 0;
+    margin: 0;
+    display: inline-block;
 }
 ul.treeroot ul {
     list-style: none;
@@ -41,7 +44,7 @@ ul.treeroot li.detail {
     cursor: pointer;
 }
 ul.treeroot span {
-    white-space: normal;
+    white-space: nowrap;
 }
 ul.treeroot .del {
     background-color: #ffdce0;
