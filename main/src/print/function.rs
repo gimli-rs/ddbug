@@ -451,7 +451,8 @@ pub(crate) fn print_instructions(
 }
 
 fn print_cfi(state: &mut PrintState, cfi: &Cfi, range: Range) -> Result<()> {
-    state.line(|w, hash| {
+    let address = cfi.0.get().map(|x| x - range.begin).unwrap_or(0);
+    state.instruction(Some(address), "", |w, hash| {
         macro_rules! write_reg {
             ($w:expr, $lead:expr, $r:expr) => {{
                 write!($w, $lead)?;
@@ -472,11 +473,6 @@ fn print_cfi(state: &mut PrintState, cfi: &Cfi, range: Range) -> Result<()> {
             }};
         }
 
-        write!(
-            w,
-            "{:3x}:  ",
-            cfi.0.get().map(|x| x - range.begin).unwrap_or(0)
-        )?;
         match cfi.1 {
             CfiDirective::StartProc => write!(w, ".cfi_startproc")?,
             CfiDirective::EndProc => write!(w, ".cfi_endproc")?,

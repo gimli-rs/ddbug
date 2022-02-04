@@ -205,12 +205,13 @@ window.onload = function () {
 </head>
 <body>
 <div class="layoutrow">
-<div id="treecol" class="layoutcol">
+<div class="layoutcol">
 <ul class="treeroot">"##;
 
 const FOOTER: &str = r#"</ul>
 </div>
-<div id="detail" class="layoutcol">
+<div class="layoutcol">
+<table id="detail"></table>
 </div>
 </div>
 </body>
@@ -435,6 +436,17 @@ impl<'w> Printer for HtmlPrinter<'w> {
 
     fn inline_end(&mut self) {
         self.inline_depth += 1;
+    }
+
+    fn instruction(&mut self, address: Option<u64>, mnemonic: &str, buf: &[u8]) -> Result<()> {
+        write!(self.w, "<tr><td>")?;
+        if let Some(address) = address {
+            write!(self.w, "{:x}", address)?;
+        }
+        write!(self.w, "</td><td>{}</td><td>", mnemonic)?;
+        self.w.write_all(buf)?;
+        write!(self.w, "</td></tr>")?;
+        Ok(())
     }
 }
 
