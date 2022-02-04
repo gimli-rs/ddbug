@@ -5,6 +5,16 @@ use parser::{FileHash, Unit, Variable};
 use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 
+pub(crate) fn print_ref(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
+    w.link(v.id(), &mut |w| {
+        if let Some(namespace) = v.namespace() {
+            print::namespace::print(namespace, w)?;
+        }
+        write!(w, "{}", v.name().unwrap_or("<anon>"))?;
+        Ok(())
+    })
+}
+
 pub(crate) fn print(v: &Variable, state: &mut PrintState, unit: &Unit) -> Result<()> {
     state.collapsed(
         |state| state.line(|w, state| print_name(v, w, state)),

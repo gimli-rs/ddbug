@@ -167,6 +167,7 @@ fn call_x86(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
                 to: imm as u64,
             });
         } else if let Some((_offset, address, size)) = is_ip_offset(insn, &op) {
+            // TODO: handle `lea rax, [rip + offset]; call rax`
             if let Some(value) = code.read_mem(address, size) {
                 return Some(Call {
                     from: insn.address(),
@@ -309,11 +310,13 @@ impl<'a> Instruction<'a> {
                     })?;
                 } else if let Some(symbol) = code.plt(imm) {
                     state.instruction(None, "", |w, _hash| {
+                        // TODO: link to symbol
                         write!(w, "0x{:x} = {}@plt", imm, symbol)?;
                         Ok(())
                     })?;
                 } else if let Some(symbol) = code.relocation(imm) {
                     state.instruction(None, "", |w, _hash| {
+                        // TODO: link to symbol
                         write!(w, "[0x{:x}] = {}", imm, symbol)?;
                         Ok(())
                     })?;
@@ -392,15 +395,26 @@ impl<'a> Instruction<'a> {
                 }
             }
             if let Some((offset, address, size)) = is_ip_offset(&self.insn, &op) {
-                // TODO: lookup variables too
-                if let Some(symbol) = code.relocation(address) {
+                // TODO: show original register name
+                if let Some(function) = state.hash().functions_by_address.get(&address) {
+                    state.instruction(None, "", |w, _hash| {
+                        write!(w, "ip + 0x{:x} = ", offset)?;
+                        print::function::print_ref(function, w)?;
+                        Ok(())
+                    })?;
+                } else if let Some(variable) = state.hash().variables_by_address.get(&address) {
+                    state.instruction(None, "", |w, _hash| {
+                        write!(w, "ip + 0x{:x} = ", offset)?;
+                        print::variable::print_ref(variable, w)?;
+                        Ok(())
+                    })?;
+                } else if let Some(symbol) = code.relocation(address) {
                     state.instruction(None, "", |w, _hash| {
                         write!(w, "[ip + 0x{:x}] = {}", offset, symbol)?;
                         Ok(())
                     })?;
                 } else if let Some(value) = code.read_mem(address, size) {
                     state.instruction(None, "", |w, hash| {
-                        // TODO: show register name
                         write!(w, "[ip + 0x{:x}] = 0x{:x}", offset, value)?;
                         if let Some(function) = hash.functions_by_address.get(&value) {
                             write!(w, " = ")?;
