@@ -10,7 +10,7 @@ fn print_name(ty: &TypeDef, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
-    write!(w, "{}", ty.name().unwrap_or("<anon-typedef>"))?;
+    w.name(ty.name().unwrap_or("<anon-typedef>"))?;
     Ok(())
 }
 

@@ -8,7 +8,7 @@ fn print_name(ty: &UnionType, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
-    write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
+    w.name(ty.name().unwrap_or("<anon>"))?;
     Ok(())
 }
 

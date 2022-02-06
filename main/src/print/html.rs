@@ -457,13 +457,17 @@ fn escaped(bytes: &[u8]) -> Vec<u8> {
     Escape::new(bytes.iter().cloned()).collect()
 }
 
+fn escaped_str(s: &str) -> String {
+    String::from_utf8(Escape::new(s.as_bytes().iter().cloned()).collect()).unwrap()
+}
+
 struct HtmlValuePrinter<'w> {
     w: &'w mut Vec<u8>,
 }
 
 impl<'w> Write for HtmlValuePrinter<'w> {
     fn write(&mut self, buf: &[u8]) -> std::result::Result<usize, std::io::Error> {
-        self.w.write_all(&*escaped(buf))?;
+        self.w.write_all(&escaped(buf))?;
         Ok(buf.len())
     }
 
@@ -490,5 +494,88 @@ impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
             write!(self.w, "</a>")?;
             Ok(())
         }
+    }
+
+    fn name(&mut self, name: &str) -> Result<()> {
+        let mut generic = 0;
+        let mut colon = 0;
+        let mut brace = 0;
+        let mut result = String::new();
+        let mut s = String::new();
+        // Strip leading namespaces from generics in Rust.
+        for c in name.chars() {
+            if c == '{' {
+                // Start of brace. Treat like part of an identifier.
+                brace += 1;
+                s.push(c);
+            } else if c == '}' {
+                // End of brace. Treat like part of an identifier.
+                if brace > 0 {
+                    brace -= 1;
+                }
+                s.push(c);
+            } else if brace > 0 {
+                // Inside brace. Treat like part of an identifier.
+                s.push(c);
+            } else if c == '<' {
+                // Start of a generic. Previous string is identifier, not namespace.
+                result.push_str(&s);
+                s.clear();
+                generic += 1;
+                if generic <= 2 {
+                    result.push(c);
+                }
+                if generic == 2 {
+                    // Deeply nested generic. Skip everything.
+                    result.push_str("...");
+                }
+            } else if c == '>' {
+                // End of a generic. Previous string is identifier, not namespace.
+                if generic <= 2 {
+                    result.push_str(&s);
+                    s.clear();
+                    result.push(c);
+                }
+                if generic > 0 {
+                    generic -= 1;
+                }
+            } else if generic == 0 {
+                // Not in generic. Allow everything.
+                result.push(c);
+            } else if generic >= 2 {
+                // Deeply nested generic. Skip everything.
+            } else if c == ':' {
+                if colon == 0 {
+                    // Possible start of namespace separator.
+                    colon = 1;
+                    s.push(c);
+                } else {
+                    // Namespace separator so discard s.
+                    colon = 0;
+                    s.clear();
+                }
+            } else if c == '_' || c.is_alphanumeric() {
+                // Part of an identifier.
+                // TODO: probably missing some allowable characters here.
+                s.push(c);
+            } else {
+                // Some other punctuation. Previous string is identifier, not namespace.
+                result.push_str(&s);
+                s.clear();
+                result.push(c);
+            }
+        }
+        result.push_str(&s);
+        if name != result {
+            write!(
+                self.w,
+                "<span title=\"{}\">{}</span>",
+                &escaped_str(&name),
+                &escaped_str(&result)
+            )?;
+        } else {
+            self.w.write_all(&escaped(name.as_bytes()))?;
+        }
+        Ok(())
     }
 }

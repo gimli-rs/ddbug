@@ -7,7 +7,7 @@ pub(crate) fn print(namespace: &Namespace, w: &mut dyn ValuePrinter) -> Result<(
     if let Some(parent) = namespace.parent() {
         print(parent, w)?;
     }
-    write!(w, "{}", namespace.name().unwrap_or("<anon>"))?;
+    w.name(namespace.name().unwrap_or("<anon>"))?;
     if namespace.kind() == NamespaceKind::Function {
         write!(w, "()")?;
     }
