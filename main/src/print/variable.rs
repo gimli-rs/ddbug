@@ -10,7 +10,7 @@ pub(crate) fn print_ref(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
         if let Some(namespace) = v.namespace() {
             print::namespace::print(namespace, w)?;
         }
-        write!(w, "{}", v.name().unwrap_or("<anon>"))?;
+        w.name(v.name().unwrap_or("<anon>"))?;
         Ok(())
     })
 }
@@ -79,7 +79,8 @@ fn print_name(v: &Variable, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result
     if let Some(namespace) = v.namespace() {
         print::namespace::print(namespace, w)?;
     }
-    write!(w, "{}: ", v.name().unwrap_or("<anon>"))?;
+    w.name(v.name().unwrap_or("<anon>"))?;
+    write!(w, ": ")?;
     print::types::print_ref(v.ty(hash), w, hash)?;
     Ok(())
 }

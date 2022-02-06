@@ -111,7 +111,7 @@ fn print_ref_unspecified(ty: &UnspecifiedType, w: &mut dyn ValuePrinter) -> Resu
     if let Some(namespace) = ty.namespace() {
         print::namespace::print(namespace, w)?;
     }
-    write!(w, "{}", ty.name().unwrap_or("<void>"))?;
+    w.name(ty.name().unwrap_or("<void>"))?;
     Ok(())
 }
 
@@ -128,7 +128,7 @@ fn print_ref_pointer_to_member(
 
 fn print_ref_modifier(ty: &TypeModifier, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = ty.name() {
-        write!(w, "{}", name)?;
+        w.name(name)?;
     } else {
         match ty.kind() {
             TypeModifierKind::Pointer => write!(w, "* ")?,
@@ -148,7 +148,7 @@ fn print_ref_modifier(ty: &TypeModifier, w: &mut dyn ValuePrinter, hash: &FileHa
 
 fn print_ref_subrange(ty: &SubrangeType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = ty.name() {
-        write!(w, "{}", name)?;
+        w.name(name)?;
     } else {
         print_ref(ty.ty(hash), w, hash)?;
     }

@@ -120,6 +120,8 @@ pub trait ValuePrinter: Write {
         id: usize,
         f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
     ) -> Result<()>;
+
+    fn name(&mut self, name: &str) -> Result<()>;
 }
 
 pub(crate) struct PrintState<'a> {

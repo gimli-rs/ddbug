@@ -205,4 +205,9 @@ impl<'w> ValuePrinter for TextValuePrinter<'w> {
     ) -> Result<()> {
         f(self)
     }
+
+    fn name(&mut self, name: &str) -> Result<()> {
+        self.w.write_all(name.as_bytes())?;
+        Ok(())
+    }
 }

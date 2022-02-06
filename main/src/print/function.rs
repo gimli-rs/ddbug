@@ -16,7 +16,7 @@ pub(crate) fn print_ref(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
         if let Some(namespace) = f.namespace() {
             print::namespace::print(namespace, w)?;
         }
-        write!(w, "{}", f.name().unwrap_or("<anon>"))?;
+        w.name(f.name().unwrap_or("<anon>"))?;
         Ok(())
     })
 }
@@ -26,7 +26,7 @@ fn print_name(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(namespace) = f.namespace() {
         print::namespace::print(namespace, w)?;
     }
-    write!(w, "{}", f.name().unwrap_or("<anon>"))?;
+    w.name(f.name().unwrap_or("<anon>"))?;
     Ok(())
 }
 
