@@ -427,6 +427,19 @@ pub fn print_id(
                 }
             }
         }
+        Id::Variable {
+            unit_index,
+            variable_index,
+        } => {
+            if let Some(unit) = file.units().get(unit_index) {
+                if let Some(variable) = unit.variables().get(variable_index) {
+                    let hash = FileHash::new(file);
+                    let code = Code::new(file);
+                    let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
+                    return variable.print_body(&mut state, unit);
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -666,6 +679,67 @@ pub fn diff_id(
             let code = Code::new(file_b);
             let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
             Some(function.print_body(&mut state, unit))
+        }()
+        .unwrap_or(Err(Error("invalid id".into()))),
+        (
+            Id::Variable {
+                unit_index: unit_index_a,
+                variable_index: variable_index_a,
+            },
+            Id::Variable {
+                unit_index: unit_index_b,
+                variable_index: variable_index_b,
+            },
+        ) => || -> Option<Result<()>> {
+            let unit_a = file_a.units().get(unit_index_a)?;
+            let unit_b = file_b.units().get(unit_index_b)?;
+            let variable_a = unit_a.variables().get(variable_index_a)?;
+            let variable_b = unit_b.variables().get(variable_index_b)?;
+            let hash_a = FileHash::new(file_a);
+            let hash_b = FileHash::new(file_b);
+            let code_a = Code::new(file_a);
+            let code_b = Code::new(file_b);
+            let mut state = DiffState::new(
+                printer,
+                &hash_a,
+                &hash_b,
+                code_a.as_ref(),
+                code_b.as_ref(),
+                options,
+            );
+            Some(PrintHeader::diff_body(
+                &mut state, unit_a, variable_a, unit_b, variable_b,
+            ))
+        }()
+        .unwrap_or(Err(Error("invalid id".into()))),
+        (
+            Id::Variable {
+                unit_index,
+                variable_index,
+            },
+            Id::None,
+        ) => || -> Option<Result<()>> {
+            let unit = file_a.units().get(unit_index)?;
+            let variable = unit.variables().get(variable_index)?;
+            let hash = FileHash::new(file_a);
+            let code = Code::new(file_a);
+            let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
+            Some(variable.print_body(&mut state, unit))
+        }()
+        .unwrap_or(Err(Error("invalid id".into()))),
+        (
+            Id::None,
+            Id::Variable {
+                unit_index,
+                variable_index,
+            },
+        ) => || -> Option<Result<()>> {
+            let unit = file_b.units().get(unit_index)?;
+            let variable = unit.variables().get(variable_index)?;
+            let hash = FileHash::new(file_b);
+            let code = Code::new(file_b);
+            let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
+            Some(variable.print_body(&mut state, unit))
         }()
         .unwrap_or(Err(Error("invalid id".into()))),
         _ => Err(Error("invalid id".into())),

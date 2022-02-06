@@ -2,7 +2,7 @@ use std::cmp;
 
 use parser::{FileHash, Unit, Variable};
 
-use crate::print::{self, DiffState, Print, PrintState, SortList, ValuePrinter};
+use crate::print::{self, DiffState, Print, PrintHeader, PrintState, SortList, ValuePrinter};
 use crate::{Options, Result, Sort};
 
 pub(crate) fn print_ref(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
@@ -15,20 +15,66 @@ pub(crate) fn print_ref(v: &Variable, w: &mut dyn ValuePrinter) -> Result<()> {
     })
 }
 
+impl<'input> PrintHeader for Variable<'input> {
+    fn print_header(&self, state: &mut PrintState) -> Result<()> {
+        state.line(|w, state| print_name(self, w, state))
+    }
+
+    fn print_body(&self, state: &mut PrintState, unit: &Unit) -> Result<()> {
+        state.field("linkage name", |w, _state| print_linkage_name(self, w))?;
+        state.field("symbol name", |w, _state| print_symbol_name(self, w))?;
+        if state.options().print_source {
+            state.field("source", |w, _state| print_source(self, w, unit))?;
+        }
+        state.field("address", |w, _state| print_address(self, w))?;
+        state.field("size", |w, state| print_size(self, w, state))?;
+        state.field("declaration", |w, _state| print_declaration(self, w))
+        // TODO: print anon type inline
+    }
+
+    fn diff_header(state: &mut DiffState, a: &Self, b: &Self) -> Result<()> {
+        state.line(a, b, |w, state, x| print_name(x, w, state))
+    }
+
+    fn diff_body(
+        state: &mut DiffState,
+        unit_a: &parser::Unit,
+        a: &Self,
+        unit_b: &parser::Unit,
+        b: &Self,
+    ) -> Result<()> {
+        let flag = state.options().ignore_variable_linkage_name;
+        state.ignore_diff(flag, |state| {
+            state.field("linkage name", a, b, |w, _state, x| {
+                print_linkage_name(x, w)
+            })
+        })?;
+        let flag = state.options().ignore_variable_symbol_name;
+        state.ignore_diff(flag, |state| {
+            state.field("symbol name", a, b, |w, _state, x| print_symbol_name(x, w))
+        })?;
+        if state.options().print_source {
+            state.field(
+                "source",
+                (unit_a, a),
+                (unit_b, b),
+                |w, _state, (unit, x)| print_source(x, w, unit),
+            )?;
+        }
+        let flag = state.options().ignore_variable_address;
+        state.ignore_diff(flag, |state| {
+            state.field("address", a, b, |w, _state, x| print_address(x, w))
+        })?;
+        state.field("size", a, b, |w, state, x| print_size(x, w, state))?;
+        state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))
+    }
+}
+
 pub(crate) fn print(v: &Variable, state: &mut PrintState, unit: &Unit) -> Result<()> {
-    state.collapsed(
-        |state| state.line(|w, state| print_name(v, w, state)),
-        |state| {
-            state.field("linkage name", |w, _state| print_linkage_name(v, w))?;
-            state.field("symbol name", |w, _state| print_symbol_name(v, w))?;
-            if state.options().print_source {
-                state.field("source", |w, _state| print_source(v, w, unit))?;
-            }
-            state.field("address", |w, _state| print_address(v, w))?;
-            state.field("size", |w, state| print_size(v, w, state))?;
-            state.field("declaration", |w, _state| print_declaration(v, w))
-            // TODO: print anon type inline
-        },
+    state.id(
+        v.id(),
+        |state| v.print_header(state),
+        |state| v.print_body(state, unit),
     )?;
     state.line_break()?;
     Ok(())
@@ -42,33 +88,8 @@ pub(crate) fn diff(
     b: &Variable,
 ) -> Result<()> {
     state.collapsed(
-        |state| state.line(a, b, |w, state, x| print_name(x, w, state)),
-        |state| {
-            let flag = state.options().ignore_variable_linkage_name;
-            state.ignore_diff(flag, |state| {
-                state.field("linkage name", a, b, |w, _state, x| {
-                    print_linkage_name(x, w)
-                })
-            })?;
-            let flag = state.options().ignore_variable_symbol_name;
-            state.ignore_diff(flag, |state| {
-                state.field("symbol name", a, b, |w, _state, x| print_symbol_name(x, w))
-            })?;
-            if state.options().print_source {
-                state.field(
-                    "source",
-                    (unit_a, a),
-                    (unit_b, b),
-                    |w, _state, (unit, x)| print_source(x, w, unit),
-                )?;
-            }
-            let flag = state.options().ignore_variable_address;
-            state.ignore_diff(flag, |state| {
-                state.field("address", a, b, |w, _state, x| print_address(x, w))
-            })?;
-            state.field("size", a, b, |w, state, x| print_size(x, w, state))?;
-            state.field("declaration", a, b, |w, _state, x| print_declaration(x, w))
-        },
+        |state| PrintHeader::diff_header(state, a, b),
+        |state| PrintHeader::diff_body(state, unit_a, a, unit_b, b),
     )?;
     state.line_break()?;
     Ok(())
