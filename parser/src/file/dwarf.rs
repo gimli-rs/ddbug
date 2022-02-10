@@ -2173,6 +2173,7 @@ where
     let mut specification = None;
     let mut abstract_origin = false;
     let mut high_pc = None;
+    let mut size = None;
 
     let entry = node.entry();
     let mut attrs = entry.attrs();
@@ -2210,7 +2211,7 @@ where
                 gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
                 gimli::AttributeValue::Udata(val) => {
                     if val != 0 {
-                        function.size = Size::new(val);
+                        size = Some(val);
                     }
                 }
                 _ => {}
@@ -2258,9 +2259,13 @@ where
         }
     }
 
-    if let (Some(address), Some(high_pc)) = (function.address(), high_pc) {
-        if high_pc > address {
-            function.size = Size::new(high_pc - address);
+    if let Some(address) = function.address() {
+        if let Some(high_pc) = high_pc {
+            if high_pc > address {
+                function.size = Size::new(high_pc - address);
+            }
+        } else if let Some(size) = size {
+            function.size = Size::new(size);
         }
     }
 
