@@ -67,6 +67,25 @@ pub(crate) fn print_ref(
     }
 }
 
+fn ref_id(ty: Option<Cow<Type>>, hash: &FileHash) -> Option<usize> {
+    let ty = ty?;
+    let id = Some(ty.id());
+    match ty.kind() {
+        TypeKind::Void
+        | TypeKind::Function(_)
+        | TypeKind::Unspecified(_)
+        | TypeKind::PointerToMember(_) => None,
+        TypeKind::Base(_)
+        | TypeKind::Def(_)
+        | TypeKind::Struct(_)
+        | TypeKind::Union(_)
+        | TypeKind::Enumeration(_) => id,
+        TypeKind::Array(val) => ref_id(val.element_type(hash), hash),
+        TypeKind::Modifier(ref val) => ref_id(val.ty(hash), hash),
+        TypeKind::Subrange(ref val) => ref_id(val.ty(hash), hash),
+    }
+}
+
 fn print_ref_void(w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "void")?;
     Ok(())
@@ -128,7 +147,11 @@ fn print_ref_pointer_to_member(
 
 fn print_ref_modifier(ty: &TypeModifier, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = ty.name() {
-        w.name(name)?;
+        if let Some(id) = ref_id(ty.ty(hash), hash) {
+            w.link(id, &mut |w| w.name(name))?;
+        } else {
+            w.name(name)?;
+        }
     } else {
         match ty.kind() {
             TypeModifierKind::Pointer => write!(w, "* ")?,
@@ -148,7 +171,11 @@ fn print_ref_modifier(ty: &TypeModifier, w: &mut dyn ValuePrinter, hash: &FileHa
 
 fn print_ref_subrange(ty: &SubrangeType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = ty.name() {
-        w.name(name)?;
+        if let Some(id) = ref_id(ty.ty(hash), hash) {
+            w.link(id, &mut |w| w.name(name))?;
+        } else {
+            w.name(name)?;
+        }
     } else {
         print_ref(ty.ty(hash), w, hash)?;
     }
