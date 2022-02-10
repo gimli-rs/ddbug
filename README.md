@@ -9,9 +9,9 @@ to things such as source code changes or compiler option changes.
 
 Features:
 * Type size and layout
-* Function size, inlined functions, and functions calls
+* Function type, size, inlined functions, function calls, and disassembly
 * Display the differences between two files
-* Plain text or HTML output
+* Plain text or HTTP/HTML output
 * Options to filter/sort the plain text output
 
 **This is alpha software. It is likely to contain many bugs and
