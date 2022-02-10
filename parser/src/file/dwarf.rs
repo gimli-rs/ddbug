@@ -2316,9 +2316,6 @@ fn inherit_subprogram<'input>(
     if function.return_type.is_none() {
         function.return_type = specification.return_type;
     }
-    if specification.inline {
-        function.inline = true;
-    }
     if abstract_origin {
         // We inherit all children, and then extend them when parsing our children.
         function.parameters = specification.parameters.clone();
