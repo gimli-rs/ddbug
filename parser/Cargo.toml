@@ -5,7 +5,7 @@ description = "Unified debug information parser"
 repository = "https://github.com/gimli-rs/ddbug"
 keywords = ["debug", "DWARF"]
 categories = ["development-tools::debugging"]
-license = "Apache-2.0/MIT"
+license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 [dependencies]

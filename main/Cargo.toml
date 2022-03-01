@@ -6,7 +6,7 @@ repository = "https://github.com/gimli-rs/ddbug"
 readme = "../README.md"
 keywords = ["debug", "DWARF"]
 categories = ["development-tools::debugging"]
-license = "Apache-2.0/MIT"
+license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 [dependencies]
