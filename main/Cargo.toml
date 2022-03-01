@@ -19,7 +19,7 @@ log = "0.4"
 marksman_escape = "0.1"
 memmap = "0.7"
 parser = { package = "ddbug_parser", version = "0.3.0", path = "../parser" }
-warp = "0.3"
+hyper = { version = "0.14", features = ["server", "tcp", "http1", "http2"] }
 tokio = "1.0"
 
 [features]

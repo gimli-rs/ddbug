@@ -14,9 +14,15 @@ extern crate clap;
 #[macro_use]
 extern crate log;
 
+use std::convert::Infallible;
 use std::io::{BufWriter, Write};
+use std::net::SocketAddr;
+use std::str;
+use std::sync::Arc;
 
-use warp::Filter;
+use hyper::server::conn::{AddrIncoming, AddrStream};
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{Body, Request, Response, Server};
 
 // Mode
 const OPT_FILE: &str = "file";
@@ -426,7 +432,13 @@ fn main() {
                     if let Err(e) = {
                         let ids = ddbug::assign_merged_ids(file_a.file(), file_b.file(), &options);
                         if options.http {
-                            serve_diff_file(file_a, file_b, options, ids)
+                            let state = ServeDiffState {
+                                file_a,
+                                file_b,
+                                options,
+                                ids,
+                            };
+                            serve(state, serve_diff_file)
                         } else {
                             diff_file(file_a.file(), file_b.file(), &options)
                         }
@@ -442,7 +454,8 @@ fn main() {
         if let Err(e) = ddbug::File::parse(path.to_string()).and_then(|file| {
             let ids = ddbug::assign_ids(file.file(), &options);
             if options.http {
-                serve_print_file(file, options, ids)
+                let state = ServePrintState { file, options, ids };
+                serve(state, serve_print_file)
             } else {
                 print_file(file.file(), &options)
             }
@@ -486,150 +499,148 @@ where
     }
 }
 
-fn serve_diff_file(
+struct ServeDiffState {
     file_a: parser::FileContext,
     file_b: parser::FileContext,
     options: ddbug::Options,
     ids: Vec<(ddbug::Id, ddbug::Id)>,
-) -> ddbug::Result<()> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_io()
-        .build()
-        .unwrap();
-    rt.block_on(async move {
-        let file_a = std::sync::Arc::new(file_a);
-        let file_b = std::sync::Arc::new(file_b);
-        let options = std::sync::Arc::new(options);
-        let ids = std::sync::Arc::new(ids);
-
-        let route_root = {
-            let file_a = file_a.clone();
-            let file_b = file_b.clone();
-            let options = options.clone();
-            warp::path::end().map(move || {
-                let mut writer = Vec::new();
-                let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
-                printer.begin().unwrap();
-                ddbug::diff(&mut printer, file_a.file(), file_b.file(), &options).unwrap();
-                printer.end().unwrap();
-                warp::reply::html(writer)
-            })
-        };
-        let route_id = {
-            warp::path!("id" / usize).map(move |id| {
-                let mut writer = Vec::new();
-                if let Some(id) = ids.get(id) {
-                    let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
-                    ddbug::diff_id(*id, file_a.file(), file_b.file(), &mut printer, &options)
-                        .unwrap();
-                }
-                writer
-            })
-        };
-        let route = warp::get().and(route_root.or(route_id));
-
-        let (addr, serve) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
-        println!("Listening on http://{}", addr);
-        // TODO: support other OS
-        #[cfg(target_os = "linux")]
-        std::process::Command::new("xdg-open")
-            .arg(format!("http://{}", addr))
-            .status()
-            .unwrap();
-        serve.await;
-    });
-
-    Ok(())
 }
 
-fn serve_print_file(
+fn serve_diff_file(writer: &mut Vec<u8>, mut path: str::Split<char>, state: &ServeDiffState) {
+    match path.next() {
+        Some("") => {
+            let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+            printer.begin().unwrap();
+            ddbug::diff(
+                &mut printer,
+                state.file_a.file(),
+                state.file_b.file(),
+                &state.options,
+            )
+            .unwrap();
+            printer.end().unwrap();
+        }
+        Some("id") => {
+            let id = path
+                .next()
+                .and_then(|id| str::parse::<usize>(id).ok())
+                .and_then(|id| state.ids.get(id));
+            if let Some(id) = id {
+                match path.next() {
+                    None => {
+                        let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+                        ddbug::diff_id(
+                            *id,
+                            state.file_a.file(),
+                            state.file_b.file(),
+                            &mut printer,
+                            &state.options,
+                        )
+                        .unwrap();
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+struct ServePrintState {
     file: parser::FileContext,
     options: ddbug::Options,
     ids: Vec<ddbug::Id>,
+}
+
+fn serve_print_file(writer: &mut Vec<u8>, mut path: str::Split<char>, state: &ServePrintState) {
+    match path.next() {
+        Some("") => {
+            let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+            printer.begin().unwrap();
+            ddbug::print(state.file.file(), &mut printer, &state.options).unwrap();
+            printer.end().unwrap();
+        }
+        Some("id") => {
+            let id = path
+                .next()
+                .and_then(|id| str::parse::<usize>(id).ok())
+                .and_then(|id| state.ids.get(id));
+            if let Some(id) = id {
+                match path.next() {
+                    None => {
+                        let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+                        ddbug::print_id(*id, None, state.file.file(), &mut printer, &state.options)
+                            .unwrap();
+                    }
+                    Some("parent") => {
+                        if let Some(parent_id) = ddbug::parent_id(*id, state.file.file()) {
+                            write!(writer, "{}", parent_id).unwrap();
+                        }
+                    }
+                    Some(detail) => {
+                        let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+                        ddbug::print_id(
+                            *id,
+                            Some(detail),
+                            state.file.file(),
+                            &mut printer,
+                            &state.options,
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn serve<T: Send + Sync + 'static>(
+    state: T,
+    f: fn(&mut Vec<u8>, str::Split<char>, &T),
 ) -> ddbug::Result<()> {
+    let state = Arc::new(state);
+    let make_service = make_service_fn(move |_socket: &AddrStream| {
+        let state = state.clone();
+        async move {
+            Ok::<_, Infallible>(service_fn(move |request: Request<_>| {
+                let state = state.clone();
+                async move {
+                    let mut writer = Vec::new();
+                    let mut path = request.uri().path();
+                    if path == "" {
+                        path = "/";
+                    }
+                    if path.starts_with("/") {
+                        let mut path = path.split('/');
+                        path.next();
+                        f(&mut writer, path, &state);
+                    }
+                    Ok::<_, Infallible>(Response::new(Body::from(writer)))
+                }
+            }))
+        }
+    });
+
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .build()
         .unwrap();
     rt.block_on(async move {
-        let file = std::sync::Arc::new(file);
-        let options = std::sync::Arc::new(options);
-        let ids = std::sync::Arc::new(ids);
-
-        let route_root = {
-            let file = file.clone();
-            let options = options.clone();
-            warp::path::end().map(move || {
-                let mut writer = Vec::new();
-                let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
-                printer.begin().unwrap();
-                ddbug::print(file.file(), &mut printer, &options).unwrap();
-                printer.end().unwrap();
-                warp::reply::html(writer)
-            })
-        };
-        let route_id = {
-            let file = file.clone();
-            let options = options.clone();
-            let ids = ids.clone();
-            warp::path!("id" / usize).map(move |id| {
-                let mut writer = Vec::new();
-                if let Some(id) = ids.get(id) {
-                    let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
-                    ddbug::print_id(*id, None, file.file(), &mut printer, &options).unwrap();
-                }
-                writer
-            })
-        };
-        let route_id_parent = {
-            let file = file.clone();
-            let ids = ids.clone();
-            warp::path!("id" / usize / "parent").map(move |id| {
-                let mut writer = Vec::new();
-                if let Some(id) = ids.get(id) {
-                    if let Some(parent_id) = ddbug::parent_id(*id, file.file()) {
-                        write!(&mut writer, "{}", parent_id).unwrap();
-                    }
-                }
-                writer
-            })
-        };
-        let route_id_detail = {
-            warp::path!("id" / usize / String).map(move |id, detail: String| {
-                let mut writer = Vec::new();
-                if let Some(id) = ids.get(id) {
-                    let mut printer = ddbug::HtmlPrinter::new(&mut writer, &options);
-                    ddbug::print_id(
-                        *id,
-                        Some(detail.as_ref()),
-                        file.file(),
-                        &mut printer,
-                        &options,
-                    )
-                    .unwrap();
-                }
-                writer
-            })
-        };
-        let route = warp::get().and(
-            route_root
-                .or(route_id)
-                .or(route_id_parent)
-                .or(route_id_detail),
-        );
-
-        let (addr, serve) = warp::serve(route).bind_ephemeral(([127, 0, 0, 1], 0));
-        println!("Listening on http://{}", addr);
+        let addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut incoming = AddrIncoming::bind(&addr).unwrap();
+        incoming.set_nodelay(true);
+        let local_addr = incoming.local_addr();
+        let server = Server::builder(incoming).serve(make_service);
+        println!("Listening on http://{}", local_addr);
         // TODO: support other OS
         #[cfg(target_os = "linux")]
         std::process::Command::new("xdg-open")
-            .arg(format!("http://{}", addr))
+            .arg(format!("http://{}", local_addr))
             .status()
             .unwrap();
-        serve.await;
+        server.await.unwrap();
     });
 
     Ok(())
 }
-
-mod www {}
