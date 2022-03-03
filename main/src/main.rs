@@ -25,6 +25,7 @@ use hyper::{Body, Request, Response, Server};
 // Mode
 const OPT_FILE: &str = "file";
 const OPT_DIFF: &str = "diff";
+const OPT_BLOAT: &str = "bloat";
 
 // Print format
 const OPT_OUTPUT: &str = "format";
@@ -95,15 +96,23 @@ fn main() {
                 .help("Path of file to print")
                 .value_name("FILE")
                 .index(1)
-                .required_unless_present(OPT_DIFF)
-                .conflicts_with(OPT_DIFF),
+                .required_unless_present_any(&[OPT_DIFF, OPT_BLOAT])
+                .conflicts_with_all(&[OPT_DIFF, OPT_BLOAT]),
         )
         .arg(
             clap::Arg::new(OPT_DIFF)
                 .short('d')
                 .long(OPT_DIFF)
                 .help("Print difference between two files")
-                .value_names(&["FILE", "FILE"]),
+                .value_names(&["FILE", "FILE"])
+                .conflicts_with_all(&[OPT_BLOAT]),
+        )
+        .arg(
+            clap::Arg::new(OPT_BLOAT)
+                .long(OPT_BLOAT)
+                .help("Print bloat information")
+                .value_name("FILE")
+                .conflicts_with_all(&[OPT_DIFF]),
         )
         .arg(
             clap::Arg::new(OPT_OUTPUT)
@@ -452,6 +461,18 @@ fn main() {
                 }
             },
         }
+    } else if let Some(path) = matches.value_of(OPT_BLOAT) {
+        if let Err(e) = ddbug::File::parse(path.to_string()).and_then(|file| {
+            let ids = ddbug::assign_ids(file.file(), &options);
+            if options.http {
+                let state = ServePrintState { file, options, ids };
+                serve(state, serve_bloat_file)
+            } else {
+                bloat_file(file.file(), &options)
+            }
+        }) {
+            error!("{}: {}", path, e);
+        }
     } else {
         let path = matches.value_of(OPT_FILE).unwrap();
 
@@ -480,6 +501,10 @@ fn diff_file(
         }
         Ok(())
     })
+}
+
+fn bloat_file(file: &ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
+    format(options, |printer| ddbug::bloat(file, printer, options))
 }
 
 fn print_file(file: &ddbug::File, options: &ddbug::Options) -> ddbug::Result<()> {
@@ -594,6 +619,18 @@ fn serve_print_file(writer: &mut Vec<u8>, mut path: str::Split<char>, state: &Se
                     }
                 }
             }
+        }
+        _ => {}
+    }
+}
+
+fn serve_bloat_file(writer: &mut Vec<u8>, mut path: str::Split<char>, state: &ServePrintState) {
+    match path.next() {
+        Some("") => {
+            let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+            printer.begin().unwrap();
+            ddbug::bloat(state.file.file(), &mut printer, &state.options).unwrap();
+            printer.end().unwrap();
         }
         _ => {}
     }
