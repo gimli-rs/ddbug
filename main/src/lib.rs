@@ -18,7 +18,7 @@ mod filter;
 
 mod print;
 pub use self::print::file::{
-    assign_ids, assign_merged_ids, diff, diff_id, parent_id, print, print_id,
+    assign_ids, assign_merged_ids, bloat, diff, diff_id, parent_id, print, print_id,
 };
 pub use self::print::{DiffPrefix, HtmlPrinter, Id, Printer, TextPrinter};
 

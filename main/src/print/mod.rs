@@ -124,6 +124,21 @@ pub trait ValuePrinter: Write {
     fn name(&mut self, name: &str) -> Result<()>;
 }
 
+impl ValuePrinter for Vec<u8> {
+    fn link(
+        &mut self,
+        _id: usize,
+        f: &mut dyn FnMut(&mut dyn ValuePrinter) -> Result<()>,
+    ) -> Result<()> {
+        f(self)
+    }
+
+    fn name(&mut self, name: &str) -> Result<()> {
+        self.write_all(name.as_bytes())?;
+        Ok(())
+    }
+}
+
 pub(crate) struct PrintState<'a> {
     // 'w lifetime needed due to invariance
     printer: &'a mut dyn Printer,

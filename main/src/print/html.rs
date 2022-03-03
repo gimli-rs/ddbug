@@ -23,6 +23,9 @@ html, body {
     flex: 1;
     overflow-y: scroll;
 }
+#detailcol {
+    display: none;
+}
 ul.treeroot {
     list-style: none;
     padding: 0;
@@ -136,6 +139,7 @@ window.onload = function () {
         var response = await fetch("/id/" + parent.id + "/" + node.dataset.detail);
         var html = await response.text();
         document.getElementById("detail").innerHTML = html;
+        document.getElementById("detailcol").style.display = "block";
     }
 
     async function link(anchor) {
@@ -213,7 +217,7 @@ window.onload = function () {
 
 const FOOTER: &str = r#"</ul>
 </div>
-<div class="layoutcol">
+<div id="detailcol" class="layoutcol">
 <table id="detail"></table>
 </div>
 </div>

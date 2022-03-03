@@ -390,7 +390,7 @@ impl DiffList for Call {
     }
 }
 
-fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
+pub(crate) fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
     if let (Some(code), Some(range)) = (code, f.range()) {
         return code.calls(range);
     }

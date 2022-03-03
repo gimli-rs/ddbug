@@ -1,9 +1,11 @@
+use std::collections::HashMap;
+
 use parser::{File, FileHash, Function, Type, Unit, Variable};
 
 use crate::code::Code;
 use crate::filter;
 use crate::print::{
-    DiffState, Id, MergeIterator, MergeResult, PrintHeader, PrintState, Printer, SortList,
+    self, DiffState, Id, MergeIterator, MergeResult, PrintHeader, PrintState, Printer, SortList,
 };
 use crate::{Error, Options, Result};
 
@@ -388,7 +390,7 @@ pub fn print_id(
                 let hash = FileHash::new(file);
                 let code = Code::new(file);
                 let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-                return super::unit::print_body(unit, &mut state);
+                return print::unit::print_body(unit, &mut state);
             }
         }
         Id::Type {
@@ -400,7 +402,7 @@ pub fn print_id(
                     let hash = FileHash::new(file);
                     let code = Code::new(file);
                     let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-                    let kind = super::types::kind(ty)?;
+                    let kind = print::types::kind(ty)?;
                     return kind.print_body(&mut state, unit);
                 }
             }
@@ -418,7 +420,7 @@ pub fn print_id(
                         None => return function.print_body(&mut state, unit),
                         Some("code") => {
                             let details = function.details(state.hash());
-                            return super::function::print_instructions(
+                            return print::function::print_instructions(
                                 &mut state, function, &details,
                             );
                         }
@@ -540,7 +542,7 @@ pub fn diff_id(
                 code_b.as_ref(),
                 options,
             );
-            Some(super::unit::diff_body(&mut state, unit_a, unit_b))
+            Some(print::unit::diff_body(&mut state, unit_a, unit_b))
         }()
         .unwrap_or(Err(Error("invalid id".into()))),
         (Id::Unit { unit_index }, Id::None) => || -> Option<Result<()>> {
@@ -548,7 +550,7 @@ pub fn diff_id(
             let hash = FileHash::new(file_a);
             let code = Code::new(file_a);
             let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-            Some(super::unit::print_body(unit, &mut state))
+            Some(print::unit::print_body(unit, &mut state))
         }()
         .unwrap_or(Err(Error("invalid id".into()))),
         (Id::None, Id::Unit { unit_index }) => || -> Option<Result<()>> {
@@ -556,7 +558,7 @@ pub fn diff_id(
             let hash = FileHash::new(file_b);
             let code = Code::new(file_b);
             let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-            Some(super::unit::print_body(unit, &mut state))
+            Some(print::unit::print_body(unit, &mut state))
         }()
         .unwrap_or(Err(Error("invalid id".into()))),
         (
@@ -585,7 +587,7 @@ pub fn diff_id(
                 code_b.as_ref(),
                 options,
             );
-            Some(super::types::diff_body(
+            Some(print::types::diff_body(
                 &mut state, unit_a, type_a, unit_b, type_b,
             ))
         }()
@@ -602,7 +604,7 @@ pub fn diff_id(
             let hash = FileHash::new(file_a);
             let code = Code::new(file_a);
             let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-            Some(super::types::kind(ty).and_then(|kind| kind.print_body(&mut state, unit)))
+            Some(print::types::kind(ty).and_then(|kind| kind.print_body(&mut state, unit)))
         }()
         .unwrap_or(Err(Error("invalid id".into()))),
         (
@@ -617,7 +619,7 @@ pub fn diff_id(
             let hash = FileHash::new(file_b);
             let code = Code::new(file_b);
             let mut state = PrintState::new(printer, &hash, code.as_ref(), options);
-            Some(super::types::kind(ty).and_then(|kind| kind.print_body(&mut state, unit)))
+            Some(print::types::kind(ty).and_then(|kind| kind.print_body(&mut state, unit)))
         }()
         .unwrap_or(Err(Error("invalid id".into()))),
         (
@@ -744,4 +746,113 @@ pub fn diff_id(
         .unwrap_or(Err(Error("invalid id".into()))),
         _ => Err(Error("invalid id".into())),
     }
+}
+
+// Treat functions as copies if they have the same name and source location.
+// This isn't exact, but good enough.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct FunctionId {
+    name: Vec<u8>,
+    source: Vec<u8>,
+}
+
+#[derive(Default)]
+struct FunctionTotal {
+    size: u64,
+    functions: Vec<(usize, usize)>,
+}
+
+pub fn bloat(file: &File, printer: &mut dyn Printer, options: &Options) -> Result<()> {
+    let hash = FileHash::new(file);
+    let code = Code::new(file).unwrap();
+
+    // Build a list of copies of functions.
+    let mut function_totals = HashMap::new();
+    // Also build a map of callers.
+    let mut callers = HashMap::new();
+    for (unit_index, unit) in file.units().iter().enumerate() {
+        for (function_index, function) in unit.functions().iter().enumerate() {
+            if let Some(range) = function.range() {
+                let mut name = Vec::new();
+                print::function::print_ref(function, &mut name)?;
+                let mut source = Vec::new();
+                print::source::print(function.source(), &mut source, unit)?;
+                let id = FunctionId { name, source };
+                let mut function_total = function_totals
+                    .entry(id)
+                    .or_insert(FunctionTotal::default());
+                function_total.size += range.size();
+                function_total.functions.push((unit_index, function_index));
+
+                for call in code.calls(range) {
+                    let entry = callers.entry(call.to).or_insert(Vec::new());
+                    entry.push((unit, function, call.from));
+                }
+            }
+        }
+    }
+
+    let mut function_totals: Vec<_> = function_totals.into_iter().collect();
+    function_totals.sort_by(|a, b| b.1.size.cmp(&a.1.size));
+
+    let state = &mut PrintState::new(printer, &hash, Some(&code), options);
+    for (id, function_total) in function_totals {
+        state.collapsed(
+            |state| {
+                state.line(|w, _hash| {
+                    write!(w, "{} ", function_total.size)?;
+                    w.write_all(&id.name)?;
+                    if !id.source.is_empty() {
+                        write!(w, " ")?;
+                        w.write_all(&id.source)?;
+                    }
+                    Ok(())
+                })
+            },
+            |state| {
+                for (unit_index, function_index) in &function_total.functions {
+                    let unit = &file.units()[*unit_index];
+                    let function = &unit.functions()[*function_index];
+                    let range = function.range().unwrap();
+                    state.collapsed(
+                        |state| {
+                            state.line(|w, _hash| {
+                                write!(w, "{} {}", range.size(), unit.name().unwrap_or("<anon>"))?;
+                                Ok(())
+                            })
+                        },
+                        |state| {
+                            if let Some(calls) = callers.get(&range.begin) {
+                                for (from_unit, from_function, _from_address) in calls {
+                                    state.line(|w, _hash| {
+                                        // TODO: print inlined functions too
+                                        if let Some(namespace) = from_function.namespace() {
+                                            print::namespace::print(namespace, w)?;
+                                        }
+                                        w.name(from_function.name().unwrap_or("<anon>"))?;
+                                        // TODO: print source of from_address instead
+                                        let mut source = Vec::new();
+                                        print::source::print(
+                                            from_function.source(),
+                                            &mut source,
+                                            from_unit,
+                                        )?;
+                                        if !source.is_empty() {
+                                            write!(w, " ")?;
+                                            w.write_all(&source)?;
+                                        }
+                                        Ok(())
+                                    })?;
+                                }
+                            }
+                            Ok(())
+                        },
+                    )?;
+                }
+                Ok(())
+            },
+        )?;
+    }
+
+    Ok(())
 }
