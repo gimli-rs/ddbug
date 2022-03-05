@@ -198,13 +198,17 @@ window.onload = function () {
                 anchor = anchor.parentNode;
             }
             history.pushState({ id: id }, "", "#" + id);
-            node.scrollIntoView();
+            document.getElementById('treecol').scroll({
+                top: node.offsetTop, behavior: 'smooth'
+            });
         }
     }
 
     window.addEventListener("popstate", (e) => {
         if (e.state != null) {
-            document.getElementById(e.state.id).scrollIntoView();
+            document.getElementById('treecol').scroll({
+                top: document.getElementById(e.state.id).offsetTop, behavior: 'smooth'
+            });
         }
     });
 }
@@ -212,7 +216,7 @@ window.onload = function () {
 </head>
 <body>
 <div class="layoutrow">
-<div class="layoutcol">
+<div id="treecol" class="layoutcol">
 <ul class="treeroot">"##;
 
 const FOOTER: &str = r#"</ul>
@@ -405,11 +409,11 @@ impl<'w> Printer for HtmlPrinter<'w> {
         self.line_started = true;
         header(self)?;
         writeln!(self.w, "<ul style=\"display:none\">")?;
+        self.line_started = false;
         if !self.http {
             body(self)?;
         }
         writeln!(self.w, "</ul></li>")?;
-        self.line_started = false;
         Ok(())
     }
 
