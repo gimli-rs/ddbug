@@ -843,7 +843,8 @@ pub fn bloat(
                         function.id(),
                         |state| {
                             state.line(|w, _hash| {
-                                write!(w, "{} {}", range.size(), unit.name().unwrap_or("<anon>"))?;
+                                write!(w, "{} ", range.size())?;
+                                print::unit::print_ref(unit, w)?;
                                 Ok(())
                             })
                         },

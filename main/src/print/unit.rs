@@ -75,8 +75,19 @@ pub(crate) fn merged_variables<'a, 'input>(
     .collect()
 }
 
-fn print_ref(unit: &Unit, w: &mut dyn ValuePrinter) -> Result<()> {
-    write!(w, "{}", unit.name().unwrap_or("<anon>"))?;
+pub(crate) fn print_ref(unit: &Unit, w: &mut dyn ValuePrinter) -> Result<()> {
+    let name = unit.name().unwrap_or("<anon>");
+    // TODO: windows support
+    if !name.starts_with('/') {
+        let dir = unit.dir().unwrap_or("");
+        if !dir.is_empty() {
+            write!(w, "{}", dir)?;
+            if !dir.ends_with('/') {
+                write!(w, "/")?;
+            }
+        }
+    }
+    write!(w, "{}", name)?;
     Ok(())
 }
 

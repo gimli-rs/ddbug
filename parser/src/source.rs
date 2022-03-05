@@ -47,10 +47,14 @@ impl<'input> Source<'input> {
             if let Some(directory) = self.directory() {
                 if let (false, Some(unit_dir)) = (is_absolute(directory), unit.dir()) {
                     path.push_str(unit_dir);
-                    path.push('/');
+                    if !unit_dir.ends_with('/') {
+                        path.push('/');
+                    }
                 }
                 path.push_str(directory);
-                path.push('/');
+                if !directory.ends_with('/') {
+                    path.push('/');
+                }
             }
             path.push_str(file);
             path
