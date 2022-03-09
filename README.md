@@ -1,8 +1,5 @@
 # ddbug - Display debugging information 
 
-[![](https://img.shields.io/crates/v/ddbug.svg)](https://crates.io/crates/ddbug)
-[![](https://docs.rs/ddbug/badge.svg)](https://docs.rs/ddbug/)
-
 `ddbug` is a utility for using DWARF debugging information to explore aspects
 code generation, and in particular to see how the code generation changes due
 to things such as source code changes or compiler option changes.
