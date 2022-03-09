@@ -3,7 +3,6 @@ use std::cmp;
 use std::sync::Arc;
 use std::usize;
 
-use crate::cfi::Cfi;
 use crate::file::FileHash;
 use crate::location::{self, FrameLocation, Piece, Register};
 use crate::namespace::Namespace;
@@ -70,6 +69,7 @@ pub struct Function<'input> {
     pub(crate) source: Source<'input>,
     pub(crate) address: Address,
     pub(crate) size: Size,
+    pub(crate) ranges: Vec<Range>,
     pub(crate) inline: bool,
     pub(crate) declaration: bool,
     pub(crate) parameters: Vec<ParameterType<'input>>,
@@ -148,22 +148,15 @@ impl<'input> Function<'input> {
 
     /// The size in bytes of the function.
     ///
-    /// This may exclude padding.
+    /// This may exclude padding, and may be non-contiguous.
     #[inline]
     pub fn size(&self) -> Option<u64> {
         self.size.get()
     }
 
-    /// The address range of the function.
-    pub fn range(&self) -> Option<Range> {
-        if let (Some(address), Some(size)) = (self.address(), self.size()) {
-            Some(Range {
-                begin: address,
-                end: address + size,
-            })
-        } else {
-            None
-        }
+    /// The address ranges of the function.
+    pub fn ranges(&self) -> &[Range] {
+        &self.ranges
     }
 
     /// Return true if this is an inlined function.
@@ -195,11 +188,6 @@ impl<'input> Function<'input> {
     /// Extra function details.
     pub fn details(&self, hash: &FileHash<'input>) -> FunctionDetails<'input> {
         hash.file.get_function_details(self.offset, hash)
-    }
-
-    /// Call frame information.
-    pub fn cfi(&self, hash: &FileHash<'input>) -> Vec<Cfi> {
-        hash.file.get_cfi(self.address, self.size)
     }
 
     /// Compare the identifying information of two functions.

@@ -347,8 +347,8 @@ where
         })
     }
 
-    pub(crate) fn get_cfi(&self, address: Address, size: Size) -> Vec<Cfi> {
-        self.frame.get_cfi(address, size).unwrap_or_default()
+    pub(crate) fn get_cfi(&self, range: Range) -> Vec<Cfi> {
+        self.frame.get_cfi(range).unwrap_or_default()
     }
 
     pub(crate) fn get_register_name(
@@ -2164,6 +2164,7 @@ where
         source: Source::default(),
         address: Address::none(),
         size: Size::none(),
+        ranges: Vec::new(),
         inline: false,
         declaration: false,
         parameters: Vec::new(),
@@ -2174,6 +2175,7 @@ where
     let mut abstract_origin = false;
     let mut high_pc = None;
     let mut size = None;
+    let mut ranges = None;
 
     let entry = node.entry();
     let mut attrs = entry.attrs();
@@ -2216,6 +2218,11 @@ where
                 }
                 _ => {}
             },
+            gimli::DW_AT_ranges => {
+                if let gimli::AttributeValue::RangeListsRef(val) = attr.value() {
+                    ranges = Some(val);
+                }
+            }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
                     function.return_type = offset;
@@ -2259,13 +2266,36 @@ where
         }
     }
 
-    if let Some(address) = function.address() {
+    if let Some(offset) = ranges {
+        let offset = dwarf.read.ranges_offset_from_raw(&dwarf_unit, offset);
+        let mut ranges = dwarf.read.ranges(&dwarf_unit, offset)?;
+        let mut size = 0;
+        while let Some(range) = ranges.next()? {
+            if range.end > range.begin {
+                size += range.end - range.begin;
+                function.ranges.push(Range {
+                    begin: range.begin,
+                    end: range.end,
+                });
+            }
+        }
+        function.size = Size::new(size);
+        function.address = Address::new(function.ranges.first().map(|r| r.begin).unwrap_or(0));
+    } else if let Some(address) = function.address.get() {
         if let Some(high_pc) = high_pc {
             if high_pc > address {
                 function.size = Size::new(high_pc - address);
+                function.ranges.push(Range {
+                    begin: address,
+                    end: high_pc,
+                });
             }
         } else if let Some(size) = size {
             function.size = Size::new(size);
+            function.ranges.push(Range {
+                begin: address,
+                end: address.wrapping_add(size),
+            });
         }
     }
 
@@ -3902,17 +3932,13 @@ impl<R: gimli::Reader<Offset = usize>> DwarfFrame<R> {
         }
     }
 
-    fn get_cfi(&self, address: Address, size: Size) -> Option<Vec<Cfi>> {
+    fn get_cfi(&self, range: Range) -> Option<Vec<Cfi>> {
         let cfi = self
             .eh_frame
-            .get_cfi(address, size)
-            .or_else(|| self.debug_frame.get_cfi(address, size));
+            .get_cfi(range)
+            .or_else(|| self.debug_frame.get_cfi(range));
         if cfi.is_none() {
-            debug!(
-                "no FDE for 0x{:x}[0x{:x}]",
-                address.get().unwrap_or(0),
-                size.get().unwrap_or(0)
-            );
+            debug!("no FDE for 0x{:x}[0x{:x}]", range.begin, range.size());
         }
         cfi
     }
@@ -3935,8 +3961,8 @@ impl<R: gimli::Reader<Offset = usize>> DebugFrameTable<R> {
         }
     }
 
-    fn get_cfi(&self, address: Address, size: Size) -> Option<Vec<Cfi>> {
-        get_cfi(&self.debug_frame, &self.bases, &self.fdes, address, size)
+    fn get_cfi(&self, range: Range) -> Option<Vec<Cfi>> {
+        get_cfi(&self.debug_frame, &self.bases, &self.fdes, range)
     }
 }
 
@@ -3956,8 +3982,8 @@ impl<R: gimli::Reader<Offset = usize>> EhFrameTable<R> {
         }
     }
 
-    fn get_cfi(&self, address: Address, size: Size) -> Option<Vec<Cfi>> {
-        get_cfi(&self.eh_frame, &self.bases, &self.fdes, address, size)
+    fn get_cfi(&self, range: Range) -> Option<Vec<Cfi>> {
+        get_cfi(&self.eh_frame, &self.bases, &self.fdes, range)
     }
 }
 
@@ -4019,14 +4045,13 @@ fn get_cfi<R: gimli::Reader, S: gimli::UnwindSection<R>>(
     section: &S,
     bases: &gimli::BaseAddresses,
     fdes: &FdeOffsetTable,
-    address: Address,
-    size: Size,
+    range: Range,
 ) -> Option<Vec<Cfi>>
 where
     S::Offset: gimli::UnwindOffset,
 {
-    let address = address.get()?;
-    let size = size.get()?;
+    let address = range.begin;
+    let size = range.size();
     let fde_offset = S::Offset::from(fdes.find(address)?);
     let fde = section
         .fde_from_offset(bases, fde_offset, S::cie_from_offset)

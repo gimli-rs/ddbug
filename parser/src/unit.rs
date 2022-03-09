@@ -67,8 +67,8 @@ impl<'input> Unit<'input> {
     pub fn ranges(&self, hash: &FileHash) -> RangeList {
         let mut ranges = RangeList::default();
         for function in &self.functions {
-            if let Some(range) = function.range() {
-                ranges.push(range);
+            for range in function.ranges() {
+                ranges.push(*range);
             }
         }
         for variable in &self.variables {
@@ -101,8 +101,8 @@ impl<'input> Unit<'input> {
     pub fn function_size(&self) -> u64 {
         let mut ranges = RangeList::default();
         for function in &self.functions {
-            if let Some(range) = function.range() {
-                ranges.push(range);
+            for range in function.ranges() {
+                ranges.push(*range);
             }
         }
         ranges.sort();

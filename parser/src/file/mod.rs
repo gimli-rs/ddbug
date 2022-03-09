@@ -54,9 +54,9 @@ where
         }
     }
 
-    fn get_cfi(&self, address: Address, size: Size) -> Vec<Cfi> {
+    fn get_cfi(&self, range: Range) -> Vec<Cfi> {
         match self {
-            DebugInfo::Dwarf(dwarf) => dwarf.get_cfi(address, size),
+            DebugInfo::Dwarf(dwarf) => dwarf.get_cfi(range),
         }
     }
 
@@ -181,10 +181,6 @@ impl<'input> File<'input> {
         self.debug_info
             .get_function_details(offset, hash)
             .unwrap_or_default()
-    }
-
-    pub(crate) fn get_cfi(&self, address: Address, size: Size) -> Vec<Cfi> {
-        self.debug_info.get_cfi(address, size)
     }
 
     pub(crate) fn get_register_name(&self, register: Register) -> Option<&'static str> {
@@ -341,6 +337,12 @@ impl<'input> File<'input> {
                     ) {
                         function.symbol_name = symbol.name;
                     }
+                    // If there are multiple ranges for the function,
+                    // mark any symbols for the remaining ranges as used.
+                    // TODO: change `Function::symbol_name` to a list instead?
+                    for range in function.ranges().iter().skip(1) {
+                        Self::get_symbol(&*self.symbols, &mut used_symbols, range.begin, None);
+                    }
                 }
             }
 
@@ -380,11 +382,19 @@ impl<'input> File<'input> {
                     });
                 }
                 SymbolKind::Function => {
+                    let mut ranges = Vec::new();
+                    if symbol.size > 0 {
+                        ranges.push(Range {
+                            begin: symbol.address,
+                            end: symbol.address + symbol.size,
+                        });
+                    }
                     unit.functions.push(Function {
                         name: symbol.name,
                         linkage_name: symbol.name,
                         address: Address::new(symbol.address),
                         size: Size::new(symbol.size),
+                        ranges,
                         ..Default::default()
                     });
                 }
@@ -542,6 +552,11 @@ impl<'input> File<'input> {
             size += unit.variable_size(hash);
         }
         size
+    }
+
+    /// Call frame information for the given address range.
+    pub fn cfi(&self, range: Range) -> Vec<Cfi> {
+        self.debug_info.get_cfi(range)
     }
 }
 

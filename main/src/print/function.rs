@@ -48,8 +48,8 @@ fn print_source(f: &Function, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<(
     print::source::print(f.source(), w, unit)
 }
 
-fn print_address(f: &Function, w: &mut dyn ValuePrinter) -> Result<()> {
-    if let Some(ref range) = f.range() {
+fn print_range(range: Option<&Range>, w: &mut dyn ValuePrinter) -> Result<()> {
+    if let Some(range) = range {
         print::range::print_address(range, w)?;
     }
     Ok(())
@@ -100,7 +100,13 @@ impl<'input> PrintHeader for Function<'input> {
         if state.options().print_source {
             state.field("source", |w, _state| print_source(self, w, unit))?;
         }
-        state.field("address", |w, _state| print_address(self, w))?;
+        let ranges = self.ranges();
+        if ranges.len() > 1 {
+            state.field_collapsed("addresses", |state| state.list(&(), ranges))?;
+        } else {
+            let range = ranges.first();
+            state.field("address", |w, _state| print_range(range, w))?;
+        }
         state.field("size", |w, _state| print_size(self, w))?;
         state.field("inline", |w, _state| print_inline(self, w))?;
         state.field("declaration", |w, _state| print_declaration(self, w))?;
@@ -125,7 +131,7 @@ impl<'input> PrintHeader for Function<'input> {
             let calls = calls(self, state.code);
             state.field_collapsed("calls", |state| state.list(&(), &calls))?;
         }
-        if state.options().print_function_instructions && self.range().is_some() {
+        if state.options().print_function_instructions && !self.ranges().is_empty() {
             state.field_detail("code", "instructions", |state| {
                 print_instructions(state, self, &details)
             })?;
@@ -164,7 +170,19 @@ impl<'input> PrintHeader for Function<'input> {
         }
         let flag = state.options().ignore_function_address;
         state.ignore_diff(flag, |state| {
-            state.field("address", a, b, |w, _state, x| print_address(x, w))
+            let ranges_a = a.ranges();
+            let ranges_b = b.ranges();
+            if ranges_a.len() > 1 || ranges_b.len() > 1 {
+                state.field_collapsed("addresses", |state| {
+                    state.ord_list(&(), ranges_a, &(), ranges_b)
+                })
+            } else {
+                let range_a = ranges_a.first();
+                let range_b = ranges_b.first();
+                state.field("address", range_a, range_b, |w, _state, range| {
+                    print_range(range, w)
+                })
+            }
         })?;
         let flag = state.options().ignore_function_size;
         state.ignore_diff(flag, |state| {
@@ -391,10 +409,13 @@ impl DiffList for Call {
 }
 
 pub(crate) fn calls(f: &Function, code: Option<&Code>) -> Vec<Call> {
-    if let (Some(code), Some(range)) = (code, f.range()) {
-        return code.calls(range);
+    let mut calls = Vec::new();
+    if let Some(code) = code {
+        for range in f.ranges() {
+            calls.extend(code.calls(*range));
+        }
     }
-    Vec::new()
+    calls
 }
 
 pub(crate) fn print_instructions(
@@ -402,10 +423,10 @@ pub(crate) fn print_instructions(
     f: &Function,
     details: &FunctionDetails,
 ) -> Result<()> {
-    let range = match f.range() {
-        Some(x) => x,
-        None => return Ok(()),
-    };
+    let ranges = f.ranges();
+    if ranges.is_empty() {
+        return Ok(());
+    }
     let code = match state.code {
         Some(x) => x,
         None => return Ok(()),
@@ -414,37 +435,44 @@ pub(crate) fn print_instructions(
         Some(x) => x,
         None => return Ok(()),
     };
-    let insns = match disassembler.instructions(code, range) {
-        Some(x) => x,
-        None => return Ok(()),
-    };
-    let cfis = f.cfi(state.hash());
+    for range in ranges.iter().copied() {
+        state.instruction(None, "", |w, _hash| {
+            write!(w, ".org 0x{:x}", range.begin)?;
+            Ok(())
+        })?;
 
-    let mut insns = insns.iter();
-    let mut cfis = cfis.iter();
+        let insns = match disassembler.instructions(code, range) {
+            Some(x) => x,
+            None => return Ok(()),
+        };
+        let cfis = state.hash().file.cfi(range);
 
-    let mut insn_next = insns.next();
-    let mut cfi_next = cfis.next();
-    loop {
-        match (&insn_next, cfi_next) {
-            (&Some(ref insn), Some(cfi)) => {
-                if cfi.0.is_none() || cfi.0 <= insn.address() {
-                    print_cfi(state, cfi, range)?;
-                    cfi_next = cfis.next();
-                } else {
+        let mut insns = insns.iter();
+        let mut cfis = cfis.iter();
+
+        let mut insn_next = insns.next();
+        let mut cfi_next = cfis.next();
+        loop {
+            match (&insn_next, cfi_next) {
+                (&Some(ref insn), Some(cfi)) => {
+                    if cfi.0.is_none() || cfi.0 <= insn.address() {
+                        print_cfi(state, cfi, range)?;
+                        cfi_next = cfis.next();
+                    } else {
+                        insn.print(state, code, &disassembler, details, range)?;
+                        insn_next = insns.next();
+                    }
+                }
+                (&Some(ref insn), None) => {
                     insn.print(state, code, &disassembler, details, range)?;
                     insn_next = insns.next();
                 }
+                (&None, Some(cfi)) => {
+                    print_cfi(state, cfi, range)?;
+                    cfi_next = cfis.next();
+                }
+                (&None, None) => break,
             }
-            (&Some(ref insn), None) => {
-                insn.print(state, code, &disassembler, details, range)?;
-                insn_next = insns.next();
-            }
-            (&None, Some(cfi)) => {
-                print_cfi(state, cfi, range)?;
-                cfi_next = cfis.next();
-            }
-            (&None, None) => break,
         }
     }
     Ok(())

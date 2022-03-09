@@ -776,7 +776,7 @@ pub fn bloat_index(file: &File, options: &Options) -> BloatIndex {
     let mut callers = HashMap::new();
     for (unit_index, unit) in file.units().iter().enumerate() {
         for (function_index, function) in unit.functions().iter().enumerate() {
-            if let Some(range) = function.range() {
+            if let Some(size) = function.size() {
                 let mut name = Vec::new();
                 print::function::print_ref(function, &mut name).unwrap();
                 let mut source = Vec::new();
@@ -785,17 +785,19 @@ pub fn bloat_index(file: &File, options: &Options) -> BloatIndex {
                 let mut function_total = function_totals
                     .entry(id)
                     .or_insert(FunctionTotal::default());
-                function_total.size += range.size();
+                function_total.size += size;
                 function_total.functions.push((unit_index, function_index));
 
                 if let Some(code) = code.as_ref() {
-                    for call in code.calls(range) {
-                        let entry = callers.entry(call.to).or_insert(Vec::new());
-                        entry.push(Caller {
-                            unit_index,
-                            function_index,
-                            _address: call.from,
-                        });
+                    for range in function.ranges() {
+                        for call in code.calls(*range) {
+                            let entry = callers.entry(call.to).or_insert(Vec::new());
+                            entry.push(Caller {
+                                unit_index,
+                                function_index,
+                                _address: call.from,
+                            });
+                        }
                     }
                 }
             }
@@ -838,17 +840,18 @@ pub fn bloat(
                 for (unit_index, function_index) in &function_total.functions {
                     let unit = &file.units()[*unit_index];
                     let function = &unit.functions()[*function_index];
-                    let range = function.range().unwrap();
+                    let address = function.address().unwrap();
+                    let size = function.size().unwrap();
                     state.id(
                         function.id(),
                         |state| {
                             state.line(|w, _hash| {
-                                write!(w, "{} ", range.size())?;
+                                write!(w, "{} ", size)?;
                                 print::unit::print_ref(unit, w)?;
                                 Ok(())
                             })
                         },
-                        |state| bloat_callers(state, file, index, range.begin),
+                        |state| bloat_callers(state, file, index, address),
                     )?;
                 }
                 Ok(())

@@ -216,7 +216,7 @@ pub(crate) fn diff_body(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> 
         if options.print_unit_address {
             let ranges_a = unit_a.ranges(state.hash_a());
             let ranges_b = unit_b.ranges(state.hash_b());
-            if ranges_a.list().len() > 1 || ranges_a.list().len() > 1 {
+            if ranges_a.list().len() > 1 || ranges_b.list().len() > 1 {
                 state.field_collapsed("addresses", |state| {
                     state.ord_list(&(), ranges_a.list(), &(), ranges_b.list())
                 })?;
