@@ -108,7 +108,7 @@ impl Options {
     fn prefix_map<'name>(&self, name: &'name str) -> (&str, &'name str) {
         for (old, new) in &self.prefix_map {
             if name.starts_with(&*old) {
-                return (&new, &name[old.len()..]);
+                return (new, &name[old.len()..]);
             }
         }
         ("", name)

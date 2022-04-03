@@ -4,7 +4,6 @@ use std::mem;
 use std::sync::Arc;
 use std::u32;
 
-use gimli;
 use gimli::Reader as GimliReader;
 use object::{self, ObjectSection, ObjectSymbol};
 
@@ -402,7 +401,7 @@ where
             }
             None => &[],
         };
-        let relocations = arena.add_relocations(Box::new(relocations));
+        let relocations = arena.add_relocations(relocations);
         let reader = gimli::EndianSlice::new(data, endian);
         Ok(Relocate {
             relocations,
@@ -450,8 +449,10 @@ fn parse_unit<'input, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut unit = Unit::default();
-    unit.address_size = Some(u64::from(dwarf_unit.header.address_size()));
+    let mut unit = Unit {
+        address_size: Some(u64::from(dwarf_unit.header.address_size())),
+        ..Default::default()
+    };
 
     let mut subprograms = Vec::new();
     let mut variables = Vec::new();
@@ -1054,11 +1055,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown type modifier child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown type modifier child tag: {}", tag);
     }
     Ok(modifier)
 }
@@ -1125,11 +1123,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown base type child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown base type child tag: {}", tag);
     }
     Ok(ty)
 }
@@ -1143,8 +1138,10 @@ fn parse_typedef<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut typedef = TypeDef::default();
-    typedef.namespace = namespace.clone();
+    let mut typedef = TypeDef {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -1173,11 +1170,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown typedef child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown typedef child tag: {}", tag);
     }
     Ok(typedef)
 }
@@ -1194,8 +1188,10 @@ fn parse_structure_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = StructType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = StructType {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -1290,8 +1286,10 @@ fn parse_union_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = UnionType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = UnionType {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -1635,11 +1633,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown member child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown member child tag: {}", tag);
     }
     members.push(member);
     Ok(())
@@ -1681,11 +1676,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown inheritance child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown inheritance child tag: {}", tag);
     }
     inherits.push(inherit);
     Ok(())
@@ -1858,11 +1850,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown enumerator child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown enumerator child tag: {}", tag);
     }
     Ok(enumerator)
 }
@@ -2000,11 +1989,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown subrange child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown subrange child tag: {}", tag);
     }
     Ok(subrange)
 }
@@ -2064,8 +2050,10 @@ fn parse_unspecified_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = UnspecifiedType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = UnspecifiedType {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -2083,11 +2071,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown unspecified type child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown unspecified type child tag: {}", tag);
     }
     Ok(ty)
 }
@@ -2133,11 +2118,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown ptr_to_member type child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown ptr_to_member type child tag: {}", tag);
     }
     Ok(ty)
 }
@@ -2270,8 +2252,8 @@ where
     }
 
     if let Some(offset) = ranges {
-        let offset = dwarf.read.ranges_offset_from_raw(&dwarf_unit, offset);
-        let mut ranges = dwarf.read.ranges(&dwarf_unit, offset)?;
+        let offset = dwarf.read.ranges_offset_from_raw(dwarf_unit, offset);
+        let mut ranges = dwarf.read.ranges(dwarf_unit, offset)?;
         let mut size = 0;
         while let Some(range) = ranges.next()? {
             if range.end > range.begin {
@@ -2485,11 +2467,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown parameter child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown parameter child tag: {}", tag);
     }
 
     if let Some(abstract_origin) = abstract_origin {
@@ -2601,11 +2580,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown parameter child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown parameter child tag: {}", tag);
     }
 
     if let Some(abstract_origin) = abstract_origin {
@@ -2729,8 +2705,8 @@ where
 }
 
 // Only checks for unknown attributes and tags.
-fn parse_inlined_subroutine<'input, 'abbrev, 'unit, 'tree, Endian>(
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+fn parse_inlined_subroutine<Endian>(
+    node: gimli::EntriesTreeNode<'_, '_, '_, Reader<'_, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2757,8 +2733,8 @@ where
 }
 
 // Only checks for unknown attributes and tags.
-fn parse_inlined_lexical_block<'input, 'abbrev, 'unit, 'tree, Endian>(
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+fn parse_inlined_lexical_block<Endian>(
+    node: gimli::EntriesTreeNode<'_, '_, '_, Reader<'_, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -3119,11 +3095,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown variable child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown variable child tag: {}", tag);
     }
 
     Ok(DwarfVariable {
@@ -3211,11 +3184,8 @@ where
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
-        match child.entry().tag() {
-            tag => {
-                debug!("unknown variable child tag: {}", tag);
-            }
-        }
+        let tag = child.entry().tag();
+        debug!("unknown variable child tag: {}", tag);
     }
 
     if let Some(abstract_origin) = abstract_origin {
@@ -4087,8 +4057,8 @@ where
         );
     }
 
-    let mut cfi = Vec::new();
-    cfi.push((Address::none(), CfiDirective::StartProc));
+    let mut cfi = vec![(Address::none(), CfiDirective::StartProc)];
+
     if let Some(personality) = fde.personality() {
         // TODO: better handling of indirect
         let address = match personality {

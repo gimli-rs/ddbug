@@ -4,7 +4,7 @@ use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::print::{self, PrintState};
+use crate::print::{self, PrintState, ValuePrinter};
 use crate::Result;
 use parser::{Address, Architecture, File, FunctionDetails, Range, Register};
 
@@ -73,7 +73,7 @@ impl<'code> Code<'code> {
     }
 
     pub(crate) fn calls(&self, range: Range) -> Vec<Call> {
-        calls(self, range).unwrap_or(Vec::new())
+        calls(self, range).unwrap_or_default()
     }
 
     pub(crate) fn disassembler(&self) -> Option<Disassembler> {
@@ -121,10 +121,10 @@ fn find_plts<'data>(
                 if let Some(bytes) = file.segment_bytes(address) {
                     let insns = cs.disasm_all(bytes, address.begin).ok()?;
                     for insn in insns.iter() {
-                        let detail = cs.insn_detail(&insn).ok()?;
+                        let detail = cs.insn_detail(insn).ok()?;
                         let arch_detail = detail.arch_detail();
                         for op in arch_detail.operands() {
-                            if let Some((_offset, target, _size)) = is_ip_offset(&insn, &op) {
+                            if let Some((_offset, target, _size)) = is_ip_offset(insn, &op) {
                                 if let Some(symbol) = relocations.get(&target) {
                                     // HACK: assume PLT is aligned to 16 bytes
                                     plts.insert(insn.address() & !0xf, symbol);
@@ -144,7 +144,7 @@ fn calls(code: &Code, range: Range) -> Option<Vec<Call>> {
     let mut cs = Capstone::new_raw(code.arch, code.mode, capstone::NO_EXTRA_MODE, None).ok()?;
     cs.set_detail(true).ok()?;
     let insns = cs.disasm_all(bytes, range.begin).ok()?;
-    Some(insns.iter().filter_map(|x| call(code, &cs, &x)).collect())
+    Some(insns.iter().filter_map(|x| call(code, &cs, x)).collect())
 }
 
 fn call(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
@@ -241,7 +241,7 @@ impl<'a> Instruction<'a> {
         f: &FunctionDetails,
         range: Range,
     ) -> Result<()> {
-        let detail = match d.cs.insn_detail(&self.insn) {
+        let detail = match d.cs.insn_detail(self.insn) {
             Ok(detail) => detail,
             Err(_) => return Ok(()),
         };
@@ -356,14 +356,7 @@ impl<'a> Instruction<'a> {
                             && range.contains(address)
                         {
                             state.instruction(None, "", |w, hash| {
-                                write!(w, "[")?;
-                                print::register::print(register, w, hash)?;
-                                if offset < 0 {
-                                    write!(w, " - 0x{:x}", -offset)?;
-                                } else if offset > 0 {
-                                    write!(w, " + 0x{:x}", offset)?;
-                                }
-                                write!(w, "] = ")?;
+                                print_register_with_offset(w, register, hash, offset)?;
                                 // FIXME: print members if ofs != offset || reg.size() < size
                                 print::parameter::print_decl(parameter, w, hash)
                             })?;
@@ -379,14 +372,7 @@ impl<'a> Instruction<'a> {
                             && range.contains(address)
                         {
                             state.instruction(None, "", |w, hash| {
-                                write!(w, "[")?;
-                                print::register::print(register, w, hash)?;
-                                if offset < 0 {
-                                    write!(w, " - 0x{:x}", -offset)?;
-                                } else if offset > 0 {
-                                    write!(w, " + 0x{:x}", offset)?;
-                                }
-                                write!(w, "] = ")?;
+                                print_register_with_offset(w, register, hash, offset)?;
                                 // FIXME: print members if ofs != offset || reg.size() < size
                                 print::local_variable::print_decl(variable, w, hash)
                             })?;
@@ -394,7 +380,7 @@ impl<'a> Instruction<'a> {
                     }
                 }
             }
-            if let Some((offset, address, size)) = is_ip_offset(&self.insn, &op) {
+            if let Some((offset, address, size)) = is_ip_offset(self.insn, &op) {
                 // TODO: show original register name
                 if let Some(function) = state.hash().functions_by_address.get(&address) {
                     state.instruction(None, "", |w, _hash| {
@@ -429,6 +415,23 @@ impl<'a> Instruction<'a> {
 
         Ok(())
     }
+}
+
+fn print_register_with_offset(
+    w: &mut dyn ValuePrinter,
+    register: Register,
+    hash: &parser::FileHash,
+    offset: i64,
+) -> Result<()> {
+    write!(w, "[")?;
+    print::register::print(register, w, hash)?;
+    match offset.cmp(&0) {
+        std::cmp::Ordering::Less => write!(w, " - 0x{:x}", -offset)?,
+        std::cmp::Ordering::Greater => write!(w, " + 0x{:x}", offset)?,
+        std::cmp::Ordering::Equal => (),
+    }
+    write!(w, "] = ")?;
+    Ok(())
 }
 
 fn is_call(detail: &InsnDetail) -> bool {

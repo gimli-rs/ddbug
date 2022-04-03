@@ -35,7 +35,7 @@ impl<'input> Namespace<'input> {
 
     /// The parent namespace.
     pub fn parent(&self) -> Option<&Namespace<'input>> {
-        self.parent.as_ref().map(|x| &**x)
+        self.parent.as_deref()
     }
 
     /// The namespace name.
@@ -165,8 +165,8 @@ mod test {
 
     #[test]
     fn cmp() {
-        let ns1 = Namespace::new(&None, Some("a".into()), NamespaceKind::Namespace);
-        let ns2 = Namespace::new(&None, Some("b".into()), NamespaceKind::Namespace);
+        let ns1 = Namespace::new(&None, Some("a"), NamespaceKind::Namespace);
+        let ns2 = Namespace::new(&None, Some("b"), NamespaceKind::Namespace);
         assert_eq!(Namespace::cmp(&ns1, &ns2), cmp::Ordering::Less);
     }
 }

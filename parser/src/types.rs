@@ -151,10 +151,7 @@ impl<'input> Type<'input> {
     /// Return true if the type is the void type.
     #[inline]
     pub fn is_void(&self) -> bool {
-        match self.kind {
-            TypeKind::Void => true,
-            _ => false,
-        }
+        matches!(self.kind, TypeKind::Void)
     }
 
     /// The user defined id for this type.
@@ -537,7 +534,7 @@ pub struct TypeDef<'input> {
 impl<'input> TypeDef<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type definition.
@@ -591,7 +588,7 @@ pub struct StructType<'input> {
 impl<'input> StructType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.
@@ -684,7 +681,7 @@ pub struct UnionType<'input> {
 impl<'input> UnionType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.
@@ -1115,7 +1112,7 @@ pub struct EnumerationType<'input> {
 impl<'input> EnumerationType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.
@@ -1454,7 +1451,7 @@ pub struct UnspecifiedType<'input> {
 impl<'input> UnspecifiedType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.

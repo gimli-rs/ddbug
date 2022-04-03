@@ -231,8 +231,10 @@ fn main() {
         ));
     let matches = cmd.get_matches_mut();
 
-    let mut options = ddbug::Options::default();
-    options.inline_depth = 1;
+    let mut options = ddbug::Options {
+        inline_depth: 1,
+        ..Default::default()
+    };
 
     if let Some(value) = matches.value_of(OPT_OUTPUT) {
         match value {
@@ -566,19 +568,16 @@ fn serve_diff_file(writer: &mut Vec<u8>, mut path: str::Split<char>, state: &Ser
         Some("id") => {
             let id = path.next().and_then(|id| str::parse::<usize>(id).ok());
             if let Some(id) = id {
-                match path.next() {
-                    None => {
-                        let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
-                        ddbug::diff_id(
-                            id,
-                            state.file_a.file(),
-                            state.file_b.file(),
-                            &mut printer,
-                            &state.options,
-                            &state.index,
-                        );
-                    }
-                    _ => {}
+                if path.next().is_none() {
+                    let mut printer = ddbug::HtmlPrinter::new(writer, &state.options);
+                    ddbug::diff_id(
+                        id,
+                        state.file_a.file(),
+                        state.file_b.file(),
+                        &mut printer,
+                        &state.options,
+                        &state.index,
+                    );
                 }
             }
         }
@@ -690,10 +689,10 @@ fn serve<T: Send + Sync + 'static>(
                 async move {
                     let mut writer = Vec::new();
                     let mut path = request.uri().path();
-                    if path == "" {
+                    if path.is_empty() {
                         path = "/";
                     }
-                    if path.starts_with("/") {
+                    if path.starts_with('/') {
                         let mut path = path.split('/');
                         path.next();
                         f(&mut writer, path, &state);

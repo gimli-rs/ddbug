@@ -84,9 +84,9 @@ pub(crate) enum Location {
     Other,
 }
 
-pub(crate) fn registers<'a>(
-    locations: &'a [(Range, Piece)],
-) -> impl Iterator<Item = (Range, Register)> + 'a {
+pub(crate) fn registers(
+    locations: &[(Range, Piece)],
+) -> impl Iterator<Item = (Range, Register)> + '_ {
     locations.iter().filter_map(|(range, piece)| {
         if piece.is_value {
             return None;
@@ -98,9 +98,9 @@ pub(crate) fn registers<'a>(
     })
 }
 
-pub(crate) fn frame_locations<'a>(
-    locations: &'a [(Range, Piece)],
-) -> impl Iterator<Item = FrameLocation> + 'a {
+pub(crate) fn frame_locations(
+    locations: &[(Range, Piece)],
+) -> impl Iterator<Item = FrameLocation> + '_ {
     locations.iter().filter_map(|(_, piece)| {
         if piece.is_value {
             return None;
@@ -118,9 +118,9 @@ pub(crate) fn frame_locations<'a>(
     })
 }
 
-pub(crate) fn register_offsets<'a>(
-    locations: &'a [(Range, Piece)],
-) -> impl Iterator<Item = (Range, Register, i64)> + 'a {
+pub(crate) fn register_offsets(
+    locations: &[(Range, Piece)],
+) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
     locations.iter().filter_map(|(range, piece)| {
         if piece.is_value {
             return None;

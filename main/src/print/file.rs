@@ -44,8 +44,8 @@ fn assign_ids_in_unit(unit_index: usize, unit: &Unit, _options: &Options, ids: &
 }
 
 fn assign_merged_ids(file_a: &File, file_b: &File, options: &Options) -> Vec<(Id, Id)> {
-    let ref hash_a = FileHash::new(file_a);
-    let ref hash_b = FileHash::new(file_b);
+    let hash_a = &FileHash::new(file_a);
+    let hash_b = &FileHash::new(file_b);
 
     let mut ids = Vec::new();
     let mut units_a = filter::enumerate_and_filter_units(file_a, options);
@@ -139,6 +139,7 @@ fn assign_unmerged_ids_in_unit(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn assign_merged_ids_in_unit(
     hash_a: &FileHash,
     unit_a_index: usize,
@@ -323,7 +324,7 @@ pub struct PrintIndex {
 }
 
 pub fn print_index(file: &File, options: &Options) -> PrintIndex {
-    let ids = assign_ids(file, &options);
+    let ids = assign_ids(file, options);
     PrintIndex { ids }
 }
 
@@ -447,7 +448,7 @@ pub struct DiffIndex {
 }
 
 pub fn diff_index(file_a: &File, file_b: &File, options: &Options) -> DiffIndex {
-    let ids = assign_merged_ids(file_a, file_b, &options);
+    let ids = assign_merged_ids(file_a, file_b, options);
     DiffIndex { ids }
 }
 
@@ -784,7 +785,7 @@ pub fn bloat_index(file: &File, options: &Options) -> BloatIndex {
                 let id = FunctionId { name, source };
                 let mut function_total = function_totals
                     .entry(id)
-                    .or_insert(FunctionTotal::default());
+                    .or_insert_with(FunctionTotal::default);
                 function_total.size += size;
                 function_total.functions.push((unit_index, function_index));
 

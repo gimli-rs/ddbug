@@ -1,4 +1,3 @@
-use std;
 use std::io::Write;
 
 use marksman_escape::Escape;
@@ -578,7 +577,7 @@ impl<'w> ValuePrinter for HtmlValuePrinter<'w> {
             write!(
                 self.w,
                 "<span title=\"{}\">{}</span>",
-                &escaped_str(&name),
+                &escaped_str(name),
                 &escaped_str(&result)
             )?;
         } else {
