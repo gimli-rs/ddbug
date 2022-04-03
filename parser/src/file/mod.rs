@@ -68,7 +68,9 @@ pub(crate) struct Arena {
     // TODO: can these be a single `Vec<Box<dyn ??>>`?
     buffers: Mutex<Vec<Vec<u8>>>,
     strings: Mutex<Vec<String>>,
-    relocations: Mutex<Vec<dwarf::RelocationMap>>,
+    // It's crusial to have a box because we then transume it.
+    #[allow(clippy::vec_box)]
+    relocations: Mutex<Vec<Box<dwarf::RelocationMap>>>,
 }
 
 impl Arena {
@@ -109,7 +111,7 @@ impl Arena {
     ) -> &'input dwarf::RelocationMap {
         let mut relocations = self.relocations.lock().unwrap();
         let i = relocations.len();
-        relocations.push(entry);
+        relocations.push(Box::new(entry));
         let entry = &relocations[i];
         unsafe { mem::transmute::<&dwarf::RelocationMap, &'input dwarf::RelocationMap>(entry) }
     }
