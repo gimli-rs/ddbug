@@ -45,4 +45,5 @@ test!(function_diff_return_type, "  fn ", "function_diff_return_type", "\n", "[.
 test!(function_diff_variables, "  fn ", "function_diff_variables", "\n", "[..]\n", "  \tvariables:\n", "- \t\t[1]\ta: char\n", "+ \t\t[1]\tb: char\n", "  \t\t[1]\tc: char\n", "- \t\t[1]\td: char\n", "+ \t\t[4]\td: int\n", "- \t\t[1]\te: char\n", "+ \t\t[1]\tf: char\n", "- \t\t[4]\textra: int\n", "  \t\t[1]\tg: char\n", "\n");
 test!(variable_equal, "");
 test!(variable_diff_size, "- var ", "variable_diff_size", ": [char; 1]\n", "+ var ", "variable_diff_size", ": [char; 2]\n", "[..]", "- \tsize: 1\n", "+ \tsize: 2\n", "\n");
+test!(variable_diff_size_multi, "- var ", "variable_diff_size_multi", ": [char; 1, 3]\n", "+ var ", "variable_diff_size_multi", ": [char; 2, 4]\n", "[..]", "- \tsize: 3\n", "+ \tsize: 8\n", "\n");
 test!(variable_diff_decl, "  var ", "variable_diff_decl", ": int\n", "[..]", "  \tsize: 4\n", "+ \tdeclaration: yes\n", "\n");

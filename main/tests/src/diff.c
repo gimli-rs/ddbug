@@ -1027,6 +1027,23 @@ EXPECT(
     "\n")
 
 #undef T
+#define T variable_diff_size_multi
+#ifdef TEST1
+    char T[1][3];
+#endif
+#ifdef TEST2
+    char T[2][4];
+#endif
+EXPECT(
+    T,
+    "- var ", S(T), ": [char; 1, 3]\n",
+    "+ var ", S(T), ": [char; 2, 4]\n",
+    "[..]",
+    "- \tsize: 3\n",
+    "+ \tsize: 8\n",
+    "\n")
+
+#undef T
 #define T variable_diff_decl
 #ifdef SUPPORT
     int T;
