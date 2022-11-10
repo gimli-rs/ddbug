@@ -27,7 +27,7 @@ test!(member_diff_padding, "  struct ", "member_diff_padding", "\n", "  \tsize: 
 test!(member_diff_padding_none, "  struct ", "member_diff_padding_none", "\n", "  \tsize: 8\n", "  \tmembers:\n", "- \t\t0[1]\ta: [char; 1]\n", "+ \t\t0[4]\ta: [char; 4]\n", "- \t\t1[3]\t<padding>\n", "  \t\t4[4]\tb: int\n", "\n");
 test!(member_diff_bitfield_equal, "  struct ", "member_diff_bitfield_equal", "\n", "  \tsize: 2\n", "  \tmembers:\n", "- \t\t0[1]\ta: char\n", "+ \t\t0[1]\tb: char\n", "  \t\t1[0.1]\tc: char\n", "  \t\t1.1[0.7]\t<padding>\n", "\n");
 test!(member_diff_bitfield, "  struct ", "member_diff_bitfield", "\n", "  \tsize: 1\n", "  \tmembers:\n", "- \t\t0[0.1]\ta: char\n", "+ \t\t0[0.2]\ta: char\n", "- \t\t0.1[0.7]\t<padding>\n", "+ \t\t0.2[0.6]\t<padding>\n", "\n");
-test!(member_diff_unsized, "  struct ", "member_diff_unsized", "\n", "- \tsize: 2\n", "+ \tsize: 1\n", "  \tmembers:\n", "  \t\t0[1]\ta: char\n", "- \t\t1[1]\tb: [char; 1]\n", "+ \t\t1[??]\tb: [char]\n", "\n");
+test!(member_diff_unsized, "  struct ", "member_diff_unsized", "\n", "- \tsize: 2\n", "+ \tsize: 1\n", "  \tmembers:\n", "  \t\t0[1]\ta: char\n", "- \t\t1[1]\tb: [char; 1]\n", "+ \t\t1[??]\tb: [char; ??]\n", "\n");
 test!(member_diff_inline_struct_struct_equal, "");
 test!(member_diff_inline_struct_struct, "  struct ", "member_diff_inline_struct_struct", "\n", "  \tsize: 1\n", "  \tmembers:\n", "  \t\t0[1]\ta: struct <anon>\n", "- \t\t\t0[1]\tb: char\n", "+ \t\t\t0[1]\tc: char\n", "\n");
 test!(member_diff_inline_union_union_equal, "");

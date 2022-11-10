@@ -1193,6 +1193,7 @@ impl<'input> Enumerator<'input> {
 pub struct ArrayType<'input> {
     pub(crate) ty: TypeOffset,
     pub(crate) count: Size,
+    pub(crate) counts: Box<[Size]>,
     pub(crate) byte_size: Size,
     pub(crate) phantom: marker::PhantomData<&'input str>,
 }
@@ -1203,27 +1204,47 @@ impl<'input> ArrayType<'input> {
         Type::from_offset(hash, self.ty)
     }
 
+    /// The size in bytes of an element in the array.
+    pub fn element_byte_size<'a>(&self, hash: &'a FileHash<'input>) -> Option<u64> {
+        let ty = self.element_type(hash)?;
+        ty.byte_size(hash)
+    }
+
     /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
         if self.byte_size.is_some() {
             self.byte_size.get()
-        } else if let (Some(ty), Some(count)) = (self.element_type(hash), self.count.get()) {
-            ty.byte_size(hash).map(|v| v * count)
+        } else if let Some(mut size) = self.element_byte_size(hash) {
+            let counts = self.counts_as_slice();
+            if counts.is_empty() {
+                return None;
+            }
+            for count in counts.iter().copied() {
+                if let Some(count) = count.get() {
+                    size *= count;
+                } else {
+                    return None;
+                }
+            }
+            Some(size)
         } else {
             None
         }
     }
 
-    /// The number of elements in the array.
-    pub fn count(&self, hash: &FileHash) -> Option<u64> {
-        if self.count.is_some() {
-            self.count.get()
-        } else if let (Some(ty), Some(byte_size)) = (self.element_type(hash), self.byte_size.get())
-        {
-            ty.byte_size(hash).map(|v| byte_size / v)
+    fn counts_as_slice(&self) -> &[Size] {
+        if self.counts.is_empty() {
+            std::slice::from_ref(&self.count)
         } else {
-            None
+            &self.counts[..]
         }
+    }
+
+    /// The number of elements in each dimension of the array.
+    ///
+    /// `None` is used for unknown dimensions.
+    pub fn counts(&self) -> impl Iterator<Item = Option<u64>> + '_ {
+        self.counts_as_slice().iter().map(|v| v.get())
     }
 
     /// Compare the identifying information of two types.

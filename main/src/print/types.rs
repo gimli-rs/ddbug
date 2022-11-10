@@ -94,8 +94,20 @@ fn print_ref_void(w: &mut dyn ValuePrinter) -> Result<()> {
 fn print_ref_array(ty: &ArrayType, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "[")?;
     print_ref(ty.element_type(hash), w, hash)?;
-    if let Some(count) = ty.count(hash) {
-        write!(w, "; {}", count)?;
+    let mut counts = ty.counts();
+    if let Some(count) = counts.next() {
+        if let Some(count) = count {
+            write!(w, "; {}", count)?;
+        } else {
+            write!(w, "; ??")?;
+        }
+    }
+    while let Some(count) = counts.next() {
+        if let Some(count) = count {
+            write!(w, ", {}", count)?;
+        } else {
+            write!(w, ", ??")?;
+        }
     }
     write!(w, "]")?;
     Ok(())

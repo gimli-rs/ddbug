@@ -668,7 +668,7 @@ EXPECT(
     "  \tmembers:\n",
     "  \t\t0[1]\ta: char\n",
     "- \t\t1[1]\tb: [char; 1]\n",
-    "+ \t\t1[??]\tb: [char]\n",
+    "+ \t\t1[??]\tb: [char; ??]\n",
     "\n")
 
 #undef T

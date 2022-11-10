@@ -1899,33 +1899,27 @@ where
         }
     }
 
+    let mut counts = Vec::new();
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_subrange_type => {
+                let mut count = None;
+                let mut lower = None;
+                let mut upper = None;
                 let mut attrs = child.entry().attrs();
                 while let Some(attr) = attrs.next()? {
                     match attr.name() {
                         gimli::DW_AT_count => {
-                            if let Some(count) = attr.udata_value() {
-                                array.count = Size::new(count);
-                            }
+                            count = attr.udata_value();
+                        }
+                        gimli::DW_AT_lower_bound => {
+                            lower = attr.udata_value();
                         }
                         gimli::DW_AT_upper_bound => {
-                            // byte_size takes precedence over upper_bound when
-                            // determining the count.
-                            if array.byte_size.is_none() {
-                                if let Some(upper_bound) = attr.udata_value() {
-                                    // TODO: use AT_lower_bound too (and default lower bound)
-                                    if let Some(count) = u64::checked_add(upper_bound, 1) {
-                                        array.count = Size::new(count);
-                                    } else {
-                                        debug!("overflow for array upper bound: {}", upper_bound);
-                                    }
-                                }
-                            }
+                            upper = attr.udata_value();
                         }
-                        gimli::DW_AT_type | gimli::DW_AT_lower_bound => {}
+                        gimli::DW_AT_type => {}
                         _ => debug!(
                             "unknown array subrange attribute: {} {:?}",
                             attr.name(),
@@ -1933,11 +1927,33 @@ where
                         ),
                     }
                 }
+                if count.is_none() {
+                    if let Some(upper) = upper {
+                        // TODO: use default lower bound for language
+                        let lower = lower.unwrap_or(0);
+                        count = u64::checked_sub(upper, lower)
+                            .and_then(|count| u64::checked_add(count, 1));
+                        if count.is_none() {
+                            debug!("overflow for array bound: {}", upper);
+                        }
+                    }
+                }
+                if let Some(count) = count {
+                    counts.push(Size::new(count));
+                } else {
+                    // Unknown dimensions.
+                    counts.push(Size::none());
+                }
             }
             tag => {
                 debug!("unknown array child tag: {}", tag);
             }
         }
+    }
+    if counts.len() == 1 {
+        array.count = counts[0];
+    } else if !counts.is_empty() {
+        array.counts = counts.into_boxed_slice();
     }
     Ok(array)
 }
