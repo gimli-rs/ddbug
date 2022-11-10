@@ -130,6 +130,7 @@ fn main() {
                 .help("Categories of entries to print (defaults to all)")
                 .takes_value(true)
                 .multiple_occurrences(true)
+                .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("CATEGORY")
                 .possible_values(&[
@@ -147,6 +148,7 @@ fn main() {
                 .help("Print extra fields within entries")
                 .takes_value(true)
                 .multiple_occurrences(true)
+                .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("FIELD")
                 .possible_values(&[
@@ -176,6 +178,7 @@ fn main() {
                 .help("Print only entries that match the given filters")
                 .takes_value(true)
                 .multiple_occurrences(true)
+                .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("FILTER"),
         )
@@ -196,6 +199,7 @@ fn main() {
                 .requires(OPT_DIFF)
                 .takes_value(true)
                 .multiple_occurrences(true)
+                .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("CHANGE")
                 .possible_values(&[
@@ -219,6 +223,7 @@ fn main() {
                 .requires(OPT_DIFF)
                 .takes_value(true)
                 .multiple_occurrences(true)
+                .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("OLD>=<NEW"),
         )
