@@ -86,10 +86,8 @@ const OPT_IGNORE_VARIABLE_ADDRESS: &str = "variable-address";
 const OPT_IGNORE_VARIABLE_SYMBOL_NAME: &str = "variable-symbol-name";
 const OPT_PREFIX_MAP: &str = "prefix-map";
 
-fn main() {
-    env_logger::init();
-
-    let mut cmd = clap::Command::new("ddbug")
+fn cli() -> clap::Command<'static> {
+    clap::Command::new("ddbug")
         .version(clap::crate_version!())
         .arg(
             clap::Arg::new(OPT_FILE)
@@ -233,7 +231,18 @@ fn main() {
             "    name=<string>                   Match entries with the given name\n",
             "    namespace=<string>              Match entries within the given namespace\n",
             "    unit=<string>                   Match entries within the given unit\n"
-        ));
+        ))
+}
+
+#[test]
+fn verify_cli() {
+    cli().debug_assert();
+}
+
+fn main() {
+    env_logger::init();
+
+    let mut cmd = cli();
     let matches = cmd.get_matches_mut();
 
     let mut options = ddbug::Options::default();
