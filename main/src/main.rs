@@ -86,7 +86,7 @@ const OPT_IGNORE_VARIABLE_ADDRESS: &str = "variable-address";
 const OPT_IGNORE_VARIABLE_SYMBOL_NAME: &str = "variable-symbol-name";
 const OPT_PREFIX_MAP: &str = "prefix-map";
 
-fn cli() -> clap::Command<'static> {
+fn cli() -> clap::Command {
     clap::Command::new("ddbug")
         .version(clap::crate_version!())
         .arg(
@@ -117,7 +117,7 @@ fn cli() -> clap::Command<'static> {
                 .short('o')
                 .long(OPT_OUTPUT)
                 .help("Output format")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("FORMAT")
                 .value_parser([OPT_OUTPUT_TEXT, OPT_OUTPUT_HTML, OPT_OUTPUT_HTTP]),
         )
@@ -126,10 +126,9 @@ fn cli() -> clap::Command<'static> {
                 .short('c')
                 .long(OPT_CATEGORY)
                 .help("Categories of entries to print (defaults to all)")
-                .takes_value(true)
+                .num_args(1..)
                 .action(clap::ArgAction::Append)
-                .use_value_delimiter(true)
-                .require_value_delimiter(true)
+                .value_delimiter(',')
                 .value_name("CATEGORY")
                 .value_parser([
                     OPT_CATEGORY_FILE,
@@ -144,10 +143,9 @@ fn cli() -> clap::Command<'static> {
                 .short('p')
                 .long(OPT_PRINT)
                 .help("Print extra fields within entries")
-                .takes_value(true)
+                .num_args(1..)
                 .action(clap::ArgAction::Append)
-                .use_value_delimiter(true)
-                .require_value_delimiter(true)
+                .value_delimiter(',')
                 .value_name("FIELD")
                 .value_parser([
                     OPT_PRINT_ALL,
@@ -174,10 +172,9 @@ fn cli() -> clap::Command<'static> {
                 .short('f')
                 .long(OPT_FILTER)
                 .help("Print only entries that match the given filters")
-                .takes_value(true)
+                .num_args(1..)
                 .action(clap::ArgAction::Append)
-                .use_value_delimiter(true)
-                .require_value_delimiter(true)
+                .value_delimiter(',')
                 .value_name("FILTER"),
         )
         .arg(
@@ -185,7 +182,7 @@ fn cli() -> clap::Command<'static> {
                 .short('s')
                 .long(OPT_SORT)
                 .help("Sort entries by the given key")
-                .takes_value(true)
+                .num_args(1)
                 .value_name("KEY")
                 .value_parser([OPT_SORT_NAME, OPT_SORT_SIZE]),
         )
@@ -195,10 +192,9 @@ fn cli() -> clap::Command<'static> {
                 .long(OPT_IGNORE)
                 .help("Don't print differences due to the given types of changes")
                 .requires(OPT_DIFF)
-                .takes_value(true)
+                .num_args(1..)
                 .action(clap::ArgAction::Append)
-                .use_value_delimiter(true)
-                .require_value_delimiter(true)
+                .value_delimiter(',')
                 .value_name("CHANGE")
                 .value_parser([
                     OPT_IGNORE_ADDED,
@@ -219,10 +215,9 @@ fn cli() -> clap::Command<'static> {
                 .long(OPT_PREFIX_MAP)
                 .help("When comparing file paths, replace the 'old' prefix with the 'new' prefix")
                 .requires(OPT_DIFF)
-                .takes_value(true)
+                .num_args(1..)
                 .action(clap::ArgAction::Append)
-                .use_value_delimiter(true)
-                .require_value_delimiter(true)
+                .value_delimiter(',')
                 .value_name("OLD>=<NEW"),
         )
         .after_help(concat!(
@@ -262,7 +257,7 @@ fn main() {
             }
             _ => cmd
                 .error(
-                    clap::ErrorKind::InvalidValue,
+                    clap::error::ErrorKind::InvalidValue,
                     format!("invalid {} value: {}", OPT_OUTPUT, value),
                 )
                 .exit(),
@@ -274,7 +269,7 @@ fn main() {
             Ok(inline_depth) => options.inline_depth = inline_depth,
             Err(_) => {
                 cmd.error(
-                    clap::ErrorKind::InvalidValue,
+                    clap::error::ErrorKind::InvalidValue,
                     format!("invalid {} value: {}", OPT_INLINE_DEPTH, inline_depth),
                 )
                 .exit();
@@ -292,7 +287,7 @@ fn main() {
                 OPT_CATEGORY_VARIABLE => options.category_variable = true,
                 _ => cmd
                     .error(
-                        clap::ErrorKind::InvalidValue,
+                        clap::error::ErrorKind::InvalidValue,
                         format!("invalid {} value: {}", OPT_CATEGORY, value),
                     )
                     .exit(),
@@ -337,7 +332,7 @@ fn main() {
                 OPT_PRINT_VARIABLE_LOCATIONS => options.print_variable_locations = true,
                 _ => cmd
                     .error(
-                        clap::ErrorKind::InvalidValue,
+                        clap::error::ErrorKind::InvalidValue,
                         format!("invalid {} value: {}", OPT_PRINT, value),
                     )
                     .exit(),
@@ -357,7 +352,7 @@ fn main() {
                             "n" | "no" => Some(false),
                             _ => cmd
                                 .error(
-                                    clap::ErrorKind::InvalidValue,
+                                    clap::error::ErrorKind::InvalidValue,
                                     format!("invalid {} {} value: {}", OPT_FILTER, key, value),
                                 )
                                 .exit(),
@@ -370,14 +365,14 @@ fn main() {
                     OPT_FILTER_UNIT => options.filter_unit = Some(value.into()),
                     _ => cmd
                         .error(
-                            clap::ErrorKind::InvalidValue,
+                            clap::error::ErrorKind::InvalidValue,
                             format!("invalid {} key: {}", OPT_FILTER, key),
                         )
                         .exit(),
                 }
             } else {
                 cmd.error(
-                    clap::ErrorKind::InvalidValue,
+                    clap::error::ErrorKind::InvalidValue,
                     format!("missing {} value for key: {}", OPT_FILTER, value),
                 )
                 .exit();
@@ -391,7 +386,7 @@ fn main() {
             OPT_SORT_SIZE => options.sort = ddbug::Sort::Size,
             value => cmd
                 .error(
-                    clap::ErrorKind::InvalidValue,
+                    clap::error::ErrorKind::InvalidValue,
                     format!("invalid {} key: {}", OPT_SORT, value),
                 )
                 .exit(),
@@ -423,7 +418,7 @@ fn main() {
                 OPT_IGNORE_VARIABLE_SYMBOL_NAME => options.ignore_variable_symbol_name = true,
                 _ => cmd
                     .error(
-                        clap::ErrorKind::InvalidValue,
+                        clap::error::ErrorKind::InvalidValue,
                         format!("invalid {} value: {}", OPT_IGNORE, value),
                     )
                     .exit(),
@@ -439,7 +434,7 @@ fn main() {
                 options.prefix_map.push((old.into(), new.into()));
             } else {
                 cmd.error(
-                    clap::ErrorKind::InvalidValue,
+                    clap::error::ErrorKind::InvalidValue,
                     format!("invalid {} value: {}", OPT_PREFIX_MAP, value),
                 )
                 .exit();
