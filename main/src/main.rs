@@ -119,7 +119,7 @@ fn cli() -> clap::Command<'static> {
                 .help("Output format")
                 .takes_value(true)
                 .value_name("FORMAT")
-                .possible_values(&[OPT_OUTPUT_TEXT, OPT_OUTPUT_HTML, OPT_OUTPUT_HTTP]),
+                .value_parser([OPT_OUTPUT_TEXT, OPT_OUTPUT_HTML, OPT_OUTPUT_HTTP]),
         )
         .arg(
             clap::Arg::new(OPT_CATEGORY)
@@ -127,11 +127,11 @@ fn cli() -> clap::Command<'static> {
                 .long(OPT_CATEGORY)
                 .help("Categories of entries to print (defaults to all)")
                 .takes_value(true)
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("CATEGORY")
-                .possible_values(&[
+                .value_parser([
                     OPT_CATEGORY_FILE,
                     OPT_CATEGORY_UNIT,
                     OPT_CATEGORY_TYPE,
@@ -145,11 +145,11 @@ fn cli() -> clap::Command<'static> {
                 .long(OPT_PRINT)
                 .help("Print extra fields within entries")
                 .takes_value(true)
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("FIELD")
-                .possible_values(&[
+                .value_parser([
                     OPT_PRINT_ALL,
                     OPT_PRINT_ADDRESS,
                     OPT_PRINT_SOURCE,
@@ -175,7 +175,7 @@ fn cli() -> clap::Command<'static> {
                 .long(OPT_FILTER)
                 .help("Print only entries that match the given filters")
                 .takes_value(true)
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("FILTER"),
@@ -187,7 +187,7 @@ fn cli() -> clap::Command<'static> {
                 .help("Sort entries by the given key")
                 .takes_value(true)
                 .value_name("KEY")
-                .possible_values(&[OPT_SORT_NAME, OPT_SORT_SIZE]),
+                .value_parser([OPT_SORT_NAME, OPT_SORT_SIZE]),
         )
         .arg(
             clap::Arg::new(OPT_IGNORE)
@@ -196,11 +196,11 @@ fn cli() -> clap::Command<'static> {
                 .help("Don't print differences due to the given types of changes")
                 .requires(OPT_DIFF)
                 .takes_value(true)
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("CHANGE")
-                .possible_values(&[
+                .value_parser([
                     OPT_IGNORE_ADDED,
                     OPT_IGNORE_DELETED,
                     OPT_IGNORE_ADDRESS,
@@ -220,7 +220,7 @@ fn cli() -> clap::Command<'static> {
                 .help("When comparing file paths, replace the 'old' prefix with the 'new' prefix")
                 .requires(OPT_DIFF)
                 .takes_value(true)
-                .multiple_occurrences(true)
+                .action(clap::ArgAction::Append)
                 .use_value_delimiter(true)
                 .require_value_delimiter(true)
                 .value_name("OLD>=<NEW"),
@@ -248,8 +248,8 @@ fn main() {
     let mut options = ddbug::Options::default();
     options.inline_depth = 1;
 
-    if let Some(value) = matches.value_of(OPT_OUTPUT) {
-        match value {
+    if let Some(value) = matches.get_one::<String>(OPT_OUTPUT) {
+        match value.as_str() {
             OPT_OUTPUT_TEXT => options.html = false,
             OPT_OUTPUT_HTML => options.html = true,
             OPT_OUTPUT_HTTP => {
@@ -269,7 +269,7 @@ fn main() {
         }
     }
 
-    if let Some(inline_depth) = matches.value_of(OPT_INLINE_DEPTH) {
+    if let Some(inline_depth) = matches.get_one::<String>(OPT_INLINE_DEPTH) {
         match inline_depth.parse::<usize>() {
             Ok(inline_depth) => options.inline_depth = inline_depth,
             Err(_) => {
@@ -282,9 +282,9 @@ fn main() {
         }
     }
 
-    if let Some(values) = matches.values_of(OPT_CATEGORY) {
+    if let Some(values) = matches.get_many::<String>(OPT_CATEGORY) {
         for value in values {
-            match value {
+            match value.as_str() {
                 OPT_CATEGORY_FILE => options.category_file = true,
                 OPT_CATEGORY_UNIT => options.category_unit = true,
                 OPT_CATEGORY_TYPE => options.category_type = true,
@@ -306,9 +306,9 @@ fn main() {
         options.category_variable = true;
     }
 
-    if let Some(values) = matches.values_of(OPT_PRINT) {
+    if let Some(values) = matches.get_many::<String>(OPT_PRINT) {
         for value in values {
-            match value {
+            match value.as_str() {
                 OPT_PRINT_ALL => {
                     options.print_file_address = true;
                     options.print_unit_address = true;
@@ -345,7 +345,7 @@ fn main() {
         }
     }
 
-    if let Some(values) = matches.values_of(OPT_FILTER) {
+    if let Some(values) = matches.get_many::<String>(OPT_FILTER) {
         for value in values {
             if let Some(index) = value.bytes().position(|c| c == b'=') {
                 let key = &value[..index];
@@ -385,21 +385,22 @@ fn main() {
         }
     }
 
-    options.sort = match matches.value_of(OPT_SORT) {
-        Some(OPT_SORT_NAME) => ddbug::Sort::Name,
-        Some(OPT_SORT_SIZE) => ddbug::Sort::Size,
-        Some(value) => cmd
-            .error(
-                clap::ErrorKind::InvalidValue,
-                format!("invalid {} key: {}", OPT_SORT, value),
-            )
-            .exit(),
-        _ => ddbug::Sort::None,
-    };
+    if let Some(sort) = matches.get_one::<String>(OPT_SORT) {
+        match sort.as_str() {
+            OPT_SORT_NAME => options.sort = ddbug::Sort::Name,
+            OPT_SORT_SIZE => options.sort = ddbug::Sort::Size,
+            value => cmd
+                .error(
+                    clap::ErrorKind::InvalidValue,
+                    format!("invalid {} key: {}", OPT_SORT, value),
+                )
+                .exit(),
+        };
+    }
 
-    if let Some(values) = matches.values_of(OPT_IGNORE) {
+    if let Some(values) = matches.get_many::<String>(OPT_IGNORE) {
         for value in values {
-            match value {
+            match value.as_str() {
                 OPT_IGNORE_ADDED => options.ignore_added = true,
                 OPT_IGNORE_DELETED => options.ignore_deleted = true,
                 OPT_IGNORE_ADDRESS => {
@@ -430,7 +431,7 @@ fn main() {
         }
     }
 
-    if let Some(values) = matches.values_of(OPT_PREFIX_MAP) {
+    if let Some(values) = matches.get_many::<String>(OPT_PREFIX_MAP) {
         for value in values {
             if let Some(index) = value.bytes().position(|c| c == b'=') {
                 let old = &value[..index];
@@ -447,7 +448,7 @@ fn main() {
         options.prefix_map.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
     }
 
-    if let Some(mut paths) = matches.values_of(OPT_DIFF) {
+    if let Some(mut paths) = matches.get_many::<String>(OPT_DIFF) {
         let path_a = paths.next().unwrap();
         let path_b = paths.next().unwrap();
 
@@ -475,7 +476,7 @@ fn main() {
                 }
             },
         }
-    } else if let Some(path) = matches.value_of(OPT_BLOAT) {
+    } else if let Some(path) = matches.get_one::<String>(OPT_BLOAT) {
         if let Err(e) = ddbug::File::parse(path.to_string()).and_then(|file| {
             let index = ddbug::bloat_index(file.file(), &options);
             if options.http {
@@ -492,7 +493,7 @@ fn main() {
             error!("{}: {}", path, e);
         }
     } else {
-        let path = matches.value_of(OPT_FILE).unwrap();
+        let path = matches.get_one::<String>(OPT_FILE).unwrap();
 
         if let Err(e) = ddbug::File::parse(path.to_string()).and_then(|file| {
             let index = ddbug::print_index(file.file(), &options);
