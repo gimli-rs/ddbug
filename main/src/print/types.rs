@@ -102,7 +102,7 @@ fn print_ref_array(ty: &ArrayType, w: &mut dyn ValuePrinter, hash: &FileHash) ->
             write!(w, "; ??")?;
         }
     }
-    while let Some(count) = counts.next() {
+    for count in counts {
         if let Some(count) = count {
             write!(w, ", {}", count)?;
         } else {

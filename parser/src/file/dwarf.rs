@@ -4,7 +4,6 @@ use std::mem;
 use std::sync::Arc;
 use std::u32;
 
-use gimli;
 use gimli::Reader as GimliReader;
 use object::{self, ObjectSection, ObjectSymbol};
 
@@ -451,7 +450,6 @@ where
     Endian: gimli::Endianity,
 {
     let mut unit = Unit::default();
-    unit.address_size = Some(u64::from(dwarf_unit.header.address_size()));
 
     let mut subprograms = Vec::new();
     let mut variables = Vec::new();
@@ -1143,8 +1141,10 @@ fn parse_typedef<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut typedef = TypeDef::default();
-    typedef.namespace = namespace.clone();
+    let mut typedef = TypeDef {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -1194,8 +1194,10 @@ fn parse_structure_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = StructType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = StructType {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -1290,8 +1292,10 @@ fn parse_union_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = UnionType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = UnionType {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -2080,8 +2084,10 @@ fn parse_unspecified_type<'input, 'abbrev, 'unit, 'tree, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut ty = UnspecifiedType::default();
-    ty.namespace = namespace.clone();
+    let mut ty = UnspecifiedType {
+        namespace: namespace.clone(),
+        ..Default::default()
+    };
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -2286,8 +2292,8 @@ where
     }
 
     if let Some(offset) = ranges {
-        let offset = dwarf.read.ranges_offset_from_raw(&dwarf_unit, offset);
-        let mut ranges = dwarf.read.ranges(&dwarf_unit, offset)?;
+        let offset = dwarf.read.ranges_offset_from_raw(dwarf_unit, offset);
+        let mut ranges = dwarf.read.ranges(dwarf_unit, offset)?;
         let mut size = 0;
         while let Some(range) = ranges.next()? {
             if range.end > range.begin {
@@ -2745,9 +2751,7 @@ where
 }
 
 // Only checks for unknown attributes and tags.
-fn parse_inlined_subroutine<'input, 'abbrev, 'unit, 'tree, Endian>(
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
-) -> Result<()>
+fn parse_inlined_subroutine<Endian>(node: gimli::EntriesTreeNode<Reader<Endian>>) -> Result<()>
 where
     Endian: gimli::Endianity,
 {
@@ -2773,9 +2777,7 @@ where
 }
 
 // Only checks for unknown attributes and tags.
-fn parse_inlined_lexical_block<'input, 'abbrev, 'unit, 'tree, Endian>(
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
-) -> Result<()>
+fn parse_inlined_lexical_block<Endian>(node: gimli::EntriesTreeNode<Reader<Endian>>) -> Result<()>
 where
     Endian: gimli::Endianity,
 {

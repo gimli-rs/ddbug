@@ -73,7 +73,7 @@ impl<'code> Code<'code> {
     }
 
     pub(crate) fn calls(&self, range: Range) -> Vec<Call> {
-        calls(self, range).unwrap_or(Vec::new())
+        calls(self, range).unwrap_or_default()
     }
 
     pub(crate) fn disassembler(&self) -> Option<Disassembler> {
@@ -121,10 +121,10 @@ fn find_plts<'data>(
                 if let Some(bytes) = file.segment_bytes(address) {
                     let insns = cs.disasm_all(bytes, address.begin).ok()?;
                     for insn in insns.iter() {
-                        let detail = cs.insn_detail(&insn).ok()?;
+                        let detail = cs.insn_detail(insn).ok()?;
                         let arch_detail = detail.arch_detail();
                         for op in arch_detail.operands() {
-                            if let Some((_offset, target, _size)) = is_ip_offset(&insn, &op) {
+                            if let Some((_offset, target, _size)) = is_ip_offset(insn, &op) {
                                 if let Some(symbol) = relocations.get(&target) {
                                     // HACK: assume PLT is aligned to 16 bytes
                                     plts.insert(insn.address() & !0xf, symbol);
@@ -144,7 +144,7 @@ fn calls(code: &Code, range: Range) -> Option<Vec<Call>> {
     let mut cs = Capstone::new_raw(code.arch, code.mode, capstone::NO_EXTRA_MODE, None).ok()?;
     cs.set_detail(true).ok()?;
     let insns = cs.disasm_all(bytes, range.begin).ok()?;
-    Some(insns.iter().filter_map(|x| call(code, &cs, &x)).collect())
+    Some(insns.iter().filter_map(|x| call(code, &cs, x)).collect())
 }
 
 fn call(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
@@ -241,7 +241,7 @@ impl<'a> Instruction<'a> {
         f: &FunctionDetails,
         range: Range,
     ) -> Result<()> {
-        let detail = match d.cs.insn_detail(&self.insn) {
+        let detail = match d.cs.insn_detail(self.insn) {
             Ok(detail) => detail,
             Err(_) => return Ok(()),
         };
@@ -394,7 +394,7 @@ impl<'a> Instruction<'a> {
                     }
                 }
             }
-            if let Some((offset, address, size)) = is_ip_offset(&self.insn, &op) {
+            if let Some((offset, address, size)) = is_ip_offset(self.insn, &op) {
                 // TODO: show original register name
                 if let Some(function) = state.hash().functions_by_address.get(&address) {
                     state.instruction(None, "", |w, _hash| {
@@ -501,7 +501,7 @@ fn convert_reg(reg: capstone::RegId) -> Option<Register> {
     use capstone::arch::x86::X86Reg::*;
     // FIXME: mapping from capstone to dwarf registers should live elsewhere
     // FIXME: keep track of register width?
-    return match reg.0 as u32 {
+    match reg.0 as u32 {
         X86_REG_RAX | X86_REG_EAX | X86_REG_AX | X86_REG_AH | X86_REG_AL => Some(Register(0)),
         X86_REG_RDX | X86_REG_EDX | X86_REG_DX | X86_REG_DH | X86_REG_DL => Some(Register(1)),
         X86_REG_RCX | X86_REG_ECX | X86_REG_CX | X86_REG_CH | X86_REG_CL => Some(Register(2)),
@@ -545,5 +545,5 @@ fn convert_reg(reg: capstone::RegId) -> Option<Register> {
             debug!("Unsupported x86 register {}", reg.0);
             None
         }
-    };
+    }
 }

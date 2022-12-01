@@ -1,4 +1,3 @@
-use std;
 use std::io::Write;
 
 use super::{DiffPrefix, Printer, ValuePrinter};

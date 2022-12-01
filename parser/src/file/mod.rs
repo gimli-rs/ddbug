@@ -2,14 +2,11 @@ use std::borrow::Cow;
 use std::default::Default;
 use std::fs;
 use std::mem;
-use std::ops::Deref;
 use std::sync::Mutex;
 
 mod dwarf;
 
 use fnv::FnvHashMap as HashMap;
-use gimli;
-use memmap;
 use object::{self, Object, ObjectSection, ObjectSegment, ObjectSymbol, ObjectSymbolTable};
 
 use crate::cfi::Cfi;
@@ -71,6 +68,7 @@ pub(crate) struct Arena {
     // TODO: can these be a single `Vec<Box<dyn ??>>`?
     buffers: Mutex<Vec<Vec<u8>>>,
     strings: Mutex<Vec<String>>,
+    #[allow(clippy::vec_box)]
     relocations: Mutex<Vec<Box<dwarf::RelocationMap>>>,
 }
 
@@ -330,7 +328,7 @@ impl<'input> File<'input> {
             for function in &mut unit.functions {
                 if let Some(address) = function.address() {
                     if let Some(symbol) = Self::get_symbol(
-                        &*self.symbols,
+                        &self.symbols,
                         &mut used_symbols,
                         address,
                         function.linkage_name().or_else(|| function.name()),
@@ -341,7 +339,7 @@ impl<'input> File<'input> {
                     // mark any symbols for the remaining ranges as used.
                     // TODO: change `Function::symbol_name` to a list instead?
                     for range in function.ranges().iter().skip(1) {
-                        Self::get_symbol(&*self.symbols, &mut used_symbols, range.begin, None);
+                        Self::get_symbol(&self.symbols, &mut used_symbols, range.begin, None);
                     }
                 }
             }
@@ -349,7 +347,7 @@ impl<'input> File<'input> {
             for variable in &mut unit.variables {
                 if let Some(address) = variable.address() {
                     if let Some(symbol) = Self::get_symbol(
-                        &*self.symbols,
+                        &self.symbols,
                         &mut used_symbols,
                         address,
                         variable.linkage_name().or_else(|| variable.name()),
@@ -361,8 +359,10 @@ impl<'input> File<'input> {
         }
 
         // Create a unit for symbols that don't have debuginfo.
-        let mut unit = Unit::default();
-        unit.name = Some(Cow::Borrowed("<symtab>"));
+        let mut unit = Unit {
+            name: Some(Cow::Borrowed("<symtab>")),
+            ..Default::default()
+        };
         for (symbol, used) in self.symbols.iter().zip(used_symbols.iter()) {
             if *used {
                 continue;
@@ -404,9 +404,11 @@ impl<'input> File<'input> {
         self.units.push(unit);
 
         // Create a unit for all remaining address ranges.
-        let mut unit = Unit::default();
-        unit.name = Some(Cow::Borrowed("<unknown>"));
-        unit.ranges = self.unknown_ranges();
+        let unit = Unit {
+            name: Some(Cow::Borrowed("<unknown>")),
+            ranges: self.unknown_ranges(),
+            ..Default::default()
+        };
         self.units.push(unit);
     }
 
@@ -424,9 +426,9 @@ impl<'input> File<'input> {
                 index -= 1;
             }
             let mut found = false;
-            for (symbol, used_symbol) in (&symbols[index..])
+            for (symbol, used_symbol) in symbols[index..]
                 .iter()
-                .zip((&mut used_symbols[index..]).iter_mut())
+                .zip(used_symbols[index..].iter_mut())
             {
                 if symbol.address != address {
                     break;
@@ -663,12 +665,12 @@ pub struct Section<'input> {
 impl<'input> Section<'input> {
     /// The name of this section.
     pub fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name.as_deref()
     }
 
     /// The name of the segment containing this section, if applicable.
     pub fn segment(&self) -> Option<&str> {
-        self.segment.as_ref().map(Cow::deref)
+        self.segment.as_deref()
     }
 
     /// The address range covered by this section if it is loadable.

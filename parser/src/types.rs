@@ -151,10 +151,7 @@ impl<'input> Type<'input> {
     /// Return true if the type is the void type.
     #[inline]
     pub fn is_void(&self) -> bool {
-        match self.kind {
-            TypeKind::Void => true,
-            _ => false,
-        }
+        matches!(self.kind, TypeKind::Void)
     }
 
     /// The user defined id for this type.
@@ -537,7 +534,7 @@ pub struct TypeDef<'input> {
 impl<'input> TypeDef<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type definition.
@@ -591,7 +588,7 @@ pub struct StructType<'input> {
 impl<'input> StructType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.
@@ -650,9 +647,9 @@ impl<'input> StructType<'input> {
     /// The layout of members of this type.
     pub fn layout<'me>(&'me self, hash: &FileHash) -> Vec<Layout<'input, 'me>> {
         layout(
-            &*self.members,
-            &*self.inherits,
-            &*self.variant_parts,
+            &self.members,
+            &self.inherits,
+            &self.variant_parts,
             0,
             self.bit_size(),
             hash,
@@ -684,7 +681,7 @@ pub struct UnionType<'input> {
 impl<'input> UnionType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.
@@ -749,12 +746,7 @@ impl<'input> VariantPart<'input> {
     /// The given members should be from the type containing this variant part.
     #[inline]
     pub fn discriminant<'a>(&self, members: &'a [Member<'input>]) -> Option<&'a Member<'input>> {
-        for member in members {
-            if member.offset == self.discr {
-                return Some(member);
-            }
-        }
-        None
+        members.iter().find(|member| member.offset == self.discr)
     }
 
     /// The variants for this variant part.
@@ -874,7 +866,7 @@ impl<'input> Variant<'input> {
         bit_size: Option<u64>,
         hash: &FileHash<'input>,
     ) -> Vec<Layout<'input, 'me>> {
-        layout(&*self.members, &[], &[], bit_offset, bit_size, hash)
+        layout(&self.members, &[], &[], bit_offset, bit_size, hash)
     }
 
     /// Compare the identifying information of two types.
@@ -1115,7 +1107,7 @@ pub struct EnumerationType<'input> {
 impl<'input> EnumerationType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.
@@ -1475,7 +1467,7 @@ pub struct UnspecifiedType<'input> {
 impl<'input> UnspecifiedType<'input> {
     /// The namespace of the type.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the type.

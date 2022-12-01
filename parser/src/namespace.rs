@@ -35,7 +35,7 @@ impl<'input> Namespace<'input> {
 
     /// The parent namespace.
     pub fn parent(&self) -> Option<&Namespace<'input>> {
-        self.parent.as_ref().map(|x| &**x)
+        self.parent.as_deref()
     }
 
     /// The namespace name.

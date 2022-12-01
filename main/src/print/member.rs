@@ -1,6 +1,4 @@
-use std::borrow::Cow;
 use std::cmp;
-use std::ops::Deref;
 
 use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit, Variant, VariantPart};
 
@@ -84,7 +82,7 @@ impl<'input> Print for Member<'input> {
         } else {
             None
         };
-        let ty = ty.as_ref().map(Cow::deref);
+        let ty = ty.as_deref();
         state.expanded(
             |state| state.line(|w, hash| print_member(self, w, hash)),
             |state| print::types::print_members(state, unit, ty),
@@ -97,13 +95,13 @@ impl<'input> Print for Member<'input> {
         } else {
             None
         };
-        let ty_a = ty_a.as_ref().map(Cow::deref);
+        let ty_a = ty_a.as_deref();
         let ty_b = if b.is_inline(state.hash_b()) {
             b.ty(state.hash_b())
         } else {
             None
         };
-        let ty_b = ty_b.as_ref().map(Cow::deref);
+        let ty_b = ty_b.as_deref();
         state.expanded(
             |state| state.line(a, b, |w, hash, x| print_member(x, w, hash)),
             |state| print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b),
@@ -222,12 +220,12 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
             (&LayoutItem::Padding, &LayoutItem::Padding) => {
                 state.line(a, b, |w, _hash, x| print_padding(x, w))
             }
-            (&LayoutItem::Member(ref member_a), &LayoutItem::Member(ref member_b)) => {
+            (&LayoutItem::Member(member_a), &LayoutItem::Member(member_b)) => {
                 Member::diff(state, unit_a, member_a, unit_b, member_b)
             }
             (
-                &LayoutItem::VariantPart(ref variant_part_a),
-                &LayoutItem::VariantPart(ref variant_part_b),
+                &LayoutItem::VariantPart(variant_part_a),
+                &LayoutItem::VariantPart(variant_part_b),
             ) => state.expanded(
                 |state| {
                     state.line(
@@ -247,10 +245,11 @@ impl<'input, 'member> Print for Layout<'input, 'member> {
                     )
                 },
             ),
-            (&LayoutItem::Inherit(ref inherit_a), &LayoutItem::Inherit(ref inherit_b)) => state
-                .line((a, inherit_a), (b, inherit_b), |w, hash, (x, inherit)| {
+            (&LayoutItem::Inherit(inherit_a), &LayoutItem::Inherit(inherit_b)) => {
+                state.line((a, inherit_a), (b, inherit_b), |w, hash, (x, inherit)| {
                     print_inherit(x, inherit, w, hash)
-                }),
+                })
+            }
             _ => state.block((unit_a, a), (unit_b, b), |state, (unit, x)| {
                 Layout::print(x, state, unit)
             }),
@@ -267,15 +266,15 @@ impl<'input, 'member> DiffList for Layout<'input, 'member> {
     fn diff_cost(state: &DiffState, unit_a: &Unit, a: &Self, unit_b: &Unit, b: &Self) -> usize {
         match (&a.item, &b.item) {
             (&LayoutItem::Padding, &LayoutItem::Padding) => 0,
-            (&LayoutItem::Member(ref a), &LayoutItem::Member(ref b)) => {
+            (&LayoutItem::Member(a), &LayoutItem::Member(b)) => {
                 Member::diff_cost(state, unit_a, a, unit_b, b)
             }
-            (&LayoutItem::VariantPart(ref _a), &LayoutItem::VariantPart(ref _b)) => {
+            (&LayoutItem::VariantPart(_a), &LayoutItem::VariantPart(_b)) => {
                 // TODO: for now we assume there is only one variant part
                 // Later we should compare `VariantPart::discr`
                 0
             }
-            (&LayoutItem::Inherit(ref a), &LayoutItem::Inherit(ref b)) => {
+            (&LayoutItem::Inherit(a), &LayoutItem::Inherit(b)) => {
                 Inherit::diff_cost(state, &(), a, &(), b)
             }
             _ => 2,

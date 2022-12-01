@@ -1,6 +1,3 @@
-use std::borrow::Cow;
-use std::ops::Deref;
-
 use parser::{FileHash, TypeDef, Unit};
 
 use crate::print::{self, DiffState, PrintHeader, PrintState, ValuePrinter};
@@ -79,9 +76,9 @@ impl<'input> PrintHeader for TypeDef<'input> {
         }
         state.field("size", a, b, |w, state, x| print_byte_size(x, w, state))?;
         let ty_a = filter_option(a.ty(state.hash_a()), |ty| ty.is_anon());
-        let ty_a = ty_a.as_ref().map(Cow::deref);
+        let ty_a = ty_a.as_deref();
         let ty_b = filter_option(b.ty(state.hash_b()), |ty| ty.is_anon());
-        let ty_b = ty_b.as_ref().map(Cow::deref);
+        let ty_b = ty_b.as_deref();
         state.field_expanded("members", |state| {
             print::types::diff_members(state, unit_a, ty_a, unit_b, ty_b)
         })

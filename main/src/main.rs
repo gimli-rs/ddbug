@@ -1,6 +1,10 @@
 // Enable some rust 2018 idioms.
 #![warn(bare_trait_objects)]
 #![warn(unused_extern_crates)]
+// Calm down clippy.
+#![allow(clippy::single_match)]
+// False positive.
+#![allow(clippy::ptr_arg)]
 
 #[cfg(feature = "system_alloc")]
 use std::alloc::System;
@@ -94,23 +98,23 @@ fn cli() -> clap::Command {
                 .help("Path of file to print")
                 .value_name("FILE")
                 .index(1)
-                .required_unless_present_any(&[OPT_DIFF, OPT_BLOAT])
-                .conflicts_with_all(&[OPT_DIFF, OPT_BLOAT]),
+                .required_unless_present_any([OPT_DIFF, OPT_BLOAT])
+                .conflicts_with_all([OPT_DIFF, OPT_BLOAT]),
         )
         .arg(
             clap::Arg::new(OPT_DIFF)
                 .short('d')
                 .long(OPT_DIFF)
                 .help("Print difference between two files")
-                .value_names(&["FILE", "FILE"])
-                .conflicts_with_all(&[OPT_BLOAT]),
+                .value_names(["FILE", "FILE"])
+                .conflicts_with_all([OPT_BLOAT]),
         )
         .arg(
             clap::Arg::new(OPT_BLOAT)
                 .long(OPT_BLOAT)
                 .help("Print bloat information")
                 .value_name("FILE")
-                .conflicts_with_all(&[OPT_DIFF]),
+                .conflicts_with_all([OPT_DIFF]),
         )
         .arg(
             clap::Arg::new(OPT_OUTPUT)
@@ -240,8 +244,10 @@ fn main() {
     let mut cmd = cli();
     let matches = cmd.get_matches_mut();
 
-    let mut options = ddbug::Options::default();
-    options.inline_depth = 1;
+    let mut options = ddbug::Options {
+        inline_depth: 1,
+        ..Default::default()
+    };
 
     if let Some(value) = matches.get_one::<String>(OPT_OUTPUT) {
         match value.as_str() {
@@ -700,10 +706,10 @@ fn serve<T: Send + Sync + 'static>(
                 async move {
                     let mut writer = Vec::new();
                     let mut path = request.uri().path();
-                    if path == "" {
+                    if path.is_empty() {
                         path = "/";
                     }
-                    if path.starts_with("/") {
+                    if path.starts_with('/') {
                         let mut path = path.split('/');
                         path.next();
                         f(&mut writer, path, &state);

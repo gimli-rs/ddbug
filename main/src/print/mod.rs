@@ -237,7 +237,7 @@ impl<'a> PrintState<'a> {
         })?;
         if !body_buf.is_empty() {
             self.printer
-                .indent_header(collapsed, &*body_buf, &mut |printer| {
+                .indent_header(collapsed, &body_buf, &mut |printer| {
                     let mut state = PrintState::new(printer, hash, code, options);
                     header(&mut state)?;
                     Ok(())
@@ -317,7 +317,7 @@ impl<'a> PrintState<'a> {
         self.printer
             .value(&mut buf, &mut |printer| f(printer, hash))?;
         if !buf.is_empty() {
-            self.printer.line(label, &*buf)?;
+            self.printer.line(label, &buf)?;
         }
         Ok(())
     }
@@ -450,7 +450,7 @@ impl<'a> DiffState<'a> {
         })?;
         self.diff |= diff;
         if diff || options.html {
-            self.printer.write_buf(&*buf)?;
+            self.printer.write_buf(&buf)?;
         }
         Ok(())
     }
@@ -510,7 +510,7 @@ impl<'a> DiffState<'a> {
                 Ok(())
             },
             &mut |printer| {
-                printer.write_buf(&*body_buf)?;
+                printer.write_buf(&body_buf)?;
                 Ok(())
             },
         )?;
@@ -553,7 +553,7 @@ impl<'a> DiffState<'a> {
 
         if !body_buf.is_empty() {
             self.printer
-                .indent_header(collapsed, &*body_buf, &mut |printer| {
+                .indent_header(collapsed, &body_buf, &mut |printer| {
                     if diff {
                         printer.prefix(DiffPrefix::Modify);
                     } else {
@@ -660,7 +660,7 @@ impl<'a> DiffState<'a> {
             Ok(())
         })?;
         if !buf.is_empty() {
-            self.printer.write_buf(&*buf)?;
+            self.printer.write_buf(&buf)?;
             self.diff = true;
         }
         Ok(())
@@ -697,17 +697,17 @@ impl<'a> DiffState<'a> {
                 if self.printer.get_prefix() != DiffPrefix::Modify {
                     self.printer.prefix(DiffPrefix::Equal);
                 }
-                self.printer.line(label, &*a)?;
+                self.printer.line(label, &a)?;
             }
         } else {
             if a.is_empty() {
                 self.printer.prefix(DiffPrefix::Add);
-                self.printer.line(label, &*b)?;
+                self.printer.line(label, &b)?;
             } else if b.is_empty() {
                 self.printer.prefix(DiffPrefix::Delete);
-                self.printer.line(label, &*a)?;
+                self.printer.line(label, &a)?;
             } else {
-                self.printer.line_diff(label, &*a, &*b)?;
+                self.printer.line_diff(label, &a, &b)?;
             }
             self.diff = true;
         }

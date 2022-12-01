@@ -2,9 +2,13 @@
 #![warn(bare_trait_objects)]
 #![warn(unused_extern_crates)]
 // Calm down clippy.
-#![allow(clippy::new_ret_no_self)]
-#![allow(clippy::single_match)]
+#![allow(clippy::comparison_chain)]
+#![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
+// False positive.
+#![allow(clippy::explicit_auto_deref)]
+// Requires type annotations which isn't better.
+#![allow(clippy::or_fun_call)]
 
 #[macro_use]
 extern crate log;
@@ -107,8 +111,8 @@ impl Options {
 
     fn prefix_map<'name>(&self, name: &'name str) -> (&str, &'name str) {
         for (old, new) in &self.prefix_map {
-            if name.starts_with(&*old) {
-                return (&new, &name[old.len()..]);
+            if name.starts_with(old) {
+                return (new, &name[old.len()..]);
             }
         }
         ("", name)

@@ -68,7 +68,7 @@ impl<'input> Variable<'input> {
 
     /// The namespace of the variable.
     pub fn namespace(&self) -> Option<&Namespace> {
-        self.namespace.as_ref().map(|x| &**x)
+        self.namespace.as_deref()
     }
 
     /// The name of the variable.
@@ -218,17 +218,17 @@ impl<'input> LocalVariable<'input> {
     }
 
     /// The registers in which this variable is stored.
-    pub fn registers<'a>(&'a self) -> impl Iterator<Item = (Range, Register)> + 'a {
+    pub fn registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
         location::registers(&self.locations)
     }
 
     /// The registers pointing to where this variable is stored.
-    pub fn register_offsets<'a>(&'a self) -> impl Iterator<Item = (Range, Register, i64)> + 'a {
+    pub fn register_offsets(&self) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
         location::register_offsets(&self.locations)
     }
 
     /// The stack frame locations at which this variable is stored.
-    pub fn frame_locations<'a>(&'a self) -> impl Iterator<Item = FrameLocation> + 'a {
+    pub fn frame_locations(&self) -> impl Iterator<Item = FrameLocation> + '_ {
         self.locations.iter().filter_map(|(_, piece)| {
             if piece.is_value {
                 return None;

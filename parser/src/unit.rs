@@ -1,7 +1,4 @@
 use std::borrow::Cow;
-use std::ops::Deref;
-
-use gimli;
 
 use crate::file::FileHash;
 use crate::function::Function;
@@ -17,7 +14,6 @@ pub struct Unit<'input> {
     pub(crate) dir: Option<Cow<'input, str>>,
     pub(crate) name: Option<Cow<'input, str>>,
     pub(crate) language: Option<gimli::DwLang>,
-    pub(crate) address_size: Option<u64>,
     pub(crate) low_pc: Option<u64>,
     pub(crate) ranges: RangeList,
     pub(crate) types: Vec<Type<'input>>,
@@ -40,12 +36,12 @@ impl<'input> Unit<'input> {
 
     /// The working directory when the unit was compiled.
     pub fn dir(&self) -> Option<&str> {
-        self.dir.as_ref().map(Cow::deref)
+        self.dir.as_deref()
     }
 
     /// The path of the primary source file.
     pub fn name(&self) -> Option<&str> {
-        self.name.as_ref().map(Cow::deref)
+        self.name.as_deref()
     }
 
     /// The source language.

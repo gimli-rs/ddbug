@@ -22,10 +22,9 @@
 #![warn(bare_trait_objects)]
 #![warn(unused_extern_crates)]
 // Calm down clippy.
-#![allow(clippy::new_ret_no_self)]
 #![allow(clippy::single_match)]
+#![allow(clippy::match_single_binding)]
 #![allow(clippy::too_many_arguments)]
-#![allow(clippy::type_complexity)]
 
 #[macro_use]
 extern crate log;
