@@ -124,12 +124,12 @@ pub use object::Architecture;
 pub struct FileContext {
     // Self-referential, not actually `static.
     file: File<'static>,
-    _map: memmap::Mmap,
+    _map: memmap2::Mmap,
     _arena: Box<Arena>,
 }
 
 impl FileContext {
-    fn new<F>(map: memmap::Mmap, f: F) -> Result<FileContext>
+    fn new<F>(map: memmap2::Mmap, f: F) -> Result<FileContext>
     where
         F: for<'a> FnOnce(&'a [u8], &'a Arena) -> Result<File<'a>>,
     {
@@ -194,7 +194,7 @@ impl<'input> File<'input> {
             }
         };
 
-        let map = match unsafe { memmap::Mmap::map(&handle) } {
+        let map = match unsafe { memmap2::Mmap::map(&handle) } {
             Ok(map) => map,
             Err(e) => {
                 return Err(format!("memmap failed: {}", e).into());

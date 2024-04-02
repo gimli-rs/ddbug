@@ -22,9 +22,11 @@ use std::net::SocketAddr;
 use std::str;
 use std::sync::Arc;
 
-use hyper::server::conn::{AddrIncoming, AddrStream};
-use hyper::service::{make_service_fn, service_fn};
-use hyper::{Body, Request, Response, Server};
+use http_body_util::Full;
+use hyper::body::Bytes;
+use hyper::service::service_fn;
+use hyper::{Request, Response};
+use hyper_util::rt::TokioIo;
 
 // Mode
 const OPT_FILE: &str = "file";
@@ -698,47 +700,63 @@ fn serve<T: Send + Sync + 'static>(
     f: fn(&mut Vec<u8>, str::Split<char>, &T),
 ) -> ddbug::Result<()> {
     let state = Arc::new(state);
-    let make_service = make_service_fn(move |_socket: &AddrStream| {
+    let make_service = || {
         let state = state.clone();
-        async move {
-            Ok::<_, Infallible>(service_fn(move |request: Request<_>| {
-                let state = state.clone();
-                async move {
-                    let mut writer = Vec::new();
-                    let mut path = request.uri().path();
-                    if path.is_empty() {
-                        path = "/";
-                    }
-                    if path.starts_with('/') {
-                        let mut path = path.split('/');
-                        path.next();
-                        f(&mut writer, path, &state);
-                    }
-                    Ok::<_, Infallible>(Response::new(Body::from(writer)))
+        service_fn(move |request: Request<_>| {
+            let state = state.clone();
+            async move {
+                let mut writer = Vec::new();
+                let mut path = request.uri().path();
+                if path.is_empty() {
+                    path = "/";
                 }
-            }))
-        }
-    });
+                if path.starts_with('/') {
+                    let mut path = path.split('/');
+                    path.next();
+                    f(&mut writer, path, &state);
+                }
+                Ok::<_, Infallible>(Response::new(Full::new(Bytes::from(writer))))
+            }
+        })
+    };
 
+    // Configure a runtime for the server that runs everything on the current thread
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_io()
         .build()
         .unwrap();
-    rt.block_on(async move {
+
+    // Combine it with a `LocalSet,  which means it can spawn !Send futures...
+    let local = tokio::task::LocalSet::new();
+    local.block_on(&rt, async move {
+        // Listen on the local address
         let addr = SocketAddr::from(([127, 0, 0, 1], 0));
-        let mut incoming = AddrIncoming::bind(&addr).unwrap();
-        incoming.set_nodelay(true);
-        let local_addr = incoming.local_addr();
-        let server = Server::builder(incoming).serve(make_service);
+        let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
         println!("Listening on http://{}", local_addr);
+
+        // Connect with the default browser
         // TODO: support other OS
         #[cfg(target_os = "linux")]
         std::process::Command::new("xdg-open")
             .arg(format!("http://{}", local_addr))
             .status()
             .unwrap();
-        server.await.unwrap();
-    });
 
-    Ok(())
+        // Serve connections in a loop
+        loop {
+            let service = make_service();
+            let (stream, _) = listener.accept().await.unwrap();
+            stream.set_nodelay(true).unwrap();
+            let io = TokioIo::new(stream);
+            tokio::task::spawn_local(async move {
+                if let Err(err) = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(io, service)
+                    .await
+                {
+                    println!("Error serving connection: {:?}", err);
+                }
+            });
+        }
+    })
 }

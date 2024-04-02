@@ -782,7 +782,7 @@ pub fn bloat_index(file: &File, options: &Options) -> BloatIndex {
                 let mut source = Vec::new();
                 print::source::print(function.source(), &mut source, unit).unwrap();
                 let id = FunctionId { name, source };
-                let mut function_total = function_totals
+                let function_total = function_totals
                     .entry(id)
                     .or_insert(FunctionTotal::default());
                 function_total.size += size;

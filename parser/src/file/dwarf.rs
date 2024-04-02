@@ -4231,13 +4231,10 @@ fn convert_cfi<R: gimli::Reader>(
         }
         gimli::CallFrameInstruction::RememberState => Some(CfiDirective::RememberState),
         gimli::CallFrameInstruction::RestoreState => Some(CfiDirective::RestoreState),
-        gimli::CallFrameInstruction::ArgsSize { .. }
-        | gimli::CallFrameInstruction::DefCfaExpression { .. }
-        | gimli::CallFrameInstruction::Expression { .. }
-        | gimli::CallFrameInstruction::ValExpression { .. } => {
+        gimli::CallFrameInstruction::Nop => None,
+        _ => {
             debug!("Unhandled CFI: {:?}", instruction);
             Some(CfiDirective::Other)
         }
-        gimli::CallFrameInstruction::Nop => None,
     }
 }
