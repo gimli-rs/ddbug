@@ -10,10 +10,10 @@ edition = "2018"
 
 [dependencies]
 fnv = "1.0"
-gimli = "0.28.1"
+gimli = "0.29.0"
 log = "0.4"
 memmap2 = "0.9.4"
-object = { version = "0.34.0", features = ["wasm"] }
+object = { version = "0.35.0", features = ["wasm"] }
 
 [features]
 default = []

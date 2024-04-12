@@ -31,9 +31,9 @@ pub(crate) type RelocationMap = HashMap<usize, object::Relocation>;
 fn add_relocations<'input, 'file, Object>(
     relocations: &mut RelocationMap,
     file: &'file Object,
-    section: &Object::Section,
+    section: &Object::Section<'file>,
 ) where
-    Object: object::Object<'input, 'file>,
+    Object: object::Object<'input>,
 {
     for (offset64, mut relocation) in section.relocations() {
         let offset = offset64 as usize;
@@ -380,14 +380,14 @@ struct DwarfVariable<'input> {
     variable: Variable<'input>,
 }
 
-pub(crate) fn parse<'input: 'file, 'file, Endian, Object>(
+pub(crate) fn parse<'input, Endian, Object>(
     endian: Endian,
-    object: &'file Object,
+    object: &Object,
     arena: &'input Arena,
 ) -> Result<(Vec<Unit<'input>>, DebugInfo<'input, Endian>)>
 where
     Endian: gimli::Endianity,
-    Object: object::Object<'input, 'file>,
+    Object: object::Object<'input>,
 {
     let get_section = |id: gimli::SectionId| -> Result<_> {
         let mut relocations = RelocationMap::default();
@@ -4153,7 +4153,7 @@ where
 
 fn convert_cfi<R: gimli::Reader>(
     cie: &gimli::CommonInformationEntry<R>,
-    instruction: gimli::CallFrameInstruction<R>,
+    instruction: gimli::CallFrameInstruction<R::Offset>,
     loc: &mut u64,
 ) -> Option<CfiDirective> {
     match instruction {
