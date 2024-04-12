@@ -40,7 +40,6 @@ fn add_relocations<'input, 'file, Object>(
         if offset as u64 != offset64 {
             continue;
         }
-        let offset = offset as usize;
         let target = match relocation.target() {
             object::RelocationTarget::Symbol(index) => {
                 if let Ok(symbol) = file.symbol_by_index(index) {
@@ -392,8 +391,8 @@ where
     let get_section = |id: gimli::SectionId| -> Result<_> {
         let mut relocations = RelocationMap::default();
         let data = match object.section_by_name(id.name()) {
-            Some(ref section) => {
-                add_relocations(&mut relocations, object, section);
+            Some(section) => {
+                add_relocations(&mut relocations, object, &section);
                 match section.uncompressed_data()? {
                     Cow::Borrowed(bytes) => bytes,
                     Cow::Owned(bytes) => arena.add_buffer(bytes),
@@ -663,7 +662,7 @@ where
         }
     }
 
-    unit.functions = functions.into_iter().map(|(_, x)| x).collect();
+    unit.functions = functions.into_values().collect();
     Ok(())
 }
 
@@ -726,18 +725,18 @@ where
         *variables = defer;
     }
 
-    unit.variables = variable_map.into_iter().map(|(_, x)| x).collect();
+    unit.variables = variable_map.into_values().collect();
     Ok(())
 }
 
-fn parse_namespace_children<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_namespace_children<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    mut iter: gimli::EntriesTreeIter<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    mut iter: gimli::EntriesTreeIter<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -796,14 +795,14 @@ where
     Ok(())
 }
 
-fn parse_namespace<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_namespace<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -864,14 +863,14 @@ fn is_type_tag(tag: gimli::DwTag) -> bool {
 }
 */
 
-fn parse_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_type<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<bool>
 where
     Endian: gimli::Endianity,
@@ -925,10 +924,10 @@ where
     Ok(true)
 }
 
-fn parse_unnamed_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_unnamed_type<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<Option<Type<'input>>>
 where
     Endian: gimli::Endianity,
@@ -1008,10 +1007,10 @@ where
     Ok(Some(ty))
 }
 
-fn parse_type_modifier<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_type_modifier<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
     kind: TypeModifierKind,
 ) -> Result<TypeModifier<'input>>
 where
@@ -1061,10 +1060,10 @@ where
     Ok(modifier)
 }
 
-fn parse_base_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_base_type<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<BaseType<'input>>
 where
     Endian: gimli::Endianity,
@@ -1132,11 +1131,11 @@ where
     Ok(ty)
 }
 
-fn parse_typedef<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_typedef<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<TypeDef<'input>>
 where
     Endian: gimli::Endianity,
@@ -1182,14 +1181,14 @@ where
     Ok(typedef)
 }
 
-fn parse_structure_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_structure_type<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<StructType<'input>>
 where
     Endian: gimli::Endianity,
@@ -1280,14 +1279,14 @@ where
     Ok(ty)
 }
 
-fn parse_union_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_union_type<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<UnionType<'input>>
 where
     Endian: gimli::Endianity,
@@ -1362,14 +1361,14 @@ where
     Ok(ty)
 }
 
-fn parse_variant_part<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_variant_part<'input, Endian>(
     members: &mut Vec<Member<'input>>,
     variant_parts: &mut Vec<VariantPart<'input>>,
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -1421,13 +1420,13 @@ where
     Ok(())
 }
 
-fn parse_variant<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_variant<'input, Endian>(
     variants: &mut Vec<Variant<'input>>,
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -1517,13 +1516,13 @@ where
     Ok(())
 }
 
-fn parse_member<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_member<'input, Endian>(
     members: &mut Vec<Member<'input>>,
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -1649,10 +1648,10 @@ where
     Ok(())
 }
 
-fn parse_inheritance<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_inheritance<'input, Endian>(
     inherits: &mut Vec<Inherit>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -1733,7 +1732,7 @@ where
     None
 }
 
-fn parse_enumeration_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_enumeration_type<'input, Endian>(
     offset: TypeOffset,
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
@@ -1741,7 +1740,7 @@ fn parse_enumeration_type<'input, 'abbrev, 'unit, 'tree, Endian>(
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<EnumerationType<'input>>
 where
     Endian: gimli::Endianity,
@@ -1808,10 +1807,10 @@ where
     Ok(ty)
 }
 
-fn parse_enumerators<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_enumerators<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<Vec<Enumerator<'input>>>
 where
     Endian: gimli::Endianity,
@@ -1829,10 +1828,10 @@ where
     Ok(enumerators)
 }
 
-fn parse_enumerator<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_enumerator<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<Enumerator<'input>>
 where
     Endian: gimli::Endianity,
@@ -1840,7 +1839,7 @@ where
     let mut enumerator = Enumerator::default();
 
     let mut attrs = node.entry().attrs();
-    while let Some(ref attr) = attrs.next()? {
+    while let Some(attr) = attrs.next()? {
         match attr.name() {
             gimli::DW_AT_name => {
                 enumerator.name = dwarf.string(dwarf_unit, attr.value());
@@ -1871,10 +1870,10 @@ where
     Ok(enumerator)
 }
 
-fn parse_array_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_array_type<'input, Endian>(
     _dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<ArrayType<'input>>
 where
     Endian: gimli::Endianity,
@@ -1962,10 +1961,10 @@ where
     Ok(array)
 }
 
-fn parse_subrange_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_subrange_type<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<SubrangeType<'input>>
 where
     Endian: gimli::Endianity,
@@ -2029,10 +2028,10 @@ where
     Ok(subrange)
 }
 
-fn parse_subroutine_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_subroutine_type<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<FunctionType<'input>>
 where
     Endian: gimli::Endianity,
@@ -2075,11 +2074,11 @@ where
     Ok(function)
 }
 
-fn parse_unspecified_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_unspecified_type<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<UnspecifiedType<'input>>
 where
     Endian: gimli::Endianity,
@@ -2114,10 +2113,10 @@ where
     Ok(ty)
 }
 
-fn parse_pointer_to_member_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_pointer_to_member_type<'input, Endian>(
     _dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<PointerToMemberType>
 where
     Endian: gimli::Endianity,
@@ -2164,14 +2163,14 @@ where
     Ok(ty)
 }
 
-fn parse_subprogram<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_subprogram<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2381,14 +2380,14 @@ fn inherit_subprogram<'input>(
     true
 }
 
-fn parse_subprogram_children<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_subprogram_children<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     function: &mut Function<'input>,
-    mut iter: gimli::EntriesTreeIter<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    mut iter: gimli::EntriesTreeIter<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2458,11 +2457,11 @@ where
     Ok(())
 }
 
-fn parse_parameter_type<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_parameter_type<'input, Endian>(
     parameters: &mut Vec<ParameterType<'input>>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2548,11 +2547,11 @@ where
     Ok(())
 }
 
-fn parse_parameter<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_parameter<'input, Endian>(
     parameters: &mut Vec<Parameter<'input>>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2667,14 +2666,14 @@ where
     Ok(())
 }
 
-fn parse_lexical_block<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_lexical_block<'input, Endian>(
     unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     subprograms: &mut Vec<DwarfSubprogram<'input>>,
     variables: &mut Vec<DwarfVariable<'input>>,
     namespace: &Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2820,11 +2819,11 @@ where
     Ok(())
 }
 
-fn parse_subprogram_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_subprogram_details<'input, Endian>(
     hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<FunctionDetails<'input>>
 where
     Endian: gimli::Endianity,
@@ -2857,12 +2856,12 @@ where
     Ok(details)
 }
 
-fn parse_subprogram_children_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_subprogram_children_details<'input, Endian>(
     hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     function: &mut FunctionDetails<'input>,
-    mut iter: gimli::EntriesTreeIter<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    mut iter: gimli::EntriesTreeIter<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2899,13 +2898,13 @@ where
     Ok(())
 }
 
-fn parse_lexical_block_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_lexical_block_details<'input, Endian>(
     inlined_functions: &mut Vec<InlinedFunction<'input>>,
     local_variables: &mut Vec<LocalVariable<'input>>,
     hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2940,11 +2939,11 @@ where
     Ok(())
 }
 
-fn parse_inlined_subroutine_details<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_inlined_subroutine_details<'input, Endian>(
     hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<InlinedFunction<'input>>
 where
     Endian: gimli::Endianity,
@@ -3056,12 +3055,12 @@ where
     Ok(function)
 }
 
-fn parse_variable<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_variable<'input, Endian>(
     _unit: &mut Unit<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     namespace: Option<Arc<Namespace<'input>>>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<DwarfVariable<'input>>
 where
     Endian: gimli::Endianity,
@@ -3151,11 +3150,11 @@ where
     })
 }
 
-fn parse_local_variable<'input, 'abbrev, 'unit, 'tree, Endian>(
+fn parse_local_variable<'input, Endian>(
     variables: &mut Vec<LocalVariable<'input>>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
-    node: gimli::EntriesTreeNode<'abbrev, 'unit, 'tree, Reader<'input, Endian>>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -3893,7 +3892,7 @@ fn parse_source_file<'input, Endian>(
     match attr.value() {
         gimli::AttributeValue::FileIndex(val) => {
             if val != 0 {
-                if let Some(ref line) = dwarf_unit.line_program {
+                if let Some(line) = &dwarf_unit.line_program {
                     if let Some(entry) = line.header().file(val) {
                         source.file = dwarf.string(dwarf_unit, entry.path_name());
                         if let Some(directory) = entry.directory(line.header()) {
@@ -4173,7 +4172,7 @@ fn convert_cfi<R: gimli::Reader>(
             factored_offset,
         } => {
             let offset = factored_offset * cie.data_alignment_factor();
-            Some(CfiDirective::DefCfa(register.into(), offset as i64))
+            Some(CfiDirective::DefCfa(register.into(), offset))
         }
         gimli::CallFrameInstruction::DefCfaRegister { register } => {
             Some(CfiDirective::DefCfaRegister(register.into()))
@@ -4183,7 +4182,7 @@ fn convert_cfi<R: gimli::Reader>(
         }
         gimli::CallFrameInstruction::DefCfaOffsetSf { factored_offset } => {
             let offset = factored_offset * cie.data_alignment_factor();
-            Some(CfiDirective::DefCfaOffset(offset as i64))
+            Some(CfiDirective::DefCfaOffset(offset))
         }
         gimli::CallFrameInstruction::Offset {
             register,

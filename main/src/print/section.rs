@@ -6,7 +6,7 @@ use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
 
 fn print_name(section: &Section, w: &mut dyn ValuePrinter) -> Result<()> {
-    if let Some(ref segment) = section.segment() {
+    if let Some(segment) = section.segment() {
         write!(w, "{},", segment)?;
     }
     match section.name() {
@@ -17,8 +17,8 @@ fn print_name(section: &Section, w: &mut dyn ValuePrinter) -> Result<()> {
 }
 
 fn print_address(section: &Section, w: &mut dyn ValuePrinter) -> Result<()> {
-    if let Some(ref address) = section.address() {
-        print::range::print_address(address, w)?;
+    if let Some(address) = section.address() {
+        print::range::print_address(&address, w)?;
     }
     Ok(())
 }

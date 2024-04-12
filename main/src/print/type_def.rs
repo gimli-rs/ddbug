@@ -45,7 +45,7 @@ impl<'input> PrintHeader for TypeDef<'input> {
             state.field("source", |w, _state| print_source(self, w, unit))?;
         }
         state.field("size", |w, state| print_byte_size(self, w, state))?;
-        if let Some(ref ty) = ty {
+        if let Some(ty) = &ty {
             if ty.is_anon() {
                 state.field_expanded("members", |state| {
                     print::types::print_members(state, unit, Some(ty))

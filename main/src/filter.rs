@@ -159,13 +159,13 @@ fn filter_type(
     inline_types: &HashSet<TypeOffset>,
 ) -> bool {
     // Filter by user options.
-    if !match *ty.kind() {
-        TypeKind::Base(ref val) => filter_base(val, options),
-        TypeKind::Def(ref val) => filter_type_def(val, options),
-        TypeKind::Struct(ref val) => filter_struct(val, options),
-        TypeKind::Union(ref val) => filter_union(val, options),
-        TypeKind::Enumeration(ref val) => filter_enumeration(val, options),
-        TypeKind::Unspecified(ref val) => filter_unspecified(val, options),
+    if !match ty.kind() {
+        TypeKind::Base(val) => filter_base(val, options),
+        TypeKind::Def(val) => filter_type_def(val, options),
+        TypeKind::Struct(val) => filter_struct(val, options),
+        TypeKind::Union(val) => filter_union(val, options),
+        TypeKind::Enumeration(val) => filter_enumeration(val, options),
+        TypeKind::Unspecified(val) => filter_unspecified(val, options),
         TypeKind::Void
         | TypeKind::Array(..)
         | TypeKind::Function(..)
@@ -175,8 +175,8 @@ fn filter_type(
     } {
         return false;
     }
-    match *ty.kind() {
-        TypeKind::Struct(ref val) => {
+    match ty.kind() {
+        TypeKind::Struct(val) => {
             // Hack for rust closures
             // TODO: is there better way of identifying these, or a
             // a way to match pairs for diffing?

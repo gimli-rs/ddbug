@@ -454,7 +454,7 @@ pub(crate) fn print_instructions(
         let mut cfi_next = cfis.next();
         loop {
             match (&insn_next, cfi_next) {
-                (&Some(ref insn), Some(cfi)) => {
+                (Some(insn), Some(cfi)) => {
                     if cfi.0.is_none() || cfi.0 <= insn.address() {
                         print_cfi(state, cfi, range)?;
                         cfi_next = cfis.next();
@@ -463,15 +463,15 @@ pub(crate) fn print_instructions(
                         insn_next = insns.next();
                     }
                 }
-                (&Some(ref insn), None) => {
+                (Some(insn), None) => {
                     insn.print(state, code, &disassembler, details, range)?;
                     insn_next = insns.next();
                 }
-                (&None, Some(cfi)) => {
+                (None, Some(cfi)) => {
                     print_cfi(state, cfi, range)?;
                     cfi_next = cfis.next();
                 }
-                (&None, None) => break,
+                (None, None) => break,
             }
         }
     }

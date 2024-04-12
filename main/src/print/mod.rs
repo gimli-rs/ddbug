@@ -955,21 +955,21 @@ impl<T> MergeResult<T, T> {
         Arg: Copy,
         F: Fn(&T, Arg, &T, Arg) -> cmp::Ordering,
     {
-        match *x {
-            MergeResult::Both(_, ref x_right) => match *y {
-                MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
-                MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
-                MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
+        match x {
+            MergeResult::Both(_, x_right) => match y {
+                MergeResult::Both(_, y_right) => f(x_right, arg_right, y_right, arg_right),
+                MergeResult::Left(y_left) => f(x_right, arg_right, y_left, arg_left),
+                MergeResult::Right(y_right) => f(x_right, arg_right, y_right, arg_right),
             },
-            MergeResult::Left(ref x_left) => match *y {
-                MergeResult::Both(_, ref y_right) => f(x_left, arg_left, y_right, arg_right),
-                MergeResult::Left(ref y_left) => f(x_left, arg_left, y_left, arg_left),
-                MergeResult::Right(ref y_right) => f(x_left, arg_left, y_right, arg_right),
+            MergeResult::Left(x_left) => match y {
+                MergeResult::Both(_, y_right) => f(x_left, arg_left, y_right, arg_right),
+                MergeResult::Left(y_left) => f(x_left, arg_left, y_left, arg_left),
+                MergeResult::Right(y_right) => f(x_left, arg_left, y_right, arg_right),
             },
-            MergeResult::Right(ref x_right) => match *y {
-                MergeResult::Both(_, ref y_right) => f(x_right, arg_right, y_right, arg_right),
-                MergeResult::Left(ref y_left) => f(x_right, arg_right, y_left, arg_left),
-                MergeResult::Right(ref y_right) => f(x_right, arg_right, y_right, arg_right),
+            MergeResult::Right(x_right) => match y {
+                MergeResult::Both(_, y_right) => f(x_right, arg_right, y_right, arg_right),
+                MergeResult::Left(y_left) => f(x_right, arg_right, y_left, arg_left),
+                MergeResult::Right(y_right) => f(x_right, arg_right, y_right, arg_right),
             },
         }
     }

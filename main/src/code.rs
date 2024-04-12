@@ -164,7 +164,7 @@ fn call_x86(code: &Code, cs: &Capstone, insn: &Insn) -> Option<Call> {
         if let Some(imm) = is_imm(&op) {
             return Some(Call {
                 from: insn.address(),
-                to: imm as u64,
+                to: imm,
             });
         } else if let Some((_offset, address, size)) = is_ip_offset(insn, &op) {
             // TODO: handle `lea rax, [rip + offset]; call rax`

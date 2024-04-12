@@ -51,8 +51,8 @@ impl<'input> Namespace<'input> {
     }
 
     fn len(&self) -> usize {
-        match self.parent {
-            Some(ref parent) => parent.len() + 1,
+        match &self.parent {
+            Some(parent) => parent.len() + 1,
             None => 1,
         }
     }
@@ -61,16 +61,16 @@ impl<'input> Namespace<'input> {
         if len == 0 {
             self
         } else {
-            match self.parent {
-                Some(ref parent) => parent.up(len - 1),
+            match &self.parent {
+                Some(parent) => parent.up(len - 1),
                 None => self,
             }
         }
     }
 
     pub(crate) fn is_anon_type(namespace: &Option<Arc<Namespace>>) -> bool {
-        match *namespace {
-            Some(ref namespace) => {
+        match namespace {
+            Some(namespace) => {
                 namespace.kind == NamespaceKind::Type
                     && (namespace.name.is_none() || Namespace::is_anon_type(&namespace.parent))
             }
@@ -79,8 +79,8 @@ impl<'input> Namespace<'input> {
     }
 
     fn _is_within<T: AsRef<str>>(&self, namespace: &[T]) -> (bool, usize) {
-        let (ret, offset) = match self.parent {
-            Some(ref parent) => parent._is_within(namespace),
+        let (ret, offset) = match &self.parent {
+            Some(parent) => parent._is_within(namespace),
             None => (true, 0),
         };
 

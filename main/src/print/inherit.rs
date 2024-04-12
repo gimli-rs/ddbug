@@ -59,8 +59,8 @@ impl DiffList for Inherit {
 
     fn diff_cost(state: &DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> usize {
         let mut cost = 0;
-        match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.ty(state.hash_a()), &b.ty(state.hash_b())) {
+            (Some(ty_a), Some(ty_b)) => {
                 if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
                 {
                     cost += 2;

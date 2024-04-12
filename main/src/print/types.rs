@@ -10,12 +10,12 @@ use crate::print::{self, DiffState, Print, PrintHeader, PrintState, SortList, Va
 use crate::{Options, Result, Sort};
 
 pub(crate) fn kind<'a>(ty: &'a Type) -> Result<&'a dyn PrintHeader> {
-    Ok(match *ty.kind() {
-        TypeKind::Base(ref val) => val,
-        TypeKind::Def(ref val) => val,
-        TypeKind::Struct(ref val) => val,
-        TypeKind::Union(ref val) => val,
-        TypeKind::Enumeration(ref val) => val,
+    Ok(match ty.kind() {
+        TypeKind::Base(val) => val,
+        TypeKind::Def(val) => val,
+        TypeKind::Struct(val) => val,
+        TypeKind::Union(val) => val,
+        TypeKind::Enumeration(val) => val,
         TypeKind::Void
         | TypeKind::Array(..)
         | TypeKind::Function(..)
@@ -49,19 +49,19 @@ pub(crate) fn print_ref(
         }
         Some(ty) => {
             let id = ty.id();
-            match *ty.kind() {
+            match ty.kind() {
                 TypeKind::Void => print_ref_void(w),
-                TypeKind::Base(ref val) => print::base_type::print_ref(val, w, id),
-                TypeKind::Def(ref val) => print::type_def::print_ref(val, w, id),
-                TypeKind::Struct(ref val) => print::struct_type::print_ref(val, w, id),
-                TypeKind::Union(ref val) => print::union_type::print_ref(val, w, id),
-                TypeKind::Enumeration(ref val) => print::enumeration::print_ref(val, w, id),
-                TypeKind::Array(ref val) => print_ref_array(val, w, hash),
-                TypeKind::Function(ref val) => print_ref_function(val, w, hash),
-                TypeKind::Unspecified(ref val) => print_ref_unspecified(val, w),
-                TypeKind::PointerToMember(ref val) => print_ref_pointer_to_member(val, w, hash),
-                TypeKind::Modifier(ref val) => print_ref_modifier(val, w, hash),
-                TypeKind::Subrange(ref val) => print_ref_subrange(val, w, hash),
+                TypeKind::Base(val) => print::base_type::print_ref(val, w, id),
+                TypeKind::Def(val) => print::type_def::print_ref(val, w, id),
+                TypeKind::Struct(val) => print::struct_type::print_ref(val, w, id),
+                TypeKind::Union(val) => print::union_type::print_ref(val, w, id),
+                TypeKind::Enumeration(val) => print::enumeration::print_ref(val, w, id),
+                TypeKind::Array(val) => print_ref_array(val, w, hash),
+                TypeKind::Function(val) => print_ref_function(val, w, hash),
+                TypeKind::Unspecified(val) => print_ref_unspecified(val, w),
+                TypeKind::PointerToMember(val) => print_ref_pointer_to_member(val, w, hash),
+                TypeKind::Modifier(val) => print_ref_modifier(val, w, hash),
+                TypeKind::Subrange(val) => print_ref_subrange(val, w, hash),
             }
         }
     }
@@ -81,8 +81,8 @@ fn ref_id(ty: Option<Cow<Type>>, hash: &FileHash) -> Option<usize> {
         | TypeKind::Union(_)
         | TypeKind::Enumeration(_) => id,
         TypeKind::Array(val) => ref_id(val.element_type(hash), hash),
-        TypeKind::Modifier(ref val) => ref_id(val.ty(hash), hash),
-        TypeKind::Subrange(ref val) => ref_id(val.ty(hash), hash),
+        TypeKind::Modifier(val) => ref_id(val.ty(hash), hash),
+        TypeKind::Subrange(val) => ref_id(val.ty(hash), hash),
     }
 }
 
@@ -204,11 +204,11 @@ fn print_ref_subrange(ty: &SubrangeType, w: &mut dyn ValuePrinter, hash: &FileHa
 pub(crate) fn diff_header(state: &mut DiffState, type_a: &Type, type_b: &Type) -> Result<()> {
     use self::TypeKind::*;
     match (type_a.kind(), type_b.kind()) {
-        (&Base(ref a), &Base(ref b)) => PrintHeader::diff_header(state, a, b),
-        (&Def(ref a), &Def(ref b)) => PrintHeader::diff_header(state, a, b),
-        (&Struct(ref a), &Struct(ref b)) => PrintHeader::diff_header(state, a, b),
-        (&Union(ref a), &Union(ref b)) => PrintHeader::diff_header(state, a, b),
-        (&Enumeration(ref a), &Enumeration(ref b)) => PrintHeader::diff_header(state, a, b),
+        (Base(a), Base(b)) => PrintHeader::diff_header(state, a, b),
+        (Def(a), Def(b)) => PrintHeader::diff_header(state, a, b),
+        (Struct(a), Struct(b)) => PrintHeader::diff_header(state, a, b),
+        (Union(a), Union(b)) => PrintHeader::diff_header(state, a, b),
+        (Enumeration(a), Enumeration(b)) => PrintHeader::diff_header(state, a, b),
         _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
     }
 }
@@ -222,13 +222,11 @@ pub(crate) fn diff_body(
 ) -> Result<()> {
     use self::TypeKind::*;
     match (type_a.kind(), type_b.kind()) {
-        (&Base(ref a), &Base(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
-        (&Def(ref a), &Def(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
-        (&Struct(ref a), &Struct(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
-        (&Union(ref a), &Union(ref b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
-        (&Enumeration(ref a), &Enumeration(ref b)) => {
-            PrintHeader::diff_body(state, unit_a, a, unit_b, b)
-        }
+        (Base(a), Base(b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (Def(a), Def(b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (Struct(a), Struct(b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (Union(a), Union(b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
+        (Enumeration(a), Enumeration(b)) => PrintHeader::diff_body(state, unit_a, a, unit_b, b),
         _ => Err(format!("can't diff {:?}, {:?}", type_a, type_b).into()),
     }
 }
@@ -251,9 +249,9 @@ pub(crate) fn diff(
 
 pub(crate) fn print_members(state: &mut PrintState, unit: &Unit, ty: Option<&Type>) -> Result<()> {
     if let Some(ty) = ty {
-        match *ty.kind() {
-            TypeKind::Struct(ref t) => return print::struct_type::print_members(t, state, unit),
-            TypeKind::Union(ref t) => return print::union_type::print_members(t, state, unit),
+        match ty.kind() {
+            TypeKind::Struct(t) => return print::struct_type::print_members(t, state, unit),
+            TypeKind::Union(t) => return print::union_type::print_members(t, state, unit),
             _ => {}
         }
     }
@@ -269,10 +267,10 @@ pub(crate) fn diff_members(
 ) -> Result<()> {
     if let (Some(type_a), Some(type_b)) = (type_a, type_b) {
         match (type_a.kind(), type_b.kind()) {
-            (&TypeKind::Struct(ref a), &TypeKind::Struct(ref b)) => {
+            (TypeKind::Struct(a), TypeKind::Struct(b)) => {
                 return print::struct_type::diff_members(state, unit_a, a, unit_b, b);
             }
-            (&TypeKind::Union(ref a), &TypeKind::Union(ref b)) => {
+            (TypeKind::Union(a), TypeKind::Union(b)) => {
                 return print::union_type::diff_members(state, unit_a, a, unit_b, b);
             }
             _ => {}

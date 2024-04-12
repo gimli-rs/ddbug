@@ -322,8 +322,8 @@ impl<'input> Parameter<'input> {
         hash_b: &FileHash,
         b: &Parameter,
     ) -> cmp::Ordering {
-        match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
+        match (&a.ty(hash_a), &b.ty(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
             (Some(_), None) => cmp::Ordering::Less,
             (None, Some(_)) => cmp::Ordering::Greater,
             (None, None) => cmp::Ordering::Equal,

@@ -321,8 +321,8 @@ pub(crate) fn diff(state: &mut DiffState, unit_a: &Unit, unit_b: &Unit) -> Resul
 }
 
 fn print_address(unit: &Unit, w: &mut dyn ValuePrinter, range: Option<Range>) -> Result<()> {
-    if let Some(ref range) = range {
-        print::range::print_address(range, w)?;
+    if let Some(range) = range {
+        print::range::print_address(&range, w)?;
     } else if let Some(low_pc) = unit.address() {
         write!(w, "0x{:x}", low_pc)?;
     }

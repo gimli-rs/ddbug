@@ -180,27 +180,27 @@ impl<'input> Type<'input> {
 
     /// The size in bytes of an instance of this type.
     pub fn byte_size(&self, hash: &FileHash) -> Option<u64> {
-        match self.kind {
+        match &self.kind {
             TypeKind::Void => Some(0),
-            TypeKind::Base(ref val) => val.byte_size(),
-            TypeKind::Def(ref val) => val.byte_size(hash),
-            TypeKind::Struct(ref val) => val.byte_size(),
-            TypeKind::Union(ref val) => val.byte_size(),
-            TypeKind::Enumeration(ref val) => val.byte_size(hash),
-            TypeKind::Array(ref val) => val.byte_size(hash),
-            TypeKind::Function(ref val) => val.byte_size(),
+            TypeKind::Base(val) => val.byte_size(),
+            TypeKind::Def(val) => val.byte_size(hash),
+            TypeKind::Struct(val) => val.byte_size(),
+            TypeKind::Union(val) => val.byte_size(),
+            TypeKind::Enumeration(val) => val.byte_size(hash),
+            TypeKind::Array(val) => val.byte_size(hash),
+            TypeKind::Function(val) => val.byte_size(),
             TypeKind::Unspecified(..) => None,
-            TypeKind::PointerToMember(ref val) => val.byte_size(hash),
-            TypeKind::Modifier(ref val) => val.byte_size(hash),
-            TypeKind::Subrange(ref val) => val.byte_size(hash),
+            TypeKind::PointerToMember(val) => val.byte_size(hash),
+            TypeKind::Modifier(val) => val.byte_size(hash),
+            TypeKind::Subrange(val) => val.byte_size(hash),
         }
     }
 
     /// Return true if this is an anonymous type, or defined within an anonymous type.
     pub fn is_anon(&self) -> bool {
-        match self.kind {
-            TypeKind::Struct(ref val) => val.is_anon(),
-            TypeKind::Union(ref val) => val.is_anon(),
+        match &self.kind {
+            TypeKind::Struct(val) => val.is_anon(),
+            TypeKind::Union(val) => val.is_anon(),
             TypeKind::Void
             | TypeKind::Base(..)
             | TypeKind::Def(..)
@@ -216,13 +216,13 @@ impl<'input> Type<'input> {
 
     /// Return true if this is the type of a function (including aliases and modifiers).
     fn is_function(&self, hash: &FileHash) -> bool {
-        match self.kind {
+        match &self.kind {
             TypeKind::Function(..) => true,
-            TypeKind::Def(ref val) => match val.ty(hash) {
+            TypeKind::Def(val) => match val.ty(hash) {
                 Some(ty) => ty.is_function(hash),
                 None => false,
             },
-            TypeKind::Modifier(ref val) => match val.ty(hash) {
+            TypeKind::Modifier(val) => match val.ty(hash) {
                 Some(ty) => ty.is_function(hash),
                 None => false,
             },
@@ -240,9 +240,9 @@ impl<'input> Type<'input> {
 
     /// The members of this type.
     pub fn members(&self) -> &[Member<'input>] {
-        match self.kind {
-            TypeKind::Struct(ref val) => val.members(),
-            TypeKind::Union(ref val) => val.members(),
+        match &self.kind {
+            TypeKind::Struct(val) => val.members(),
+            TypeKind::Union(val) => val.members(),
             TypeKind::Void
             | TypeKind::Enumeration(..)
             | TypeKind::Def(..)
@@ -271,19 +271,19 @@ impl<'input> Type<'input> {
     ) -> cmp::Ordering {
         use self::TypeKind::*;
         match (&type_a.kind, &type_b.kind) {
-            (&Base(ref a), &Base(ref b)) => BaseType::cmp_id(a, b),
-            (&Def(ref a), &Def(ref b)) => TypeDef::cmp_id(a, b),
-            (&Struct(ref a), &Struct(ref b)) => StructType::cmp_id(a, b),
-            (&Union(ref a), &Union(ref b)) => UnionType::cmp_id(a, b),
-            (&Enumeration(ref a), &Enumeration(ref b)) => EnumerationType::cmp_id(a, b),
-            (&Array(ref a), &Array(ref b)) => ArrayType::cmp_id(hash_a, a, hash_b, b),
-            (&Function(ref a), &Function(ref b)) => FunctionType::cmp_id(hash_a, a, hash_b, b),
-            (&Unspecified(ref a), &Unspecified(ref b)) => UnspecifiedType::cmp_id(a, b),
-            (&PointerToMember(ref a), &PointerToMember(ref b)) => {
+            (Base(a), Base(b)) => BaseType::cmp_id(a, b),
+            (Def(a), Def(b)) => TypeDef::cmp_id(a, b),
+            (Struct(a), Struct(b)) => StructType::cmp_id(a, b),
+            (Union(a), Union(b)) => UnionType::cmp_id(a, b),
+            (Enumeration(a), Enumeration(b)) => EnumerationType::cmp_id(a, b),
+            (Array(a), Array(b)) => ArrayType::cmp_id(hash_a, a, hash_b, b),
+            (Function(a), Function(b)) => FunctionType::cmp_id(hash_a, a, hash_b, b),
+            (Unspecified(a), Unspecified(b)) => UnspecifiedType::cmp_id(a, b),
+            (PointerToMember(a), PointerToMember(b)) => {
                 PointerToMemberType::cmp_id(hash_a, a, hash_b, b)
             }
-            (&Modifier(ref a), &Modifier(ref b)) => TypeModifier::cmp_id(hash_a, a, hash_b, b),
-            (&Subrange(ref a), &Subrange(ref b)) => SubrangeType::cmp_id(hash_a, a, hash_b, b),
+            (Modifier(a), Modifier(b)) => TypeModifier::cmp_id(hash_a, a, hash_b, b),
+            (Subrange(a), Subrange(b)) => SubrangeType::cmp_id(hash_a, a, hash_b, b),
             _ => {
                 let discr_a = type_a.kind.discriminant_value();
                 let discr_b = type_b.kind.discriminant_value();
@@ -412,8 +412,8 @@ impl<'input> TypeModifier<'input> {
         hash_b: &FileHash,
         b: &TypeModifier,
     ) -> cmp::Ordering {
-        match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.ty(hash_a), &b.ty(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1251,8 +1251,8 @@ impl<'input> ArrayType<'input> {
         hash_b: &FileHash,
         b: &ArrayType,
     ) -> cmp::Ordering {
-        match (a.element_type(hash_a), b.element_type(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.element_type(hash_a), &b.element_type(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1326,8 +1326,8 @@ impl<'input> SubrangeType<'input> {
         hash_b: &FileHash,
         b: &SubrangeType,
     ) -> cmp::Ordering {
-        match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.ty(hash_a), &b.ty(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1397,8 +1397,8 @@ impl<'input> FunctionType<'input> {
             return ord;
         }
 
-        match (a.return_type(hash_a), b.return_type(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.return_type(hash_a), &b.return_type(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1448,8 +1448,8 @@ impl<'input> ParameterType<'input> {
         hash_b: &FileHash,
         b: &ParameterType,
     ) -> cmp::Ordering {
-        match (a.ty(hash_a), b.ty(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
+        match (&a.ty(hash_a), &b.ty(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => Type::cmp_id(hash_a, ty_a, hash_b, ty_b),
             (Some(_), None) => cmp::Ordering::Less,
             (None, Some(_)) => cmp::Ordering::Greater,
             (None, None) => cmp::Ordering::Equal,
@@ -1544,8 +1544,8 @@ impl PointerToMemberType {
         hash_b: &FileHash,
         b: &PointerToMemberType,
     ) -> cmp::Ordering {
-        match (a.containing_type(hash_a), b.containing_type(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.containing_type(hash_a), &b.containing_type(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;
@@ -1559,8 +1559,8 @@ impl PointerToMemberType {
             }
             (None, None) => {}
         }
-        match (a.member_type(hash_a), b.member_type(hash_b)) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.member_type(hash_a), &b.member_type(hash_b)) {
+            (Some(ty_a), Some(ty_b)) => {
                 let ord = Type::cmp_id(hash_a, ty_a, hash_b, ty_b);
                 if ord != cmp::Ordering::Equal {
                     return ord;

@@ -76,8 +76,8 @@ impl<'input> DiffList for Parameter<'input> {
         if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
             cost += 1;
         }
-        match (a.ty(state.hash_a()), b.ty(state.hash_b())) {
-            (Some(ref ty_a), Some(ref ty_b)) => {
+        match (&a.ty(state.hash_a()), &b.ty(state.hash_b())) {
+            (Some(ty_a), Some(ty_b)) => {
                 if Type::cmp_id(state.hash_a(), ty_a, state.hash_b(), ty_b) != cmp::Ordering::Equal
                 {
                     cost += 1;

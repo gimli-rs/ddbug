@@ -27,17 +27,12 @@ pub use self::print::file::{
 };
 pub use self::print::{DiffPrefix, HtmlPrinter, Id, Printer, TextPrinter};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
+    #[default]
     None,
     Name,
     Size,
-}
-
-impl Default for Sort {
-    fn default() -> Self {
-        Sort::None
-    }
 }
 
 #[derive(Debug, Default, Clone)]
