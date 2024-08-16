@@ -3005,16 +3005,26 @@ where
     }
 
     if let Some(offset) = ranges {
+        if let Some(low_pc) = low_pc {
+            function.address = Address::new(low_pc);
+        }
         let mut size = 0;
         let offset = dwarf.read.ranges_offset_from_raw(dwarf_unit, offset);
         let mut ranges = dwarf.read.ranges(dwarf_unit, offset)?;
         while let Some(range) = ranges.next()? {
+            if function.address.is_none() {
+                function.address = Address::new(range.begin);
+            }
             size += range.end.wrapping_sub(range.begin);
         }
         function.size = Size::new(size);
     } else if let Some(size) = size {
+        if let Some(low_pc) = low_pc {
+            function.address = Address::new(low_pc);
+        }
         function.size = Size::new(size);
     } else if let (Some(low_pc), Some(high_pc)) = (low_pc, high_pc) {
+        function.address = Address::new(low_pc);
         function.size = Size::new(high_pc.wrapping_sub(low_pc));
     } else {
         debug!("unknown inlined_subroutine size");
