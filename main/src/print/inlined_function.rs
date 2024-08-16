@@ -10,6 +10,10 @@ fn print_size_and_decl(
     w: &mut dyn ValuePrinter,
     hash: &FileHash,
 ) -> Result<()> {
+    match f.address() {
+        Some(address) => write!(w, "[{:#x}]", address)?,
+        None => write!(w, "[0x??]")?,
+    }
     match f.size() {
         Some(size) => write!(w, "[{}]", size)?,
         None => write!(w, "[??]")?,
