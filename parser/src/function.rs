@@ -335,8 +335,8 @@ impl<'input> Parameter<'input> {
 #[derive(Debug, Default)]
 pub struct InlinedFunction<'input> {
     pub(crate) abstract_origin: FunctionOffset,
-    pub(crate) address: Address,
     pub(crate) size: Size,
+    pub(crate) ranges: Vec<Range>,
     pub(crate) parameters: Vec<Parameter<'input>>,
     pub(crate) variables: Vec<LocalVariable<'input>>,
     pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
@@ -350,22 +350,10 @@ impl<'input> InlinedFunction<'input> {
         Function::from_offset(hash, self.abstract_origin)
     }
 
-    /// The address of the inlined function instance.
+    /// The address ranges of the inlined function instance.
     #[inline]
-    pub fn address(&self) -> Option<u64> {
-        self.address.get()
-    }
-
-    /// The address ranges of the function.
-    pub fn range(&self) -> Option<Range> {
-        if let (Some(address), Some(size)) = (self.address(), self.size()) {
-            Some(Range {
-                begin: address,
-                end: address + size,
-            })
-        } else {
-            None
-        }
+    pub fn ranges(&self) -> &[Range] {
+        &self.ranges
     }
 
     /// The size of the inlined function instance.
