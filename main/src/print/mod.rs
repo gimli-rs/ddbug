@@ -1,7 +1,6 @@
 use std::cmp;
 use std::collections::BinaryHeap;
 use std::io::Write;
-use std::usize;
 
 use parser::FileHash;
 
@@ -814,14 +813,14 @@ impl<'a> DiffState<'a> {
     // Also, self.options controls:
     // - sort order
     // - display of added/deleted options
-    pub fn sort_list<'i, T: SortList>(
+    pub fn sort_list<'i, T>(
         &mut self,
         arg_a: &T::Arg,
         arg_b: &T::Arg,
         list: &mut [MergeResult<&'i T, &'i T>],
     ) -> Result<()>
     where
-        T: 'i,
+        T: SortList + 'i,
     {
         list.sort_by(|x, y| {
             MergeResult::cmp(x, y, &self.hash_a, &self.hash_b, |x, hash_x, y, hash_y| {

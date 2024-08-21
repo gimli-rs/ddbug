@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::cmp;
 use std::sync::Arc;
-use std::usize;
 
 use crate::file::FileHash;
 use crate::location::{self, FrameLocation, Location, Piece, Register};

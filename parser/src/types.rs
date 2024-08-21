@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::cmp;
 use std::marker;
 use std::sync::Arc;
-use std::usize;
 
 use crate::file::FileHash;
 use crate::function::ParameterOffset;
@@ -757,14 +756,14 @@ impl<'input> VariantPart<'input> {
 
     /// The smallest offset in bits for a variant of this variant part.
     pub fn bit_offset(&self) -> u64 {
-        let mut bit_offset = u64::max_value();
+        let mut bit_offset = u64::MAX;
         for variant in &self.variants {
             let o = variant.bit_offset();
             if bit_offset > o {
                 bit_offset = o;
             }
         }
-        if bit_offset < u64::max_value() {
+        if bit_offset < u64::MAX {
             bit_offset
         } else {
             0
@@ -826,14 +825,14 @@ impl<'input> Variant<'input> {
 
     /// The smallest offset in bits for a member of this variant.
     pub fn bit_offset(&self) -> u64 {
-        let mut bit_offset = u64::max_value();
+        let mut bit_offset = u64::MAX;
         for member in &self.members {
             let o = member.bit_offset();
             if bit_offset > o {
                 bit_offset = o;
             }
         }
-        if bit_offset < u64::max_value() {
+        if bit_offset < u64::MAX {
             bit_offset
         } else {
             0

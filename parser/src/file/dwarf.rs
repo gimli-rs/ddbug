@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::sync::Arc;
-use std::u32;
 
 use gimli::Reader as GimliReader;
 use object::{self, ObjectSection, ObjectSymbol};

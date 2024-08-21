@@ -116,8 +116,6 @@ impl From<crate_pdb::Error> for Error {
 pub type Result<T> = result::Result<T, Error>;
 
 mod address {
-    use std::u64;
-
     /// An optional address.
     ///
     /// This is similar to `Option<u64>`, but uses `!0` to encode the `None` case.
@@ -172,8 +170,6 @@ mod address {
 pub use crate::address::Address;
 
 mod size {
-    use std::u64;
-
     /// An optional size.
     ///
     /// This is similar to `Option<u64>`, but uses `u64::MAX` to encode the `None` case.
