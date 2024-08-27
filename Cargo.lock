@@ -194,7 +194,7 @@ dependencies = [
 
 [[package]]
 name = "ddbug"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "capstone",
  "capstone-sys",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "ddbug_parser"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "fnv",
  "gimli 0.31.0",
