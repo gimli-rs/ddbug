@@ -201,6 +201,11 @@ impl<'input> File<'input> {
             }
         };
 
+        Self::parse_map(map, path)
+    }
+
+    /// Parse the file from memory map.
+    pub fn parse_map(map: memmap2::Mmap, path: String) -> Result<FileContext> {
         // TODO: split DWARF
         // TODO: PDB
         FileContext::new(map, |data, strings| {
