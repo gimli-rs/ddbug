@@ -64,7 +64,9 @@ where
     }
 }
 
-pub(crate) struct Arena {
+/// An arena for storage of long lived data that is referenced by a [`File`].
+#[derive(Default)]
+struct Arena {
     // TODO: can these be a single `Vec<Box<dyn ??>>`?
     buffers: Mutex<Vec<Vec<u8>>>,
     strings: Mutex<Vec<String>>,
@@ -73,12 +75,9 @@ pub(crate) struct Arena {
 }
 
 impl Arena {
+    /// Create a new empty arena.
     fn new() -> Self {
-        Arena {
-            buffers: Mutex::new(Vec::new()),
-            strings: Mutex::new(Vec::new()),
-            relocations: Mutex::new(Vec::new()),
-        }
+        Self::default()
     }
 
     fn add_buffer<'input>(&'input self, bytes: Vec<u8>) -> &'input [u8] {
@@ -124,12 +123,12 @@ pub use object::Architecture;
 pub struct FileContext {
     // Self-referential, not actually `static.
     file: File<'static>,
-    _map: memmap2::Mmap,
+    _map: Option<memmap2::Mmap>,
     _arena: Box<Arena>,
 }
 
 impl FileContext {
-    fn new<F>(map: memmap2::Mmap, f: F) -> Result<FileContext>
+    fn new_map<F>(map: memmap2::Mmap, f: F) -> Result<FileContext>
     where
         F: for<'a> FnOnce(&'a [u8], &'a Arena) -> Result<File<'a>>,
     {
@@ -139,7 +138,23 @@ impl FileContext {
             // `file` only borrows from `map` and `arena`, which we are preserving
             // without moving.
             file: unsafe { mem::transmute::<File<'_>, File<'static>>(file) },
-            _map: map,
+            _map: Some(map),
+            _arena: arena,
+        })
+    }
+
+    fn new_vec<F>(data: Vec<u8>, f: F) -> Result<FileContext>
+    where
+        F: for<'a> FnOnce(&'a [u8], &'a Arena) -> Result<File<'a>>,
+    {
+        let arena = Box::new(Arena::new());
+        let data = arena.add_buffer(data);
+        let file = f(data, &arena)?;
+        Ok(FileContext {
+            // `file` only borrows from `arena`, which we are preserving
+            // without moving.
+            file: unsafe { mem::transmute::<File<'_>, File<'static>>(file) },
+            _map: None,
             _arena: arena,
         })
     }
@@ -185,7 +200,7 @@ impl<'input> File<'input> {
         self.debug_info.get_register_name(self.machine, register)
     }
 
-    /// Parse the file with the given path.
+    /// Read and parse the file at the given path.
     pub fn parse(path: String) -> Result<FileContext> {
         let handle = match fs::File::open(&path) {
             Ok(handle) => handle,
@@ -203,9 +218,21 @@ impl<'input> File<'input> {
 
         // TODO: split DWARF
         // TODO: PDB
-        FileContext::new(map, |data, strings| {
+        FileContext::new_map(map, |data, arena| {
             let object = object::File::parse(data)?;
-            File::parse_object(&object, &object, path, strings)
+            File::parse_object(&object, &object, path, arena)
+        })
+    }
+
+    /// Parse the file with the given data.
+    ///
+    /// `path` is returned by `File::path`, but is otherwise unused.
+    ///
+    /// `data` must be a recognized object file format, such as ELF or Mach-O.
+    pub fn parse_vec(path: String, data: Vec<u8>) -> Result<FileContext> {
+        FileContext::new_vec(data, |data, arena| {
+            let object = object::File::parse(data)?;
+            File::parse_object(&object, &object, path, arena)
         })
     }
 
