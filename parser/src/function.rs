@@ -284,6 +284,11 @@ impl<'input> Parameter<'input> {
         self.ty(hash).and_then(|v| v.byte_size(hash))
     }
 
+    /// A list of all locations where this parameter is stored.
+    pub fn locations(&self) -> &[(Range, Piece)] {
+        &self.locations
+    }
+
     /// The registers in which this parameter is stored.
     pub fn registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
         location::registers(&self.locations)

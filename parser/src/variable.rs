@@ -216,6 +216,11 @@ impl<'input> LocalVariable<'input> {
         }
     }
 
+    /// A list of all locations where this variable is stored.
+    pub fn locations(&self) -> &[(Range, Piece)] {
+        &self.locations
+    }
+
     /// The registers in which this variable is stored.
     pub fn registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
         location::registers(&self.locations)

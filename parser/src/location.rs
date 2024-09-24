@@ -22,9 +22,10 @@ pub struct FrameLocation {
 }
 
 /// A piece of a value.
-// TODO: include the address ranges for which this piece is valid
+///
+/// The value of an object may be split into multiple pieces, each with a different location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Piece {
+pub struct Piece {
     /// The offset of the piece within the containing object.
     pub bit_offset: u64,
     /// The size of the piece. If none, then the piece is the complete value.
@@ -40,7 +41,7 @@ pub(crate) struct Piece {
 
 /// A value location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum Location {
+pub enum Location {
     /// The value has been optimized away.
     Empty,
     /// A literal address or value.
