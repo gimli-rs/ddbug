@@ -943,6 +943,12 @@ impl<'input> Member<'input> {
         self.bit_offset
     }
 
+    /// Return true if this member defines a bit size instead of using the size of the type.
+    #[inline]
+    pub fn is_bit_field(&self) -> bool {
+        self.bit_size.is_some()
+    }
+
     /// The size in bits of this member.
     pub fn bit_size(&self, hash: &FileHash) -> Option<u64> {
         if self.bit_size.is_some() {
