@@ -66,19 +66,19 @@ impl<'input> Variable<'input> {
     }
 
     /// The namespace of the variable.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'input>> {
         self.namespace.as_deref()
     }
 
     /// The name of the variable.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
     /// The linkage name of the variable.
     #[inline]
-    pub fn linkage_name(&self) -> Option<&str> {
+    pub fn linkage_name(&self) -> Option<&'input str> {
         self.linkage_name
     }
 
@@ -86,7 +86,7 @@ impl<'input> Variable<'input> {
     ///
     /// This is determined from a symbol table entry with a matching address.
     #[inline]
-    pub fn symbol_name(&self) -> Option<&str> {
+    pub fn symbol_name(&self) -> Option<&'input str> {
         self.symbol_name
     }
 

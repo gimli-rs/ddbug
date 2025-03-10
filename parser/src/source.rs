@@ -14,13 +14,13 @@ impl<'input> Source<'input> {
     ///
     /// This may be absolute, or relative to the working directory of the unit.
     #[inline]
-    pub fn directory(&self) -> Option<&str> {
+    pub fn directory(&self) -> Option<&'input str> {
         self.directory
     }
 
     /// The file name.
     #[inline]
-    pub fn file(&self) -> Option<&str> {
+    pub fn file(&self) -> Option<&'input str> {
         self.file
     }
 
