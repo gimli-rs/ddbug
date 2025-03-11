@@ -40,7 +40,7 @@ impl<'input> Namespace<'input> {
 
     /// The namespace name.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -57,7 +57,7 @@ impl<'input> Namespace<'input> {
         }
     }
 
-    fn up(&self, len: usize) -> &Namespace {
+    fn up(&self, len: usize) -> &Namespace<'input> {
         if len == 0 {
             self
         } else {

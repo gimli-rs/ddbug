@@ -355,7 +355,7 @@ impl<'input> TypeModifier<'input> {
     ///
     /// If this is `None` then the name should be derived from the type that is being modified.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -488,7 +488,7 @@ pub struct BaseType<'input> {
 impl<'input> BaseType<'input> {
     /// The name of the type.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -532,13 +532,13 @@ pub struct TypeDef<'input> {
 
 impl<'input> TypeDef<'input> {
     /// The namespace of the type.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'input>> {
         self.namespace.as_deref()
     }
 
     /// The name of the type definition.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -586,13 +586,13 @@ pub struct StructType<'input> {
 
 impl<'input> StructType<'input> {
     /// The namespace of the type.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'input>> {
         self.namespace.as_deref()
     }
 
     /// The name of the type.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -679,13 +679,13 @@ pub struct UnionType<'input> {
 
 impl<'input> UnionType<'input> {
     /// The namespace of the type.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'input>> {
         self.namespace.as_deref()
     }
 
     /// The name of the type.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -813,7 +813,7 @@ impl<'input> Variant<'input> {
     ///
     /// Currently this is only set for Rust enums.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -922,7 +922,7 @@ pub struct Member<'input> {
 impl<'input> Member<'input> {
     /// The name of the member.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -1111,13 +1111,13 @@ pub struct EnumerationType<'input> {
 
 impl<'input> EnumerationType<'input> {
     /// The namespace of the type.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'input>> {
         self.namespace.as_deref()
     }
 
     /// The name of the type.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -1174,7 +1174,7 @@ pub struct Enumerator<'input> {
 impl<'input> Enumerator<'input> {
     /// The name of the enumerator.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
@@ -1471,13 +1471,13 @@ pub struct UnspecifiedType<'input> {
 
 impl<'input> UnspecifiedType<'input> {
     /// The namespace of the type.
-    pub fn namespace(&self) -> Option<&Namespace> {
+    pub fn namespace(&self) -> Option<&Namespace<'input>> {
         self.namespace.as_deref()
     }
 
     /// The name of the type.
     #[inline]
-    pub fn name(&self) -> Option<&str> {
+    pub fn name(&self) -> Option<&'input str> {
         self.name
     }
 
