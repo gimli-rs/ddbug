@@ -9,7 +9,7 @@ use crate::range::Range;
 use crate::source::Source;
 use crate::types::{ParameterType, Type, TypeOffset};
 use crate::variable::LocalVariable;
-use crate::{Address, Id, Size};
+use crate::{Address, Id, Location, MemberOffset, Size, VariableOffset};
 
 /// The debuginfo offset of a function.
 ///
@@ -83,6 +83,7 @@ pub struct FunctionDetails<'input> {
     pub(crate) parameters: Vec<Parameter<'input>>,
     pub(crate) variables: Vec<LocalVariable<'input>>,
     pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
+    pub(crate) calls: Vec<FunctionCall<'input>>,
 }
 
 impl<'input> Function<'input> {
@@ -223,6 +224,12 @@ impl<'input> FunctionDetails<'input> {
     pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
         &self.inlined_functions
     }
+
+    /// The calls to non-inlined functions.
+    #[inline]
+    pub fn calls(&self) -> &[FunctionCall<'input>] {
+        &self.calls
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -344,6 +351,7 @@ pub struct InlinedFunction<'input> {
     pub(crate) parameters: Vec<Parameter<'input>>,
     pub(crate) variables: Vec<LocalVariable<'input>>,
     pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
+    pub(crate) calls: Vec<FunctionCall<'input>>,
     pub(crate) call_source: Source<'input>,
 }
 
@@ -389,4 +397,60 @@ impl<'input> InlinedFunction<'input> {
     pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
         &self.inlined_functions
     }
+
+    /// The calls to non-inlined functions.
+    #[inline]
+    pub fn calls(&self) -> &[FunctionCall<'input>] {
+        &self.calls
+    }
+}
+
+/// A call to another (non-inlined) function.
+#[derive(Debug, Default)]
+pub struct FunctionCall<'input> {
+    pub(crate) kind: FunctionCallKind,
+    /// The return address after the call
+    pub(crate) return_address: Option<u64>,
+    /// The address of the call-like instruction for a normal call or the jump-like instruction
+    /// for a tail call
+    pub(crate) called_from_address: Option<u64>,
+    pub(crate) origin: Option<FunctionCallOrigin>,
+    /// The target that is being called (if present) must reside in a single location (it is a function pointer).
+    pub(crate) target: Option<Location>,
+    pub(crate) target_is_clobbered: bool,
+    pub(crate) called_function_type: Option<TypeOffset>,
+    pub(crate) called_from_source: Option<Source<'input>>,
+    pub(crate) parameter_inputs: Vec<FunctionCallParameter<'input>>,
+}
+
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+pub enum FunctionCallKind {
+    #[default]
+    Normal,
+    Tail
+}
+
+#[derive(Debug)]
+pub enum FunctionCallOrigin {
+    Direct(FunctionOffset),
+    Indirect(FunctionCallIndirectOrigin),
+}
+
+/// Represents the subroutine pointer that is being called
+#[derive(Debug)]
+pub enum FunctionCallIndirectOrigin {
+    Variable(VariableOffset),
+    Parameter(ParameterOffset),
+    Member(MemberOffset),
+}
+
+#[derive(Debug)]
+pub struct FunctionCallParameter<'input> {
+    pub(crate) location: Location,
+    pub(crate) value: Option<Location>,
+    /// If this parameter is a reference, also keep track of the referenced data location+value
+    pub(crate) data_location: Option<Location>,
+    pub(crate) data_value: Option<Location>,
+    /// The destination parameter that this value is filling in
+    pub(crate) parameter: Option<Parameter<'input>>,
 }
