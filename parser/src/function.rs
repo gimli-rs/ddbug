@@ -7,9 +7,9 @@ use crate::location::{self, FrameLocation, Piece, Register};
 use crate::namespace::Namespace;
 use crate::range::Range;
 use crate::source::Source;
-use crate::types::{ParameterType, Type, TypeOffset};
-use crate::variable::LocalVariable;
-use crate::{Address, Id, MemberOffset, Size, VariableOffset};
+use crate::types::{Member, MemberOffset, ParameterType, Type, TypeOffset};
+use crate::variable::{LocalVariable, Variable};
+use crate::{Address, Id, Size};
 
 /// The debuginfo offset of a function.
 ///
@@ -86,7 +86,7 @@ impl<'input> Function<'input> {
     pub(crate) fn from_offset<'a>(
         hash: &'a FileHash<'input>,
         offset: FunctionOffset,
-    ) -> Option<&'a Function<'input>> {
+    ) -> Option<&'input Function<'input>> {
         if offset.is_none() {
             return None;
         }
@@ -413,13 +413,78 @@ pub struct FunctionCall<'input> {
     /// The address of the call-like instruction for a normal call or the jump-like instruction
     /// for a tail call
     pub(crate) called_from_address: Option<CalledFromAddress>,
-    pub(crate) origin: Option<FunctionCallOrigin>,
+    pub(crate) origin: Option<FunctionCallOrigin<'input>>,
     /// The target that is being called (if present) must reside in a single location (it is a function pointer).
     pub(crate) target: Vec<Piece>,
     pub(crate) target_is_clobbered: bool,
-    pub(crate) called_function_type: Option<TypeOffset>,
+    pub(crate) called_function_ty: Option<TypeOffset>,
     pub(crate) called_from_source: Option<Source<'input>>,
     pub(crate) parameter_inputs: Vec<FunctionCallParameter<'input>>,
+}
+
+impl<'input> FunctionCall<'input> {
+    /// The kind of function call (normal or tail call).
+    #[inline]
+    pub fn kind(&self) -> FunctionCallKind {
+        self.kind
+    }
+
+    /// The return address after the call.
+    #[inline]
+    pub fn return_address(&self) -> Option<u64> {
+        self.return_address
+    }
+
+    /// The address of the call instruction.
+    #[inline]
+    pub fn called_from_address(&self) -> Option<&CalledFromAddress> {
+        self.called_from_address.as_ref()
+    }
+
+    /// The origin of the function being called.
+    #[inline]
+    pub fn origin(&self) -> Option<&FunctionCallOrigin> {
+        self.origin.as_ref()
+    }
+
+    /// The target location of the call.
+    #[inline]
+    pub fn target(&self) -> &[Piece] {
+        &self.target
+    }
+
+    /// Whether the target is clobbered.
+    #[inline]
+    pub fn target_is_clobbered(&self) -> bool {
+        self.target_is_clobbered
+    }
+
+    /// The called_function_type.
+    ///
+    /// Returns `None` if the called_function_type is invalid.
+    #[inline]
+    pub fn called_function_type<'a>(
+        &self,
+        hash: &'a FileHash<'input>,
+    ) -> Option<Cow<'a, Type<'input>>> {
+        if let Some(ty) = self.called_function_ty {
+            Type::from_offset(hash, ty)
+        } else {
+            None
+        }
+    }
+
+    /// The source location of the call.
+    #[inline]
+    pub fn called_from_source(&self) -> Option<&Source<'input>> {
+        self.called_from_source.as_ref()
+    }
+
+    /// The parameter inputs for this call.
+    #[inline]
+    pub fn parameter_inputs(&self) -> &[FunctionCallParameter<'input>] {
+        &self.parameter_inputs
+    }
 }
 
 /// The kind of function call being made.
@@ -434,21 +499,23 @@ pub enum FunctionCallKind {
 
 /// This is the function definition (origin) which is being called (if known)
 #[derive(Debug)]
-pub enum FunctionCallOrigin {
+pub enum FunctionCallOrigin<'input> {
     /// The static function definition which is being called directly.
-    Direct(FunctionOffset),
+    Direct(&'input Function<'input>),
     /// The indirect function definition
-    Indirect(FunctionCallIndirectOrigin),
+    Indirect(FunctionCallIndirectOrigin<'input>),
 }
 
 /// Represents the subroutine pointer that is being called
 #[derive(Debug)]
-pub enum FunctionCallIndirectOrigin {
+pub enum FunctionCallIndirectOrigin<'input> {
     /// The function origin is stored in this variable at the time of the call
-    Variable(VariableOffset),
+    Variable(&'input Variable<'input>),
     /// The function origin is stored in this parameter at the time of the call
-    Parameter(ParameterOffset),
+    Parameter(&'input Parameter<'input>),
     /// The function origin is stored in this member at the time of the call
+    /// We store this as a unique member offset because you will want to calculate the parent types
+    /// that lead down to this member.
     Member(MemberOffset),
 }
 
