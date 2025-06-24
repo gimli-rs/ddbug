@@ -4,7 +4,7 @@ use crate::print::{Print, ValuePrinter};
 use crate::Result;
 
 fn print_header(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
-    write!(w, "{:#?}", f)?;
+    write!(w, "{:#x?}", f)?;
     Ok(())
 }
 

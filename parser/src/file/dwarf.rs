@@ -9,8 +9,9 @@ use object::{self, ObjectSection, ObjectSymbol};
 use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{Architecture, Arena, DebugInfo, FileHash};
 use crate::function::{
-    Function, FunctionCall, FunctionCallParameter, FunctionDetails, FunctionOffset,
-    InlinedFunction, Parameter, ParameterOffset,
+    CalledFromAddress, Function, FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind,
+    FunctionCallOrigin, FunctionCallParameter, FunctionDetails, FunctionOffset, InlinedFunction,
+    Parameter, ParameterOffset,
 };
 use crate::location::{Location, Piece, Register};
 use crate::namespace::{Namespace, NamespaceKind};
@@ -3336,24 +3337,34 @@ where
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
-        match attr.name() {
+        let name = attr.name();
+        match name {
             gimli::DW_AT_abstract_origin => {
-                // TODO (parse origin)
+                if let Some(offset) = parse_function_call_origin_offset(dwarf_unit, &attr) {
+                    call.origin = Some(offset);
+                }
             }
             gimli::DW_AT_GNU_tail_call => {
-                // TODO (update call kind)
+                call.kind = FunctionCallKind::Tail;
             }
-            gimli::DW_AT_GNU_call_site_target => {
+            gimli::DW_AT_GNU_call_site_target | gimli::DW_AT_GNU_call_site_target_clobbered => {
                 // TODO (parse target location)
-            }
-            gimli::DW_AT_GNU_call_site_target_clobbered => {
-                // TODO (same thing as call_site_target, except set is_clobbered to true)
+
+                if name == gimli::DW_AT_GNU_call_site_target_clobbered {
+                    call.target_is_clobbered = true;
+                }
             }
             gimli::DW_AT_low_pc => {
-                if is_gnu {
-                    // TODO (the current value is the next address, so fill in the return addr with this address, and the called_from addr with "address.sub(address_size)")
-                } else {
-                    // TODO (the current value is the called_from address)
+                if let gimli::AttributeValue::Addr(addr) = attr.value() {
+                    if is_gnu {
+                        // (the current value is the next address, so fill in the return addr with this address).
+                        // The called_from address can be derived as the instruction prior to this one.
+                        call.return_address = Some(addr);
+                        call.called_from_address = Some(CalledFromAddress::PreviousToReturnAddress);
+                    } else {
+                        // (the current value is the called_from address)
+                        call.called_from_address = Some(CalledFromAddress::Specific(addr));
+                    }
                 }
             }
             _ => debug!(
@@ -4038,6 +4049,28 @@ where
     Endian: gimli::Endianity,
 {
     parse_debug_info_offset(dwarf_unit, attr).map(|x| x.into())
+}
+
+fn parse_function_call_origin_offset<'input, Endian>(
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    attr: &gimli::Attribute<Reader<'input, Endian>>,
+) -> Option<FunctionCallOrigin>
+where
+    Endian: gimli::Endianity,
+{
+    parse_debug_info_offset(dwarf_unit, attr).map(|o| {
+        // now parse the DIE at this offset to discover its type
+        let entry = dwarf_unit
+            .entry(o.to_unit_offset(dwarf_unit).unwrap())
+            .unwrap();
+        match entry.tag() {
+            gimli::DW_TAG_subprogram => FunctionCallOrigin::Direct(o.into()),
+            gimli::DW_TAG_variable => {
+                FunctionCallOrigin::Indirect(FunctionCallIndirectOrigin::Variable(o.into()))
+            }
+            _ => panic!("invalid tag"),
+        }
+    })
 }
 
 fn parse_source_file<'input, Endian>(
