@@ -423,33 +423,46 @@ pub struct FunctionCall<'input> {
     pub(crate) parameter_inputs: Vec<FunctionCallParameter<'input>>,
 }
 
+/// The kind of function call being made.
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
 pub enum FunctionCallKind {
+    /// This is a normal function call made via a call-type instruction
     #[default]
     Normal,
+    /// This is a tail-call made via a jump-type instruction
     Tail
 }
 
+/// This is the function definition (origin) which is being called (if known)
 #[derive(Debug)]
 pub enum FunctionCallOrigin {
+    /// The static function definition which is being called directly.
     Direct(FunctionOffset),
+    /// The indirect function definition
     Indirect(FunctionCallIndirectOrigin),
 }
 
 /// Represents the subroutine pointer that is being called
 #[derive(Debug)]
 pub enum FunctionCallIndirectOrigin {
+    /// The function origin is stored in this variable at the time of the call
     Variable(VariableOffset),
+    /// The function origin is stored in this parameter at the time of the call
     Parameter(ParameterOffset),
+    /// The function origin is stored in this member at the time of the call
     Member(MemberOffset),
 }
 
+/// Represents one of the parameter inputs for the call.
 #[derive(Debug)]
 pub struct FunctionCallParameter<'input> {
+    /// The location where we are sending this parameter value to (the callee will read the parameter value from here)
     pub(crate) location: Location,
+    /// This location holds the value at the time of the call
     pub(crate) value: Option<Location>,
     /// If this parameter is a reference, also keep track of the referenced data location+value
     pub(crate) data_location: Option<Location>,
+    /// If this parameter is a reference, also keep track of the referenced data location+value
     pub(crate) data_value: Option<Location>,
     /// The destination parameter that this value is filling in
     pub(crate) parameter: Option<Parameter<'input>>,
