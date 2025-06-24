@@ -9,7 +9,8 @@ use object::{self, ObjectSection, ObjectSymbol};
 use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{Architecture, Arena, DebugInfo, FileHash};
 use crate::function::{
-    Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset, FunctionCall, FunctionCallParameter,
+    Function, FunctionCall, FunctionCallParameter, FunctionDetails, FunctionOffset,
+    InlinedFunction, Parameter, ParameterOffset,
 };
 use crate::location::{Location, Piece, Register};
 use crate::namespace::{Namespace, NamespaceKind};
@@ -3361,23 +3362,23 @@ where
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
                 // TODO (parse origin)
-            },
+            }
             gimli::DW_AT_GNU_tail_call => {
                 // TODO (update call kind)
-            },
+            }
             gimli::DW_AT_GNU_call_site_target => {
                 // TODO (parse target location)
-            },
+            }
             gimli::DW_AT_GNU_call_site_target_clobbered => {
                 // TODO (same thing as call_site_target, except set is_clobbered to true)
-            },
+            }
             gimli::DW_AT_low_pc => {
                 if is_gnu {
                     // TODO (the current value is the next address, so fill in the return addr with this address, and the called_from addr with "address.sub(address_size)")
                 } else {
                     // TODO (the current value is the called_from address)
                 }
-            },
+            }
             _ => debug!(
                 "unknown call_site attribute: {} {:?}",
                 attr.name(),
@@ -3392,11 +3393,23 @@ where
         match child.entry().tag() {
             gimli::DW_TAG_GNU_call_site_parameter => {
                 assert!(is_gnu);
-                parse_call_site_parameter(&mut call.parameter_inputs, dwarf, dwarf_unit, child, true)?;
-            },
+                parse_call_site_parameter(
+                    &mut call.parameter_inputs,
+                    dwarf,
+                    dwarf_unit,
+                    child,
+                    true,
+                )?;
+            }
             gimli::DW_TAG_call_site_parameter => {
-                parse_call_site_parameter(&mut call.parameter_inputs, dwarf, dwarf_unit, child, is_gnu)?;
-            },
+                parse_call_site_parameter(
+                    &mut call.parameter_inputs,
+                    dwarf,
+                    dwarf_unit,
+                    child,
+                    is_gnu,
+                )?;
+            }
             tag => debug!("unknown call_site child tag: {}", tag),
         }
     }
@@ -3426,10 +3439,10 @@ where
         match attr.name() {
             gimli::DW_AT_location => {
                 // TODO evaluate the expression
-            },
+            }
             gimli::DW_AT_GNU_call_site_value => {
                 // TODO evaluate
-            },
+            }
             _ => debug!(
                 "unknown call_site_parameter attribute: {} {:?}",
                 attr.name(),
@@ -3438,7 +3451,15 @@ where
         }
     }
 
-    call_site_parameters.push(FunctionCallParameter { location: location.unwrap(), value, data_location, data_value, parameter });
+    location = Some(Location::Empty);
+
+    call_site_parameters.push(FunctionCallParameter {
+        location: location.unwrap(),
+        value,
+        data_location,
+        data_value,
+        parameter,
+    });
     Ok(())
 }
 

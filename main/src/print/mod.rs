@@ -18,6 +18,7 @@ pub(crate) mod enumeration;
 pub(crate) mod file;
 pub(crate) mod frame_location;
 pub(crate) mod function;
+pub(crate) mod function_call;
 pub(crate) mod inherit;
 pub(crate) mod inlined_function;
 pub(crate) mod local_variable;
