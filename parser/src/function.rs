@@ -430,7 +430,7 @@ pub enum FunctionCallKind {
     #[default]
     Normal,
     /// This is a tail-call made via a jump-type instruction
-    Tail
+    Tail,
 }
 
 /// This is the function definition (origin) which is being called (if known)
