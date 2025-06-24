@@ -404,12 +404,13 @@ impl<'input> InlinedFunction<'input> {
 /// A call to another (non-inlined) function.
 #[derive(Debug, Default)]
 pub struct FunctionCall<'input> {
+    pub(crate) is_gnu: bool,
     pub(crate) kind: FunctionCallKind,
     /// The return address after the call
     pub(crate) return_address: Option<u64>,
     /// The address of the call-like instruction for a normal call or the jump-like instruction
     /// for a tail call
-    pub(crate) called_from_address: Option<u64>,
+    pub(crate) called_from_address: Option<CalledFromAddress>,
     pub(crate) origin: Option<FunctionCallOrigin>,
     /// The target that is being called (if present) must reside in a single location (it is a function pointer).
     pub(crate) target: Option<Location>,
@@ -447,6 +448,15 @@ pub enum FunctionCallIndirectOrigin {
     Parameter(ParameterOffset),
     /// The function origin is stored in this member at the time of the call
     Member(MemberOffset),
+}
+
+/// The address where the function call is made
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum CalledFromAddress {
+    /// The function is called from an address specified by DWARF
+    Specific(u64),
+    /// The function is called by the instruction address prior to the one specified in `return_address`.
+    PreviousToReturnAddress,
 }
 
 /// Represents one of the parameter inputs for the call.
