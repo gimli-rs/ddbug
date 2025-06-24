@@ -9,7 +9,7 @@ use object::{self, ObjectSection, ObjectSymbol};
 use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{Architecture, Arena, DebugInfo, FileHash};
 use crate::function::{
-    Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
+    Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset, FunctionCall, FunctionCallParameter,
 };
 use crate::location::{Location, Piece, Register};
 use crate::namespace::{Namespace, NamespaceKind};
@@ -2872,6 +2872,7 @@ where
             parameters: Vec::new(),
             variables: Vec::new(),
             inlined_functions: Vec::new(),
+            calls: Vec::new(),
         });
 
     parse_subprogram_children_details(hash, dwarf, dwarf_unit, &mut details, node.children())?;
@@ -2907,11 +2908,18 @@ where
                 parse_lexical_block_details(
                     &mut function.inlined_functions,
                     &mut function.variables,
+                    &mut function.calls,
                     hash,
                     dwarf,
                     dwarf_unit,
                     child,
                 )?;
+            }
+            gimli::DW_TAG_call_site => {
+                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, false)?;
+            }
+            gimli::DW_TAG_GNU_call_site => {
+                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, true)?;
             }
             // Checking for unknown tags is done in `parse_subprogram_children`.
             _ => {}
@@ -2923,6 +2931,7 @@ where
 fn parse_lexical_block_details<'input, Endian>(
     inlined_functions: &mut Vec<InlinedFunction<'input>>,
     local_variables: &mut Vec<LocalVariable<'input>>,
+    mut calls: &mut Vec<FunctionCall<'input>>,
     hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
@@ -2948,11 +2957,18 @@ where
                 parse_lexical_block_details(
                     inlined_functions,
                     local_variables,
+                    calls,
                     hash,
                     dwarf,
                     dwarf_unit,
                     child,
                 )?;
+            }
+            gimli::DW_TAG_call_site => {
+                parse_call_site(calls, dwarf, dwarf_unit, child, false)?;
+            }
+            gimli::DW_TAG_GNU_call_site => {
+                parse_call_site(calls, dwarf, dwarf_unit, child, true)?;
             }
             // Checking for unknown tags is done in `parse_lexical_block`.
             _ => {}
@@ -3080,13 +3096,20 @@ where
                 parse_lexical_block_details(
                     &mut function.inlined_functions,
                     &mut function.variables,
+                    &mut function.calls,
                     hash,
                     dwarf,
                     dwarf_unit,
                     child,
                 )?;
             }
-            gimli::DW_TAG_label | gimli::DW_TAG_call_site | gimli::DW_TAG_GNU_call_site => {}
+            gimli::DW_TAG_call_site => {
+                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, false)?;
+            }
+            gimli::DW_TAG_GNU_call_site => {
+                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, true)?;
+            }
+            gimli::DW_TAG_label => {}
             tag => {
                 debug!("unknown inlined_subroutine child tag: {}", tag);
             }
@@ -3318,6 +3341,104 @@ where
     }
 
     variables.push(variable);
+    Ok(())
+}
+
+fn parse_call_site<'input, Endian>(
+    calls: &mut Vec<FunctionCall<'input>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    is_gnu: bool,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut call = FunctionCall::default();
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        match attr.name() {
+            gimli::DW_AT_abstract_origin => {
+                // TODO (parse origin)
+            },
+            gimli::DW_AT_GNU_tail_call => {
+                // TODO (update call kind)
+            },
+            gimli::DW_AT_GNU_call_site_target => {
+                // TODO (parse target location)
+            },
+            gimli::DW_AT_GNU_call_site_target_clobbered => {
+                // TODO (same thing as call_site_target, except set is_clobbered to true)
+            },
+            gimli::DW_AT_low_pc => {
+                if is_gnu {
+                    // TODO (the current value is the next address, so fill in the return addr with this address, and the called_from addr with "address.sub(address_size)")
+                } else {
+                    // TODO (the current value is the called_from address)
+                }
+            },
+            _ => debug!(
+                "unknown call_site attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    // visit the call site's children (parameters)
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_GNU_call_site_parameter => {
+                assert!(is_gnu);
+                parse_call_site_parameter(&mut call.parameter_inputs, dwarf, dwarf_unit, child, true)?;
+            },
+            gimli::DW_TAG_call_site_parameter => {
+                parse_call_site_parameter(&mut call.parameter_inputs, dwarf, dwarf_unit, child, is_gnu)?;
+            },
+            tag => debug!("unknown call_site child tag: {}", tag),
+        }
+    }
+
+    calls.push(call);
+    Ok(())
+}
+
+fn parse_call_site_parameter<'input, Endian>(
+    call_site_parameters: &mut Vec<FunctionCallParameter<'input>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    is_gnu: bool,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut location = None;
+    let mut value = None;
+    let mut data_location = None;
+    let mut data_value = None;
+    let mut parameter = None;
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        match attr.name() {
+            gimli::DW_AT_location => {
+                // TODO evaluate the expression
+            },
+            gimli::DW_AT_GNU_call_site_value => {
+                // TODO evaluate
+            },
+            _ => debug!(
+                "unknown call_site_parameter attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    call_site_parameters.push(FunctionCallParameter { location: location.unwrap(), value, data_location, data_value, parameter });
     Ok(())
 }
 
