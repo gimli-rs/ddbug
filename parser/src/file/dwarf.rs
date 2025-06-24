@@ -3348,7 +3348,22 @@ where
                 call.kind = FunctionCallKind::Tail;
             }
             gimli::DW_AT_GNU_call_site_target | gimli::DW_AT_GNU_call_site_target_clobbered => {
-                // TODO (parse target location)
+                match attr.value() {
+                    gimli::AttributeValue::Exprloc(expr) => {
+                        if let Some(l) = evaluate_single_location(&dwarf_unit.header, expr) {
+                            call.target = l;
+                        }
+                    }
+                    gimli::AttributeValue::LocationListsRef(..) => {
+                        debug!(
+                            "loclist for call_site_parameter location: {:?}",
+                            attr.value()
+                        );
+                    }
+                    _ => {
+                        debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                    }
+                }
 
                 if name == gimli::DW_AT_GNU_call_site_target_clobbered {
                     call.target_is_clobbered = true;
@@ -3416,21 +3431,40 @@ fn parse_call_site_parameter<'input, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut location = None;
-    let mut value = None;
-    let mut data_location = None;
-    let mut data_value = None;
-    let mut parameter = None;
+    let mut parameter = FunctionCallParameter::default();
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
         match attr.name() {
-            gimli::DW_AT_location => {
-                // TODO evaluate the expression
-            }
-            gimli::DW_AT_GNU_call_site_value => {
-                // TODO evaluate
-            }
+            gimli::DW_AT_location => match attr.value() {
+                gimli::AttributeValue::Exprloc(expr) => {
+                    if let Some(l) = evaluate_single_location(&dwarf_unit.header, expr) {
+                        parameter.location = l;
+                    }
+                }
+                gimli::AttributeValue::LocationListsRef(..) => {
+                    debug!(
+                        "loclist for call_site_parameter location: {:?}",
+                        attr.value()
+                    );
+                }
+                _ => {
+                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                }
+            },
+            gimli::DW_AT_GNU_call_site_value => match attr.value() {
+                gimli::AttributeValue::Exprloc(expr) => {
+                    if let Some(l) = evaluate_single_location(&dwarf_unit.header, expr) {
+                        parameter.value = l;
+                    }
+                }
+                gimli::AttributeValue::LocationListsRef(..) => {
+                    debug!("loclist for call_site_parameter value: {:?}", attr.value());
+                }
+                _ => {
+                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                }
+            },
             _ => debug!(
                 "unknown call_site_parameter attribute: {} {:?}",
                 attr.name(),
@@ -3439,15 +3473,7 @@ where
         }
     }
 
-    location = Some(Location::Empty);
-
-    call_site_parameters.push(FunctionCallParameter {
-        location: location.unwrap(),
-        value,
-        data_location,
-        data_value,
-        parameter,
-    });
+    call_site_parameters.push(parameter);
     Ok(())
 }
 
@@ -3574,6 +3600,25 @@ fn evaluate_parameter_location<'input, Endian>(
     parameter
         .locations
         .extend(pieces.into_iter().map(|piece| (range, piece)));
+}
+
+fn evaluate_single_location<'input, Endian>(
+    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    expression: gimli::Expression<Reader<'input, Endian>>,
+) -> Option<Vec<Piece>>
+where
+    Endian: gimli::Endianity,
+{
+    let pieces = match evaluate_simple(unit, expression, false) {
+        Ok(locations) => locations,
+        Err(_e) => {
+            // This happens a lot, not sure if bugs or bad DWARF.
+            //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
+            return None;
+        }
+    };
+
+    Some(pieces)
 }
 
 fn evaluate_simple<'input, Endian>(

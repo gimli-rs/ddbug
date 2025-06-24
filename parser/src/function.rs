@@ -408,7 +408,6 @@ impl<'input> InlinedFunction<'input> {
 /// A call to another (non-inlined) function.
 #[derive(Debug, Default)]
 pub struct FunctionCall<'input> {
-    pub(crate) is_gnu: bool,
     pub(crate) kind: FunctionCallKind,
     /// The return address after the call
     pub(crate) return_address: Option<u64>,
@@ -417,7 +416,7 @@ pub struct FunctionCall<'input> {
     pub(crate) called_from_address: Option<CalledFromAddress>,
     pub(crate) origin: Option<FunctionCallOrigin>,
     /// The target that is being called (if present) must reside in a single location (it is a function pointer).
-    pub(crate) target: Option<Location>,
+    pub(crate) target: Vec<Piece>,
     pub(crate) target_is_clobbered: bool,
     pub(crate) called_function_type: Option<TypeOffset>,
     pub(crate) called_from_source: Option<Source<'input>>,
@@ -464,16 +463,17 @@ pub enum CalledFromAddress {
 }
 
 /// Represents one of the parameter inputs for the call.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FunctionCallParameter<'input> {
-    /// The location where we are sending this parameter value to (the callee will read the parameter value from here)
-    pub(crate) location: Location,
+    /// The location where we are sending this parameter value to (the callee will read the parameter value from here).
+    /// This will generally line up with the caller-callee ABI.
+    pub(crate) location: Vec<Piece>,
     /// This location holds the value at the time of the call
-    pub(crate) value: Option<Location>,
+    pub(crate) value: Vec<Piece>,
     /// If this parameter is a reference, also keep track of the referenced data location+value
-    pub(crate) data_location: Option<Location>,
+    pub(crate) data_location: Vec<Piece>,
     /// If this parameter is a reference, also keep track of the referenced data location+value
-    pub(crate) data_value: Option<Location>,
+    pub(crate) data_value: Vec<Piece>,
     /// The destination parameter that this value is filling in
     pub(crate) parameter: Option<Parameter<'input>>,
 }
