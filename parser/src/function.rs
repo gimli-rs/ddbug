@@ -9,7 +9,7 @@ use crate::range::Range;
 use crate::source::Source;
 use crate::types::{ParameterType, Type, TypeOffset};
 use crate::variable::LocalVariable;
-use crate::{Address, Id, Location, MemberOffset, Size, VariableOffset};
+use crate::{Address, Id, MemberOffset, Size, VariableOffset};
 
 /// The debuginfo offset of a function.
 ///
@@ -228,8 +228,11 @@ impl<'input> FunctionDetails<'input> {
     }
 }
 
+/// The debuginfo offset of a parameter formal specification/definition.
+///
+/// This is unique for all parameter specifications/definitions in a file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ParameterOffset(usize);
+pub struct ParameterOffset(usize);
 
 impl ParameterOffset {
     #[inline]
@@ -251,7 +254,7 @@ impl Default for ParameterOffset {
     }
 }
 
-/// A function parameter.
+/// A function parameter definition.
 #[derive(Debug, Default, Clone)]
 pub struct Parameter<'input> {
     pub(crate) offset: ParameterOffset,
@@ -471,5 +474,7 @@ pub struct FunctionCallParameter<'input> {
     /// If this parameter is a reference, also keep track of the referenced data location+value
     pub(crate) data_value: Vec<Piece>,
     /// The destination parameter that this value is filling in
-    pub(crate) parameter: Option<Parameter<'input>>,
+    pub(crate) parameter: ParameterOffset,
+    pub(crate) parameter_name: Option<&'input str>,
+    pub(crate) parameter_ty: TypeOffset,
 }

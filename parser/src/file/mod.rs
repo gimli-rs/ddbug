@@ -693,7 +693,7 @@ pub struct Section<'input> {
     pub(crate) size: u64,
 }
 
-impl<'input> Section<'input> {
+impl Section<'_> {
     /// The name of this section.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
@@ -737,7 +737,7 @@ pub struct Symbol<'input> {
     pub(crate) size: u64,
 }
 
-impl<'input> Symbol<'input> {
+impl Symbol<'_> {
     /// The symbol name.
     #[inline]
     pub fn name(&self) -> Option<&str> {
