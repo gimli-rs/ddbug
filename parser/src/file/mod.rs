@@ -15,7 +15,7 @@ use crate::location::Register;
 use crate::range::{Range, RangeList};
 use crate::types::{Enumerator, Type, TypeOffset};
 use crate::unit::Unit;
-use crate::variable::Variable;
+use crate::variable::{Variable, VariableOffset};
 use crate::{Address, Result, Size};
 
 pub(crate) enum DebugInfo<'input, Endian>
@@ -599,6 +599,8 @@ pub struct FileHash<'input> {
     pub functions_by_offset: HashMap<FunctionOffset, &'input Function<'input>>,
     /// All variables by address.
     pub variables_by_address: HashMap<u64, &'input Variable<'input>>,
+    /// All variables by offset.
+    pub variables_by_offset: HashMap<VariableOffset, &'input Variable<'input>>,
     /// All types by offset.
     pub types: HashMap<TypeOffset, &'input Type<'input>>,
     // The type corresponding to `TypeOffset::none()`.
@@ -613,6 +615,7 @@ impl<'input> FileHash<'input> {
             functions_by_address: FileHash::functions_by_address(file),
             functions_by_offset: FileHash::functions_by_offset(file),
             variables_by_address: FileHash::variables_by_address(file),
+            variables_by_offset: FileHash::variables_by_offset(file),
             types: FileHash::types(file),
             void: Type::void(),
         }
@@ -645,7 +648,7 @@ impl<'input> FileHash<'input> {
         functions
     }
 
-    /// Returns a map from address to function for all functions in the file.
+    /// Returns a map from address to variable for all variables in the file.
     fn variables_by_address<'a>(file: &'a File<'input>) -> HashMap<u64, &'a Variable<'input>> {
         let mut variables = HashMap::default();
         for unit in &file.units {
@@ -654,6 +657,19 @@ impl<'input> FileHash<'input> {
                     // TODO: handle duplicate addresses
                     variables.insert(address, variable);
                 }
+            }
+        }
+        variables
+    }
+
+    /// Returns a map from offset to variable for all variables in the file.
+    fn variables_by_offset<'a>(
+        file: &'a File<'input>,
+    ) -> HashMap<VariableOffset, &'a Variable<'input>> {
+        let mut variables = HashMap::default();
+        for unit in &file.units {
+            for variable in &unit.variables {
+                variables.insert(variable.offset, variable);
             }
         }
         variables

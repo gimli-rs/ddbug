@@ -2895,10 +2895,10 @@ where
                 )?;
             }
             gimli::DW_TAG_call_site => {
-                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, false)?;
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, false)?;
             }
             gimli::DW_TAG_GNU_call_site => {
-                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, true)?;
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, true)?;
             }
             // Checking for unknown tags is done in `parse_subprogram_children`.
             _ => {}
@@ -2944,10 +2944,10 @@ where
                 )?;
             }
             gimli::DW_TAG_call_site => {
-                parse_call_site(calls, dwarf, dwarf_unit, child, false)?;
+                parse_call_site(calls, hash, dwarf, dwarf_unit, child, false)?;
             }
             gimli::DW_TAG_GNU_call_site => {
-                parse_call_site(calls, dwarf, dwarf_unit, child, true)?;
+                parse_call_site(calls, hash, dwarf, dwarf_unit, child, true)?;
             }
             // Checking for unknown tags is done in `parse_lexical_block`.
             _ => {}
@@ -3083,10 +3083,10 @@ where
                 )?;
             }
             gimli::DW_TAG_call_site => {
-                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, false)?;
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, false)?;
             }
             gimli::DW_TAG_GNU_call_site => {
-                parse_call_site(&mut function.calls, dwarf, dwarf_unit, child, true)?;
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, true)?;
             }
             gimli::DW_TAG_label => {}
             tag => {
@@ -3325,6 +3325,7 @@ where
 
 fn parse_call_site<'input, Endian>(
     calls: &mut Vec<FunctionCall<'input>>,
+    hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
@@ -3340,7 +3341,7 @@ where
         let name = attr.name();
         match name {
             gimli::DW_AT_call_origin | gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_function_call_origin_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_function_call_origin_offset(hash, dwarf_unit, &attr) {
                     call.origin = Some(offset);
                 }
             }
@@ -3400,7 +3401,7 @@ where
             }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    call.called_function_type = Some(offset);
+                    call.called_function_ty = Some(offset);
                 }
             }
             gimli::DW_AT_call_file => parse_source_file(
@@ -4158,25 +4159,47 @@ where
 }
 
 fn parse_function_call_origin_offset<'input, Endian>(
+    hash: &FileHash<'input>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     attr: &gimli::Attribute<Reader<'input, Endian>>,
-) -> Option<FunctionCallOrigin>
+) -> Option<FunctionCallOrigin<'input>>
 where
     Endian: gimli::Endianity,
 {
-    parse_debug_info_offset(dwarf_unit, attr).map(|o| {
+    if let Some(o) = parse_debug_info_offset(dwarf_unit, attr) {
         // now parse the DIE at this offset to discover its type
         let entry = dwarf_unit
             .entry(o.to_unit_offset(dwarf_unit).unwrap())
             .unwrap();
+
         match entry.tag() {
-            gimli::DW_TAG_subprogram => FunctionCallOrigin::Direct(o.into()),
+            gimli::DW_TAG_subprogram => {
+                let offset: FunctionOffset = o.into();
+                Function::from_offset(hash, offset).map(FunctionCallOrigin::Direct)
+            }
             gimli::DW_TAG_variable => {
-                FunctionCallOrigin::Indirect(FunctionCallIndirectOrigin::Variable(o.into()))
+                // check if this is a global variable
+                let offset: VariableOffset = o.into();
+                if let Some(v) = Variable::from_offset(hash, offset) {
+                    Some(FunctionCallOrigin::Indirect(
+                        FunctionCallIndirectOrigin::Variable(v),
+                    ))
+                } else {
+                    // TODO check the local variables (probably will need Cow for this, since local variables live with the details)
+                    None
+                }
+            }
+            gimli::DW_TAG_formal_parameter => None,
+            gimli::DW_TAG_member => {
+                // this can be viewed as a vtable or a class method
+                let offset: MemberOffset = o.into();
+                None
             }
             _ => panic!("invalid tag"),
         }
-    })
+    } else {
+        None
+    }
 }
 
 fn parse_source_file<'input, Endian>(
