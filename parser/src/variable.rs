@@ -192,6 +192,12 @@ impl<'input> LocalVariable<'input> {
         self.name
     }
 
+    /// The debuginfo offset of the variable.
+    #[inline]
+    pub fn offset(&self) -> VariableOffset {
+        self.offset
+    }
+
     /// The type offset of the variable.
     ///
     /// A type offset is unique for all types in a file.

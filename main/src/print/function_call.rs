@@ -86,8 +86,11 @@ fn print_origin(origin: Option<&FunctionCallOrigin>, w: &mut dyn ValuePrinter) -
         Some(FunctionCallOrigin::Indirect(indirect)) => {
             write!(w, " -> ")?;
             match indirect {
-                FunctionCallIndirectOrigin::Variable(_var_offset) => {
-                    write!(w, "indirect(var)")?;
+                FunctionCallIndirectOrigin::Variable(v) => {
+                    write!(w, "indirect(global:{})", v.name().unwrap_or("<unknown>"))?;
+                }
+                FunctionCallIndirectOrigin::LocalVariable(_) => {
+                    write!(w, "indirect(local var)")?;
                 }
                 FunctionCallIndirectOrigin::Parameter(_param_offset) => {
                     write!(w, "indirect(param)")?;

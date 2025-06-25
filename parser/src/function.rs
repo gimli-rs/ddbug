@@ -2,13 +2,15 @@ use std::borrow::Cow;
 use std::cmp;
 use std::sync::Arc;
 
+use fnv::FnvHashMap as HashMap;
+
 use crate::file::FileHash;
 use crate::location::{self, FrameLocation, Piece, Register};
 use crate::namespace::Namespace;
 use crate::range::Range;
 use crate::source::Source;
-use crate::types::{Member, MemberOffset, ParameterType, Type, TypeOffset};
-use crate::variable::{LocalVariable, Variable};
+use crate::types::{MemberOffset, ParameterType, Type, TypeOffset};
+use crate::variable::{LocalVariable, Variable, VariableOffset};
 use crate::{Address, Id, Size};
 
 /// The debuginfo offset of a function.
@@ -235,7 +237,7 @@ impl<'input> FunctionDetails<'input> {
 /// The debuginfo offset of a parameter formal specification/definition.
 ///
 /// This is unique for all parameter specifications/definitions in a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ParameterOffset(usize);
 
 impl ParameterOffset {
@@ -273,6 +275,12 @@ impl<'input> Parameter<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The debuginfo offset of this parameter.
+    #[inline]
+    pub fn offset(&self) -> ParameterOffset {
+        self.offset
     }
 
     /// The type offset of the parameter.
@@ -515,11 +523,14 @@ pub enum FunctionCallOrigin<'input> {
 pub enum FunctionCallIndirectOrigin<'input> {
     /// The function origin is stored in this variable at the time of the call
     Variable(&'input Variable<'input>),
-    /// The function origin is stored in this parameter at the time of the call
-    Parameter(&'input Parameter<'input>),
+    /// The function origin is stored in one of the caller function's local variables at the time of the call
+    LocalVariable(VariableOffset),
+    /// The function origin is stored in one of the caller function's parameters at the time of the call.
+    /// The parameter is stored in the function details, so we don't resolve to a reference yet.
+    Parameter(ParameterOffset),
     /// The function origin is stored in this member at the time of the call
-    /// We store this as a unique member offset because you will want to calculate the parent types
-    /// that lead down to this member.
+    /// We store this as the unique member offset. This allows for later traversal down the types
+    /// in order to locate this exact member if the caller is interested.
     Member(MemberOffset),
 }
 
@@ -545,7 +556,74 @@ pub struct FunctionCallParameter<'input> {
     /// If this parameter is a reference, also keep track of the referenced data location+value
     pub(crate) data_value: Vec<Piece>,
     /// The destination parameter that this value is filling in
-    pub(crate) parameter: ParameterOffset,
-    pub(crate) parameter_name: Option<&'input str>,
-    pub(crate) parameter_ty: TypeOffset,
+    pub(crate) parameter: Option<ParameterType<'input>>,
+}
+
+/// Abstracts over functions vs inlined functions at the details level
+#[derive(Debug, Clone, Copy)]
+pub enum FunctionInstance<'input> {
+    /// This is a non-inlined function
+    Normal(&'input FunctionDetails<'input>),
+    /// This is an inlined function
+    Inlined(&'input InlinedFunction<'input>),
+}
+
+impl<'input> FunctionInstance<'input> {
+    #[inline]
+    fn parameters(&self) -> &'input [Parameter<'input>] {
+        match self {
+            Self::Normal(f) => f.parameters(),
+            Self::Inlined(f) => f.parameters(),
+        }
+    }
+
+    #[inline]
+    fn variables(&self) -> &'input [LocalVariable<'input>] {
+        match self {
+            Self::Normal(f) => f.variables(),
+            Self::Inlined(f) => f.variables(),
+        }
+    }
+}
+
+/// An index of parameters and local variables within a function.
+/// This requires the function details to be loaded.
+pub struct FunctionHash<'input> {
+    /// The function being indexed.
+    pub function: FunctionInstance<'input>,
+    /// All parameters by offset.
+    pub parameters_by_offset: HashMap<ParameterOffset, &'input Parameter<'input>>,
+    /// All local variables by offset.
+    pub local_variables_by_offset: HashMap<VariableOffset, &'input LocalVariable<'input>>,
+}
+
+impl<'input> FunctionHash<'input> {
+    /// Create a new `FileHash` for the given `File`.
+    pub fn new(function: FunctionInstance<'input>) -> Self {
+        Self {
+            function,
+            parameters_by_offset: Self::parameters_by_offset(&function),
+            local_variables_by_offset: Self::local_variables_by_offset(&function),
+        }
+    }
+
+    fn parameters_by_offset(
+        function: &FunctionInstance<'input>,
+    ) -> HashMap<ParameterOffset, &'input Parameter<'input>> {
+        let mut parameters = HashMap::default();
+        for parameter in function.parameters() {
+            parameters.insert(parameter.offset, parameter);
+        }
+        parameters
+    }
+
+    fn local_variables_by_offset(
+        function: &FunctionInstance<'input>,
+    ) -> HashMap<VariableOffset, &'input LocalVariable<'input>> {
+        let mut local_variables = HashMap::default();
+        for local_variable in function.variables() {
+            local_variables.insert(local_variable.offset, local_variable);
+        }
+        local_variables
+    }
 }

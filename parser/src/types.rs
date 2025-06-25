@@ -888,7 +888,7 @@ impl<'input> Variant<'input> {
 /// The debuginfo offset of a member.
 ///
 /// This is unique for all members in a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MemberOffset(usize);
 
 impl MemberOffset {
@@ -927,6 +927,12 @@ impl<'input> Member<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The debuginfo offset of this member.
+    #[inline]
+    pub fn offset(&self) -> MemberOffset {
+        self.offset
     }
 
     /// The debuginfo offset of the type of this member.
