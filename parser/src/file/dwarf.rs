@@ -4204,7 +4204,10 @@ where
                     FunctionCallIndirectOrigin::Member(o.into()),
                 ))
             }
-            _ => panic!("invalid tag"),
+            tag => {
+                debug!("uknown tag for call site origin at offset: {}", tag);
+                None
+            }
         }
     } else {
         None
