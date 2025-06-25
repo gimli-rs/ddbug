@@ -1,6 +1,6 @@
 use parser::{
     CalledFromAddress, FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind,
-    FunctionCallOrigin, Piece, Unit,
+    FunctionCallOrigin, FunctionCallParameter, Piece, Unit,
 };
 
 use crate::print::{self, Print, PrintState, ValuePrinter};
@@ -19,46 +19,6 @@ fn print_address(addr: Option<u64>, w: &mut dyn ValuePrinter) -> Result<()> {
         Some(addr) => write!(w, "{:#x}", addr),
         None => write!(w, "<unknown>"),
     }?;
-    Ok(())
-}
-
-fn print_target_location(pieces: &[Piece], w: &mut dyn ValuePrinter) -> Result<()> {
-    if pieces.is_empty() {
-        write!(w, "<unknown>")?;
-        return Ok(());
-    }
-
-    // For now, just print the first piece - could be enhanced to show all pieces
-    let piece = &pieces[0];
-    match &piece.location {
-        parser::Location::Address { address } => {
-            write!(w, "{:#x}", address.get().unwrap_or(0))?;
-        }
-        parser::Location::Register { register } => {
-            write!(w, "register {}", register.0)?;
-        }
-        parser::Location::RegisterOffset { register, offset } => {
-            write!(w, "register {}+{:#x}", register.0, offset)?;
-        }
-        parser::Location::FrameOffset { offset } => {
-            write!(w, "frame+{:#x}", offset)?;
-        }
-        parser::Location::CfaOffset { offset } => {
-            write!(w, "cfa+{:#x}", offset)?;
-        }
-        parser::Location::Literal { value } => {
-            write!(w, "value {:#x}", value)?;
-        }
-        parser::Location::TlsOffset { offset } => {
-            write!(w, "tls+{:#x}", offset)?;
-        }
-        parser::Location::Empty => {
-            write!(w, "<empty>")?;
-        }
-        parser::Location::Other => {
-            write!(w, "<other>")?;
-        }
-    }
     Ok(())
 }
 
@@ -120,9 +80,7 @@ impl<'input> Print for FunctionCall<'input> {
                 }
 
                 if !self.target().is_empty() {
-                    state.field("target", |w, _state| {
-                        print_target_location(self.target(), w)
-                    })?;
+                    state.field("target", |w, hash| print_pieces(self.target(), w, hash))?;
                 }
 
                 if let Some(source) = self.called_from_source() {
@@ -132,8 +90,10 @@ impl<'input> Print for FunctionCall<'input> {
                 }
 
                 if !self.parameter_inputs().is_empty() {
-                    state.field("parameters", |w, _state| {
-                        write!(w, "{} parameters", self.parameter_inputs().len())?;
+                    state.field_expanded("parameters", |state| {
+                        for param in self.parameter_inputs() {
+                            param.print(state, unit)?;
+                        }
                         Ok(())
                     })?;
                 }
@@ -158,8 +118,8 @@ impl<'input> Print for FunctionCall<'input> {
                     print_address(x.return_address(), w)
                 })?;
 
-                state.field("target", a, b, |w, _state, x| {
-                    print_target_location(x.target(), w)
+                state.field("target", a, b, |w, hash, x| {
+                    print_pieces(x.target(), w, hash)
                 })?;
 
                 if state.options().print_source {
@@ -177,10 +137,29 @@ impl<'input> Print for FunctionCall<'input> {
                     )?;
                 }
 
-                // TODO: Implement parameter diff when FunctionCallParameter gets its Print trait
+                // Show detailed parameter diff
                 if !a.parameter_inputs().is_empty() || !b.parameter_inputs().is_empty() {
-                    state.field("parameters", a, b, |w, _state, x| {
-                        write!(w, "{} parameters", x.parameter_inputs().len())?;
+                    state.field_expanded("parameters", |state| {
+                        let params_a = a.parameter_inputs();
+                        let params_b = b.parameter_inputs();
+                        let max_len = params_a.len().max(params_b.len());
+
+                        for i in 0..max_len {
+                            match (params_a.get(i), params_b.get(i)) {
+                                (Some(param_a), Some(param_b)) => {
+                                    FunctionCallParameter::diff(
+                                        state, arg_a, param_a, arg_b, param_b,
+                                    )?;
+                                }
+                                (Some(param_a), None) => {
+                                    state.prefix_delete(|state| param_a.print(state, arg_a))?;
+                                }
+                                (None, Some(param_b)) => {
+                                    state.prefix_add(|state| param_b.print(state, arg_b))?;
+                                }
+                                (None, None) => unreachable!(),
+                            }
+                        }
                         Ok(())
                     })?;
                 }
@@ -189,5 +168,144 @@ impl<'input> Print for FunctionCall<'input> {
             },
         )?;
         Ok(())
+    }
+}
+
+fn print_pieces(pieces: &[Piece], w: &mut dyn ValuePrinter, hash: &parser::FileHash) -> Result<()> {
+    if pieces.is_empty() {
+        write!(w, "<none>")?;
+        return Ok(());
+    }
+
+    for (i, piece) in pieces.iter().enumerate() {
+        if i > 0 {
+            write!(w, ", ")?;
+        }
+        match &piece.location {
+            parser::Location::Address { address } => {
+                write!(w, "{:#x}", address.get().unwrap_or(0))?;
+            }
+            parser::Location::Register { register } => {
+                write!(w, "{}", register.name(hash).unwrap_or("<unknown reg>"))?;
+            }
+            parser::Location::RegisterOffset { register, offset } => {
+                write!(
+                    w,
+                    "{}+{:#x}",
+                    register.name(hash).unwrap_or("<unknown reg>"),
+                    offset
+                )?;
+            }
+            parser::Location::FrameOffset { offset } => {
+                write!(w, "frame+{:#x}", offset)?;
+            }
+            parser::Location::CfaOffset { offset } => {
+                write!(w, "cfa+{:#x}", offset)?;
+            }
+            parser::Location::Literal { value } => {
+                write!(w, "lit:{:#x}", value)?;
+            }
+            parser::Location::TlsOffset { offset } => {
+                write!(w, "tls+{:#x}", offset)?;
+            }
+            parser::Location::Empty => {
+                write!(w, "<empty>")?;
+            }
+            parser::Location::Other => {
+                write!(w, "<other>")?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_parameter_header(
+    param: &FunctionCallParameter,
+    w: &mut dyn ValuePrinter,
+    hash: &parser::FileHash,
+) -> Result<()> {
+    if let Some(param_type) = param.parameter() {
+        if let Some(name) = param_type.name() {
+            write!(w, "parameter: {}", name)?;
+        } else {
+            write!(w, "parameter: <unnamed>")?;
+        }
+
+        if let Some(ty) = param_type.ty(hash) {
+            write!(w, " (")?;
+            print::types::print_ref(Some(ty), w, hash)?;
+            write!(w, ")")?;
+        }
+    } else {
+        write!(w, "parameter: <unknown>")?;
+    }
+    Ok(())
+}
+
+impl<'input> Print for FunctionCallParameter<'input> {
+    type Arg = Unit<'input>;
+
+    fn print(&self, state: &mut PrintState, _unit: &Self::Arg) -> Result<()> {
+        state.expanded(
+            |state| state.line(|w, hash| print_parameter_header(self, w, hash)),
+            |state| {
+                if !self.location().is_empty() {
+                    state.field("location", |w, hash| print_pieces(self.location(), w, hash))?;
+                }
+
+                if !self.value().is_empty() {
+                    state.field("value", |w, hash| print_pieces(self.value(), w, hash))?;
+                }
+
+                if !self.data_location().is_empty() {
+                    state.field("data_location", |w, hash| {
+                        print_pieces(self.data_location(), w, hash)
+                    })?;
+                }
+
+                if !self.data_value().is_empty() {
+                    state.field("data_value", |w, hash| {
+                        print_pieces(self.data_value(), w, hash)
+                    })?;
+                }
+
+                Ok(())
+            },
+        )
+    }
+
+    fn diff(
+        state: &mut print::DiffState,
+        _unit_a: &Self::Arg,
+        a: &Self,
+        _unit_b: &Self::Arg,
+        b: &Self,
+    ) -> Result<()> {
+        state.expanded(
+            |state| {
+                state.line(a, b, |w, hash, param| {
+                    print_parameter_header(param, w, hash)
+                })
+            },
+            |state| {
+                state.field("location", a, b, |w, hash, param| {
+                    print_pieces(param.location(), w, hash)
+                })?;
+
+                state.field("value", a, b, |w, hash, param| {
+                    print_pieces(param.value(), w, hash)
+                })?;
+
+                state.field("data_location", a, b, |w, hash, param| {
+                    print_pieces(param.data_location(), w, hash)
+                })?;
+
+                state.field("data_value", a, b, |w, hash, param| {
+                    print_pieces(param.data_value(), w, hash)
+                })?;
+
+                Ok(())
+            },
+        )
     }
 }

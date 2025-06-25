@@ -555,6 +555,38 @@ pub struct FunctionCallParameter<'input> {
     pub(crate) parameter: Option<ParameterType<'input>>,
 }
 
+impl<'input> FunctionCallParameter<'input> {
+    /// The location where the parameter value is sent to.
+    #[inline]
+    pub fn location(&self) -> &[Piece] {
+        &self.location
+    }
+
+    /// The location that holds the value at the time of the call.
+    #[inline]
+    pub fn value(&self) -> &[Piece] {
+        &self.value
+    }
+
+    /// The referenced data location if this parameter is a reference.
+    #[inline]
+    pub fn data_location(&self) -> &[Piece] {
+        &self.data_location
+    }
+
+    /// The referenced data value if this parameter is a reference.
+    #[inline]
+    pub fn data_value(&self) -> &[Piece] {
+        &self.data_value
+    }
+
+    /// The destination parameter that this value is filling in.
+    #[inline]
+    pub fn parameter(&self) -> Option<&ParameterType<'input>> {
+        self.parameter.as_ref()
+    }
+}
+
 /// Abstracts over functions vs inlined functions at the details level
 #[derive(Debug, Clone, Copy)]
 pub enum FunctionInstance<'input> {
