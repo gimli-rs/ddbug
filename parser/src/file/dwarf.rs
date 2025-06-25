@@ -3539,15 +3539,16 @@ where
             },
             gimli::DW_AT_call_parameter => {
                 if let Some(offset) = parse_parameter_offset(dwarf_unit, &attr) {
-                    parameter.parameter = offset;
+                    parameter.parameter.get_or_insert_default().offset = offset;
                 }
             }
             gimli::DW_AT_name => {
-                parameter.parameter_name = dwarf.string(dwarf_unit, attr.value());
+                parameter.parameter.get_or_insert_default().name =
+                    dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    parameter.parameter_ty = offset;
+                    parameter.parameter.get_or_insert_default().ty = offset;
                 }
             }
             _ => debug!(
@@ -4208,15 +4209,23 @@ where
                         FunctionCallIndirectOrigin::Variable(v),
                     ))
                 } else {
-                    // TODO check the local variables (probably will need Cow for this, since local variables live with the details)
-                    None
+                    // Have the caller check the local variables (they can use a function hash if they are interested)
+                    Some(FunctionCallOrigin::Indirect(
+                        FunctionCallIndirectOrigin::LocalVariable(offset),
+                    ))
                 }
             }
-            gimli::DW_TAG_formal_parameter => None,
+            gimli::DW_TAG_formal_parameter => {
+                // Have the caller check their parameters (they can use a function hash if they are interested)
+                Some(FunctionCallOrigin::Indirect(
+                    FunctionCallIndirectOrigin::Parameter(o.into()),
+                ))
+            }
             gimli::DW_TAG_member => {
                 // this can be viewed as a vtable or a class method
-                let offset: MemberOffset = o.into();
-                None
+                Some(FunctionCallOrigin::Indirect(
+                    FunctionCallIndirectOrigin::Member(o.into()),
+                ))
             }
             _ => panic!("invalid tag"),
         }
