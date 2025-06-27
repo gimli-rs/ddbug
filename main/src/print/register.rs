@@ -1,6 +1,6 @@
 use std::cmp;
 
-use parser::{FileHash, Register};
+use parser::{FileHash, Range, Register};
 
 use crate::print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
@@ -9,6 +9,14 @@ pub(crate) fn print_list(state: &mut PrintState, mut registers: Vec<Register>) -
     registers.sort_unstable();
     registers.dedup();
     state.field_expanded("registers", |state| state.list(&(), &registers))?;
+    Ok(())
+}
+
+pub(crate) fn print_list_with_ranges(
+    state: &mut PrintState,
+    registers: &[(Range, Register)],
+) -> Result<()> {
+    state.field_expanded("registers", |state| state.list(&(), registers))?;
     Ok(())
 }
 
@@ -33,6 +41,23 @@ pub(crate) fn print(register: Register, w: &mut dyn ValuePrinter, hash: &FileHas
         None => write!(w, "r{}", register.0)?,
     };
     Ok(())
+}
+
+impl Print for (Range, Register) {
+    type Arg = ();
+
+    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
+        state.line(|w, hash| {
+            crate::print::range::print_address(&self.0, w)?;
+            write!(w, "\t")?;
+            print(self.1, w, hash)?;
+            Ok(())
+        })
+    }
+
+    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
+        state.line(a, b, |w, hash, x| print(x.1, w, hash))
+    }
 }
 
 impl Print for Register {
