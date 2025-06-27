@@ -43,20 +43,26 @@ pub(crate) fn print(register: Register, w: &mut dyn ValuePrinter, hash: &FileHas
     Ok(())
 }
 
+pub(crate) fn print_with_range(
+    register: &(Range, Register),
+    w: &mut dyn ValuePrinter,
+    hash: &FileHash,
+) -> Result<()> {
+    crate::print::range::print_address(&register.0, w)?;
+    write!(w, "\t")?;
+    print(register.1, w, hash)?;
+    Ok(())
+}
+
 impl Print for (Range, Register) {
     type Arg = ();
 
     fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(|w, hash| {
-            crate::print::range::print_address(&self.0, w)?;
-            write!(w, "\t")?;
-            print(self.1, w, hash)?;
-            Ok(())
-        })
+        state.line(|w, hash| print_with_range(self, w, hash))
     }
 
     fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.line(a, b, |w, hash, x| print(x.1, w, hash))
+        state.line(a, b, |w, hash, x| print_with_range(x, w, hash))
     }
 }
 

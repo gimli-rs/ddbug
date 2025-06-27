@@ -48,6 +48,7 @@ pub struct Options {
     pub print_function_stack_frame: bool,
     pub print_inlined_function_parameters: bool,
     pub print_variable_locations: bool,
+    pub print_range_info: bool,
     pub inline_depth: usize,
     pub html: bool,
     pub http: bool,

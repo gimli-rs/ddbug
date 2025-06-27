@@ -69,7 +69,7 @@ impl<'input> Print for Parameter<'input> {
     }
 }
 
-impl<'input> DiffList for Parameter<'input> {
+impl DiffList for Parameter<'_> {
     fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
         1
     }

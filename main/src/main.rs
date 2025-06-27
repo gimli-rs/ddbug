@@ -323,10 +323,12 @@ fn main() {
                     options.print_function_stack_frame = true;
                     options.print_inlined_function_parameters = true;
                     options.print_variable_locations = true;
+                    options.print_range_info = true;
                 }
                 OPT_PRINT_ADDRESS => {
                     options.print_file_address = true;
                     options.print_unit_address = true;
+                    options.print_range_info = true;
                 }
                 OPT_PRINT_SOURCE => options.print_source = true,
                 OPT_PRINT_FILE_ADDRESS => options.print_file_address = true,

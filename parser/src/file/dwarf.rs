@@ -276,6 +276,7 @@ where
             .ok()
     }
 
+    #[inline]
     fn addr(
         &self,
         dwarf_unit: &DwarfUnit<'input, Endian>,
@@ -284,6 +285,7 @@ where
         self.read.attr_address(dwarf_unit, value).ok()?
     }
 
+    #[inline]
     fn rangelist(
         &self,
         dwarf_unit: &DwarfUnit<'input, Endian>,
@@ -292,6 +294,7 @@ where
         self.read.attr_ranges_offset(dwarf_unit, value).ok()?
     }
 
+    #[inline]
     fn loclist(
         &self,
         dwarf_unit: &DwarfUnit<'input, Endian>,
