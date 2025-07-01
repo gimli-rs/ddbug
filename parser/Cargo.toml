@@ -11,10 +11,10 @@ rust-version = "1.85"
 
 [dependencies]
 fnv = "1.0"
-gimli = "0.32.0"
+gimli = "0.32"
 log = "0.4"
-memmap2 = "0.9.4"
-object = { version = "0.37.1", features = ["wasm"] }
+memmap2 = "0.9"
+object = { version = "0.37", features = ["wasm"] }
 
 [features]
 default = []

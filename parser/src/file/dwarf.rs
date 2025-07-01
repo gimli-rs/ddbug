@@ -3495,6 +3495,10 @@ where
         }
     }
 
+    if call.called_from_address.is_none() && call.return_address.is_some() {
+        call.called_from_address = Some(CalledFromAddress::PreviousToReturnAddress);
+    }
+
     // visit the call site's children (parameters)
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
