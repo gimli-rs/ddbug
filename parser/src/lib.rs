@@ -89,19 +89,19 @@ impl From<String> for Error {
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Error {
-        Error(Cow::Owned(format!("IO error: {}", e)))
+        Error(Cow::Owned(format!("IO error: {e}")))
     }
 }
 
 impl From<gimli::Error> for Error {
     fn from(e: gimli::Error) -> Error {
-        Error(Cow::Owned(format!("DWARF error: {}", e)))
+        Error(Cow::Owned(format!("DWARF error: {e}")))
     }
 }
 
 impl From<object::Error> for Error {
     fn from(e: object::Error) -> Error {
-        Error(Cow::Owned(format!("object error: {}", e)))
+        Error(Cow::Owned(format!("object error: {e}")))
     }
 }
 

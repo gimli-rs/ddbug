@@ -213,14 +213,14 @@ impl<'input> File<'input> {
         let handle = match fs::File::open(&path) {
             Ok(handle) => handle,
             Err(e) => {
-                return Err(format!("open failed: {}", e).into());
+                return Err(format!("open failed: {e}").into());
             }
         };
 
         let map = match unsafe { memmap2::Mmap::map(&handle) } {
             Ok(map) => map,
             Err(e) => {
-                return Err(format!("memmap failed: {}", e).into());
+                return Err(format!("memmap failed: {e}").into());
             }
         };
 

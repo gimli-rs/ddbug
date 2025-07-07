@@ -451,7 +451,7 @@ impl<'input> FunctionCall<'input> {
 
     /// The origin of the function being called.
     #[inline]
-    pub fn origin(&self) -> Option<&FunctionCallOrigin> {
+    pub fn origin(&self) -> Option<&FunctionCallOrigin<'input>> {
         self.origin.as_ref()
     }
 
