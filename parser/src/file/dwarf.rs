@@ -4294,7 +4294,13 @@ where
                     None
                 }
             }
-            _ => None,
+            _ => {
+                debug!(
+                    "while parsing call_site origin, found unknown DIE offset: {:?}",
+                    unit_section_offset
+                );
+                None
+            }
         };
 
         if let Some(entry) = entry {
