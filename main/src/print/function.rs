@@ -666,7 +666,7 @@ fn add_parameter_frame_locations<'input>(
     let size = parameter.byte_size(hash);
     let name = parameter.name();
     let ty = parameter.type_offset();
-    for location in parameter.frame_locations() {
+    for (_, location) in parameter.frame_locations() {
         let offset = location.offset;
         let size = if let Some(bit_size) = location.bit_size.get() {
             Some((bit_size + 7) / 8)

@@ -300,7 +300,7 @@ impl<'input> Parameter<'input> {
     }
 
     /// The stack frame locations at which this parameter is stored.
-    pub fn frame_locations(&self) -> impl Iterator<Item = FrameLocation> + '_ {
+    pub fn frame_locations(&self) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
         location::frame_locations(&self.locations)
     }
 

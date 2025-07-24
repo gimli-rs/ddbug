@@ -101,19 +101,20 @@ pub(crate) fn registers(
 
 pub(crate) fn frame_locations(
     locations: &[(Range, Piece)],
-) -> impl Iterator<Item = FrameLocation> + '_ {
-    locations.iter().filter_map(|(_, piece)| {
+) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
+    locations.iter().filter_map(|(range, piece)| {
         if piece.is_value {
             return None;
         }
         match piece.location {
             // TODO: do we need to distinguish between these?
-            Location::FrameOffset { offset } | Location::CfaOffset { offset } => {
-                Some(FrameLocation {
+            Location::FrameOffset { offset } | Location::CfaOffset { offset } => Some((
+                *range,
+                FrameLocation {
                     offset,
                     bit_size: piece.bit_size,
-                })
-            }
+                },
+            )),
             _ => None,
         }
     })
