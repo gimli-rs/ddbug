@@ -3339,7 +3339,7 @@ where
                     );
                 } else {
                     let address = Address::new(address);
-                    let size = match piece.size_in_bits.map(|x| (x + 7) / 8) {
+                    let size = match piece.size_in_bits.map(|x| x.div_ceil(8)) {
                         Some(size) => Size::new(size),
                         None => Size::none(),
                     };
@@ -3390,7 +3390,7 @@ fn evaluate_local_variable_location<'input, Endian>(
             } else {
                 variable.address = address;
                 if let Some(bit_size) = piece.bit_size.get() {
-                    variable.size = Size::new((bit_size + 7) / 8);
+                    variable.size = Size::new(bit_size.div_ceil(8));
                 }
             }
         }

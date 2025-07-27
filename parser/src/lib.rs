@@ -25,6 +25,7 @@
 #![allow(clippy::single_match)]
 #![allow(clippy::match_single_binding)]
 #![allow(clippy::too_many_arguments)]
+#![allow(clippy::uninlined_format_args)]
 
 #[macro_use]
 extern crate log;

@@ -3,8 +3,10 @@
 #![warn(unused_extern_crates)]
 // Calm down clippy.
 #![allow(clippy::comparison_chain)]
+#![allow(clippy::needless_lifetimes)]
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
+#![allow(clippy::uninlined_format_args)]
 // False positive.
 #![allow(clippy::explicit_auto_deref)]
 // Requires type annotations which isn't better.

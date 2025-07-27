@@ -165,8 +165,8 @@ mod test {
 
     #[test]
     fn cmp() {
-        let ns1 = Namespace::new(&None, Some("a".into()), NamespaceKind::Namespace);
-        let ns2 = Namespace::new(&None, Some("b".into()), NamespaceKind::Namespace);
+        let ns1 = Namespace::new(&None, Some("a"), NamespaceKind::Namespace);
+        let ns2 = Namespace::new(&None, Some("b"), NamespaceKind::Namespace);
         assert_eq!(Namespace::cmp(&ns1, &ns2), cmp::Ordering::Less);
     }
 }

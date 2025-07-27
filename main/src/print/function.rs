@@ -669,7 +669,7 @@ fn add_parameter_frame_locations<'input>(
     for (_, location) in parameter.frame_locations() {
         let offset = location.offset;
         let size = if let Some(bit_size) = location.bit_size.get() {
-            Some((bit_size + 7) / 8)
+            Some(bit_size.div_ceil(8))
         } else {
             size
         };
@@ -694,7 +694,7 @@ fn add_variable_frame_locations<'input>(
     for location in v.frame_locations() {
         let offset = location.offset;
         let size = if let Some(bit_size) = location.bit_size.get() {
-            Some((bit_size + 7) / 8)
+            Some(bit_size.div_ceil(8))
         } else {
             size
         };

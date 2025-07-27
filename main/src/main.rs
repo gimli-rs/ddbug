@@ -3,6 +3,7 @@
 #![warn(unused_extern_crates)]
 // Calm down clippy.
 #![allow(clippy::single_match)]
+#![allow(clippy::uninlined_format_args)]
 // False positive.
 #![allow(clippy::ptr_arg)]
 

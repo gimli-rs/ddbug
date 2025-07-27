@@ -9,9 +9,9 @@ fn diff(name: &str, expect: &str) {
     let diff = String::from_utf8(diff).unwrap();
     if !equal(&diff, expect) {
         println!("\nDiff:");
-        println!("{}", diff);
+        println!("{diff}");
         println!("Expected:");
-        println!("{}", expect);
+        println!("{expect}");
         assert_eq!(diff, expect);
     }
 }

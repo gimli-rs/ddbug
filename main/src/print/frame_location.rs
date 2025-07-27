@@ -55,7 +55,7 @@ pub(crate) fn diff_list(
 pub(crate) fn print(location: &FrameLocation, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "{}", location.offset)?;
     if let Some(bit_size) = location.bit_size.get() {
-        write!(w, "[{}]", (bit_size + 7) / 8)?;
+        write!(w, "[{}]", bit_size.div_ceil(8))?;
     }
     Ok(())
 }
