@@ -10,8 +10,8 @@ license = "Apache-2.0 OR MIT"
 edition = "2018"
 
 [dependencies]
-capstone = "0.12.0"
-capstone-sys = "0.16.0"
+capstone = "0.13.0"
+capstone-sys = "0.17.0"
 clap = { version = "4.5.4", features = ["cargo", "wrap_help"] }
 env_logger = "0.11.3"
 log = "0.4"
