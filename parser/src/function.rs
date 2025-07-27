@@ -41,11 +41,7 @@ impl FunctionOffset {
 
     #[inline]
     pub(crate) fn get(self) -> Option<usize> {
-        if self.is_none() {
-            None
-        } else {
-            Some(self.0)
-        }
+        if self.is_none() { None } else { Some(self.0) }
     }
 }
 

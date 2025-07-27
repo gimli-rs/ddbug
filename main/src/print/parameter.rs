@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::{FileHash, Parameter, Type, Unit};
 
-use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 
 pub(crate) fn print_decl(p: &Parameter, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     if let Some(name) = p.name() {

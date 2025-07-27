@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::{EnumerationType, Enumerator, FileHash, Unit};
 
-use crate::print::{self, DiffList, DiffState, Print, PrintHeader, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintHeader, PrintState, ValuePrinter};
 
 fn print_name(ty: &EnumerationType, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "enum ")?;

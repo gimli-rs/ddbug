@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::{FileHash, Inherit, Layout, LayoutItem, Member, Type, Unit, Variant, VariantPart};
 
-use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 
 fn print_member(member: &Member, w: &mut dyn ValuePrinter, hash: &FileHash) -> Result<()> {
     write!(w, "{}", format_bit(member.bit_offset()))?;

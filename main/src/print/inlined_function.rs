@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::{FileHash, Function, InlinedFunction, LocalVariable, Unit};
 
-use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, SortList, ValuePrinter};
 
 fn print_size_and_decl(
     f: &InlinedFunction,

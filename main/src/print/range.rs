@@ -1,7 +1,7 @@
 use parser::Range;
 
-use crate::print::{DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{DiffState, Print, PrintState, ValuePrinter};
 
 pub(crate) fn print_address(range: &Range, w: &mut dyn ValuePrinter) -> Result<()> {
     if range.end > range.begin {

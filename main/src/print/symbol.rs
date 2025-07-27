@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::{Symbol, SymbolKind};
 
-use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 
 fn print_name(symbol: &Symbol, w: &mut dyn ValuePrinter) -> Result<()> {
     match symbol.kind() {

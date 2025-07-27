@@ -1,5 +1,5 @@
-use crate::location::Register;
 use crate::Address;
+use crate::location::Register;
 
 /// A CFI directive and the function offset it applies to.
 ///

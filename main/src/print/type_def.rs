@@ -1,7 +1,7 @@
 use parser::{FileHash, TypeDef, Unit};
 
-use crate::print::{self, DiffState, PrintHeader, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffState, PrintHeader, PrintState, ValuePrinter};
 
 fn print_name(ty: &TypeDef, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(namespace) = ty.namespace() {

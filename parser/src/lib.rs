@@ -152,11 +152,7 @@ mod address {
         /// Return the address.
         #[inline]
         pub fn get(self) -> Option<u64> {
-            if self.is_none() {
-                None
-            } else {
-                Some(self.0)
-            }
+            if self.is_none() { None } else { Some(self.0) }
         }
     }
 
@@ -206,11 +202,7 @@ mod size {
         /// Return the size.
         #[inline]
         pub fn get(self) -> Option<u64> {
-            if self.is_none() {
-                None
-            } else {
-                Some(self.0)
-            }
+            if self.is_none() { None } else { Some(self.0) }
         }
     }
 

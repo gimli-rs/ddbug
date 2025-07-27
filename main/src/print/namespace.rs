@@ -1,7 +1,7 @@
 use parser::{Namespace, NamespaceKind};
 
-use crate::print::ValuePrinter;
 use crate::Result;
+use crate::print::ValuePrinter;
 
 pub(crate) fn print(namespace: &Namespace, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(parent) = namespace.parent() {

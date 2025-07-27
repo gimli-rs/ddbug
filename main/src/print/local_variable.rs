@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::{FileHash, LocalVariable, Type, Unit};
 
-use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 
 pub(crate) fn print_decl(
     v: &LocalVariable,

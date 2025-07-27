@@ -1,11 +1,11 @@
-use capstone::arch::x86::X86OperandType;
 use capstone::arch::ArchOperand;
+use capstone::arch::x86::X86OperandType;
 use capstone::{self, Arch, Capstone, Insn, InsnDetail, InsnGroupType, Mode};
 use std::collections::HashMap;
 use std::convert::TryInto;
 
-use crate::print::{self, PrintState};
 use crate::Result;
+use crate::print::{self, PrintState};
 use parser::{Address, Architecture, File, FunctionDetails, Range, Register};
 
 #[derive(Debug)]

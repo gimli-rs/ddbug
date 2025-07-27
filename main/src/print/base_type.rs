@@ -1,7 +1,7 @@
 use parser::{BaseType, BaseTypeEncoding, Endianity, FileHash, Unit};
 
-use crate::print::{DiffState, PrintHeader, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{DiffState, PrintHeader, PrintState, ValuePrinter};
 
 fn print_name(ty: &BaseType, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "base {}", ty.name().unwrap_or("<anon>"))?;

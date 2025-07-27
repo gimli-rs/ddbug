@@ -1,7 +1,7 @@
 use parser::{Source, Unit};
 
-use crate::print::ValuePrinter;
 use crate::Result;
+use crate::print::ValuePrinter;
 
 pub(crate) fn print(source: &Source, w: &mut dyn ValuePrinter, unit: &Unit) -> Result<()> {
     if let Some(path) = source.path(unit) {

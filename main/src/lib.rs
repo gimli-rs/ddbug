@@ -24,8 +24,8 @@ mod filter;
 
 mod print;
 pub use self::print::file::{
-    bloat, bloat_id, bloat_index, diff, diff_id, diff_index, print, print_id, print_index,
-    print_parent, BloatIndex, DiffIndex, PrintIndex,
+    BloatIndex, DiffIndex, PrintIndex, bloat, bloat_id, bloat_index, diff, diff_id, diff_index,
+    print, print_id, print_index, print_parent,
 };
 pub use self::print::{DiffPrefix, HtmlPrinter, Id, Printer, TextPrinter};
 

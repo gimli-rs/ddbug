@@ -465,11 +465,7 @@ impl<'input> File<'input> {
                     found = true;
                 }
             }
-            if found {
-                None
-            } else {
-                Some(&symbols[index])
-            }
+            if found { None } else { Some(&symbols[index]) }
         } else {
             None
         }

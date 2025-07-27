@@ -2,8 +2,8 @@ use std::cmp;
 
 use parser::Section;
 
-use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 
 fn print_name(section: &Section, w: &mut dyn ValuePrinter) -> Result<()> {
     if let Some(segment) = section.segment() {

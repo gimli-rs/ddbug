@@ -1,11 +1,11 @@
 use std::borrow::Cow;
 
+use crate::Id;
 use crate::file::FileHash;
 use crate::function::Function;
 use crate::range::RangeList;
 use crate::types::Type;
 use crate::variable::Variable;
-use crate::Id;
 
 /// A compilation unit.
 #[derive(Debug, Default)]

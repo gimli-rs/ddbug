@@ -89,11 +89,7 @@ impl TypeOffset {
 
     #[inline]
     pub(crate) fn get(self) -> Option<usize> {
-        if self.is_none() {
-            None
-        } else {
-            Some(self.0)
-        }
+        if self.is_none() { None } else { Some(self.0) }
     }
 }
 
@@ -763,11 +759,7 @@ impl<'input> VariantPart<'input> {
                 bit_offset = o;
             }
         }
-        if bit_offset < u64::MAX {
-            bit_offset
-        } else {
-            0
-        }
+        if bit_offset < u64::MAX { bit_offset } else { 0 }
     }
 
     /// The largest size in bits for the variants of this variant part,
@@ -832,11 +824,7 @@ impl<'input> Variant<'input> {
                 bit_offset = o;
             }
         }
-        if bit_offset < u64::MAX {
-            bit_offset
-        } else {
-            0
-        }
+        if bit_offset < u64::MAX { bit_offset } else { 0 }
     }
 
     /// The size in bits for the members of this variant, excluding leading and trailing padding.
