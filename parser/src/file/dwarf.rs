@@ -1491,6 +1491,8 @@ where
                         variant.name = dwarf.string(dwarf_unit, attr);
                     }
 
+                    variant.source = variant.members.pop().unwrap().source;
+
                     // Parse the struct's members as our own.
                     variant.members.clear();
                     let mut iter = node.children();
@@ -1569,10 +1571,16 @@ where
             gimli::DW_AT_declaration => {
                 declaration = true;
             }
-            gimli::DW_AT_decl_file
-            | gimli::DW_AT_decl_line
-            | gimli::DW_AT_decl_column
-            | gimli::DW_AT_external
+            gimli::DW_AT_decl_file => {
+                parse_source_file(dwarf, dwarf_unit, &attr, &mut member.source);
+            }
+            gimli::DW_AT_decl_line => {
+                parse_source_line(&attr, &mut member.source);
+            }
+            gimli::DW_AT_decl_column => {
+                parse_source_column(&attr, &mut member.source);
+            }
+            gimli::DW_AT_external
             | gimli::DW_AT_accessibility
             | gimli::DW_AT_artificial
             | gimli::DW_AT_const_value
