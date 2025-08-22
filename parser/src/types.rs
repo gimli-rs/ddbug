@@ -810,10 +810,9 @@ impl<'input> Variant<'input> {
         self.name
     }
 
-    /// The source information for this variant.
+    /// The source information for the variant.
     ///
-    /// This field is only set when the variant comes from rust (which uses a single member for
-    /// every variant containing the source information)
+    /// This field is semingly only set in Rust when the variant comes from an async fn.
     #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
