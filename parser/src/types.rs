@@ -790,6 +790,7 @@ pub struct Variant<'input> {
     pub(crate) discr_value: Option<u64>,
     pub(crate) name: Option<&'input str>,
     pub(crate) members: Vec<Member<'input>>,
+    pub(crate) source: Source<'input>,
 }
 
 impl<'input> Variant<'input> {
@@ -807,6 +808,14 @@ impl<'input> Variant<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The source information for the variant.
+    ///
+    /// This field is semingly only set in Rust when the variant comes from an async fn.
+    #[inline]
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
     }
 
     /// The members for this variant.
@@ -901,6 +910,7 @@ impl Default for MemberOffset {
 pub struct Member<'input> {
     pub(crate) offset: MemberOffset,
     pub(crate) name: Option<&'input str>,
+    pub(crate) source: Source<'input>,
     pub(crate) ty: TypeOffset,
     // Defaults to 0, so always present.
     pub(crate) bit_offset: u64,
@@ -912,6 +922,12 @@ impl<'input> Member<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The source information for the member.
+    #[inline]
+    pub fn source(&self) -> &Source<'input> {
+        &self.source
     }
 
     /// The debuginfo offset of the type of this member.
