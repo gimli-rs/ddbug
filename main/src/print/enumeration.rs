@@ -1,6 +1,4 @@
-use std::cmp;
-
-use parser::{EnumerationType, Enumerator, FileHash, Unit};
+use parser::{EnumerationType, Enumerator, EnumeratorValue, FileHash, Unit};
 
 use crate::Result;
 use crate::print::{self, DiffList, DiffState, Print, PrintHeader, PrintState, ValuePrinter};
@@ -85,8 +83,10 @@ fn print_byte_size(ty: &EnumerationType, w: &mut dyn ValuePrinter, hash: &FileHa
 
 fn print_enumerator(ty: &Enumerator, w: &mut dyn ValuePrinter) -> Result<()> {
     write!(w, "{}", ty.name().unwrap_or("<anon>"))?;
-    if let Some(value) = ty.value() {
-        write!(w, "({})", value)?;
+    match ty.value() {
+        EnumeratorValue::Other => {}
+        EnumeratorValue::Signed(value) => write!(w, "({})", value)?,
+        EnumeratorValue::Unsigned(value) => write!(w, "({})", value)?,
     }
     Ok(())
 }
@@ -118,10 +118,10 @@ impl<'input> DiffList for Enumerator<'input> {
         // A difference in name is usually more significant than a difference in value,
         // such as for enums where the value is assigned by the compiler.
         let mut cost = 0;
-        if a.name().cmp(&b.name()) != cmp::Ordering::Equal {
+        if a.name() != b.name() {
             cost += 4;
         }
-        if a.value().cmp(&b.value()) != cmp::Ordering::Equal {
+        if a.value() != b.value() {
             cost += 2;
         }
         cost

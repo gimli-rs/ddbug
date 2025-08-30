@@ -16,9 +16,9 @@ use crate::namespace::{Namespace, NamespaceKind};
 use crate::range::Range;
 use crate::source::Source;
 use crate::types::{
-    ArrayType, BaseType, BaseTypeEncoding, Endianity, EnumerationType, Enumerator, FunctionType,
-    Inherit, Member, MemberOffset, ParameterType, PointerToMemberType, StructType, SubrangeType,
-    Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType,
+    ArrayType, BaseType, BaseTypeEncoding, Endianity, EnumerationType, Enumerator, EnumeratorValue,
+    FunctionType, Inherit, Member, MemberOffset, ParameterType, PointerToMemberType, StructType,
+    SubrangeType, Type, TypeDef, TypeKind, TypeModifier, TypeModifierKind, TypeOffset, UnionType,
     UnspecifiedType, Variant, VariantPart,
 };
 use crate::unit::Unit;
@@ -324,11 +324,15 @@ where
         })
     }
 
-    pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
+    pub(crate) fn get_enumerators(
+        &self,
+        offset: TypeOffset,
+        encoding: BaseTypeEncoding,
+    ) -> Vec<Enumerator<'input>> {
         self.type_tree(offset)
             .and_then(|(unit, mut tree)| {
                 let node = tree.root().ok()?;
-                parse_enumerators(self, unit, node).ok()
+                parse_enumerators(self, unit, node, encoding).ok()
             })
             .unwrap_or_default()
     }
@@ -1764,6 +1768,11 @@ where
             gimli::DW_AT_name => {
                 ty.name = dwarf.string(dwarf_unit, attr.value());
             }
+            gimli::DW_AT_type => {
+                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    ty.ty = offset;
+                }
+            }
             gimli::DW_AT_byte_size => {
                 if let Some(byte_size) = attr.udata_value() {
                     ty.byte_size = Size::new(byte_size);
@@ -1779,7 +1788,6 @@ where
             gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
             gimli::DW_AT_sibling
             | gimli::DW_AT_encoding
-            | gimli::DW_AT_type
             | gimli::DW_AT_alignment
             | gimli::DW_AT_enum_class => {}
             _ => debug!(
@@ -1818,6 +1826,7 @@ fn parse_enumerators<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    encoding: BaseTypeEncoding,
 ) -> Result<Vec<Enumerator<'input>>>
 where
     Endian: gimli::Endianity,
@@ -1827,7 +1836,7 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_enumerator => {
-                enumerators.push(parse_enumerator(dwarf, dwarf_unit, child)?);
+                enumerators.push(parse_enumerator(dwarf, dwarf_unit, child, encoding)?);
             }
             _ => {}
         }
@@ -1839,6 +1848,7 @@ fn parse_enumerator<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    encoding: BaseTypeEncoding,
 ) -> Result<Enumerator<'input>>
 where
     Endian: gimli::Endianity,
@@ -1852,8 +1862,13 @@ where
                 enumerator.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_const_value => {
-                if let Some(value) = attr.sdata_value() {
-                    enumerator.value = Some(value);
+                let value = if encoding.is_unsigned() {
+                    attr.udata_value().map(EnumeratorValue::Unsigned)
+                } else {
+                    attr.sdata_value().map(EnumeratorValue::Signed)
+                };
+                if let Some(value) = value {
+                    enumerator.value = value;
                 } else {
                     debug!("unknown enumerator const_value: {:?}", attr.value());
                 }
