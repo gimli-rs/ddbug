@@ -13,7 +13,7 @@ use crate::cfi::Cfi;
 use crate::function::{Function, FunctionDetails, FunctionOffset};
 use crate::location::Register;
 use crate::range::{Range, RangeList};
-use crate::types::{Enumerator, Type, TypeOffset};
+use crate::types::{BaseTypeEncoding, Enumerator, Type, TypeOffset};
 use crate::unit::Unit;
 use crate::variable::Variable;
 use crate::{Address, Result, Size};
@@ -35,9 +35,13 @@ where
         }
     }
 
-    fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
+    fn get_enumerators(
+        &self,
+        offset: TypeOffset,
+        encoding: BaseTypeEncoding,
+    ) -> Vec<Enumerator<'input>> {
         match self {
-            DebugInfo::Dwarf(dwarf) => dwarf.get_enumerators(offset),
+            DebugInfo::Dwarf(dwarf) => dwarf.get_enumerators(offset, encoding),
         }
     }
 
@@ -182,8 +186,12 @@ impl<'input> File<'input> {
         self.debug_info.get_type(offset)
     }
 
-    pub(crate) fn get_enumerators(&self, offset: TypeOffset) -> Vec<Enumerator<'input>> {
-        self.debug_info.get_enumerators(offset)
+    pub(crate) fn get_enumerators(
+        &self,
+        offset: TypeOffset,
+        encoding: BaseTypeEncoding,
+    ) -> Vec<Enumerator<'input>> {
+        self.debug_info.get_enumerators(offset, encoding)
     }
 
     pub(crate) fn get_function_details(

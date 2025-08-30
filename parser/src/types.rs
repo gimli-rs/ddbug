@@ -446,9 +446,10 @@ impl Default for Endianity {
 }
 
 /// The encoding of a base type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BaseTypeEncoding {
     /// Unsupported or unspecified encoding.
+    #[default]
     Other,
     /// True or false.
     Boolean,
@@ -466,9 +467,19 @@ pub enum BaseTypeEncoding {
     Float,
 }
 
-impl Default for BaseTypeEncoding {
-    fn default() -> Self {
-        Self::Other
+impl BaseTypeEncoding {
+    /// Return true if this is an unsigned integer type.
+    pub fn is_unsigned(self) -> bool {
+        match self {
+            BaseTypeEncoding::Unsigned
+            | BaseTypeEncoding::UnsignedChar
+            | BaseTypeEncoding::Boolean
+            | BaseTypeEncoding::Address => true,
+            BaseTypeEncoding::Other
+            | BaseTypeEncoding::Signed
+            | BaseTypeEncoding::SignedChar
+            | BaseTypeEncoding::Float => false,
+        }
     }
 }
 
@@ -1152,9 +1163,21 @@ impl<'input> EnumerationType<'input> {
         }
     }
 
+    /// The encoding of the underlying type, if it is a base type.
+    pub fn encoding(&self, hash: &FileHash) -> Option<BaseTypeEncoding> {
+        let ty = self.ty(hash)?;
+        if let TypeKind::Base(base) = &ty.kind {
+            return Some(base.encoding());
+        }
+        None
+    }
+
     /// The enumerators of this type.
     pub fn enumerators(&self, hash: &FileHash<'input>) -> Vec<Enumerator<'input>> {
-        hash.file.get_enumerators(self.offset)
+        hash.file.get_enumerators(
+            self.offset,
+            self.encoding(hash).unwrap_or(BaseTypeEncoding::Signed),
+        )
     }
 
     /// Compare the identifying information of two types.
@@ -1172,7 +1195,7 @@ impl<'input> EnumerationType<'input> {
 #[derive(Debug, Default, Clone)]
 pub struct Enumerator<'input> {
     pub(crate) name: Option<&'input str>,
-    pub(crate) value: Option<i64>,
+    pub(crate) value: EnumeratorValue,
 }
 
 impl<'input> Enumerator<'input> {
@@ -1184,9 +1207,25 @@ impl<'input> Enumerator<'input> {
 
     /// The value of the enumerator.
     #[inline]
-    pub fn value(&self) -> Option<i64> {
+    pub fn value(&self) -> EnumeratorValue {
         self.value
     }
+}
+
+/// The encoding of a base type.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnumeratorValue {
+    /// Unsupported or unspecified value.
+    #[default]
+    Other,
+    /// A signed integer value.
+    ///
+    /// The size is determined by the enumeration.
+    Signed(i64),
+    /// An unsigned integer value.
+    ///
+    /// The size is determined by the enumeration.
+    Unsigned(u64),
 }
 
 /// A type for an array of elements.
