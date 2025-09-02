@@ -3430,7 +3430,8 @@ where
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
                         if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                            call.target = l;
+                            call.target_locations =
+                                l.into_iter().map(|p| (Range::all(), p)).collect();
                         }
                     }
                     gimli::AttributeValue::LocationListsRef(..) => {
@@ -3533,7 +3534,7 @@ where
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.location = l;
+                        parameter.locations = l.into_iter().map(|p| (Range::all(), p)).collect();
                     }
                 }
                 gimli::AttributeValue::LocationListsRef(..) => {
@@ -3549,7 +3550,8 @@ where
             gimli::DW_AT_GNU_call_site_value | gimli::DW_AT_call_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.value = l;
+                        parameter.value_locations =
+                            l.into_iter().map(|p| (Range::all(), p)).collect();
                     }
                 }
                 gimli::AttributeValue::LocationListsRef(..) => {
@@ -3562,7 +3564,8 @@ where
             gimli::DW_AT_call_data_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.data_location = l;
+                        parameter.dataref_locations =
+                            l.into_iter().map(|p| (Range::all(), p)).collect();
                     }
                 }
                 gimli::AttributeValue::LocationListsRef(..) => {
@@ -3578,7 +3581,8 @@ where
             gimli::DW_AT_call_data_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.data_value = l;
+                        parameter.dataref_value_locations =
+                            l.into_iter().map(|p| (Range::all(), p)).collect();
                     }
                 }
                 gimli::AttributeValue::LocationListsRef(..) => {
