@@ -3,8 +3,8 @@ use parser::{
     FunctionCallOrigin, FunctionCallParameter, Piece, Unit,
 };
 
-use crate::print::{self, Print, PrintState, ValuePrinter};
 use crate::Result;
+use crate::print::{self, Print, PrintState, ValuePrinter};
 
 fn print_kind(kind: FunctionCallKind, w: &mut dyn ValuePrinter) -> Result<()> {
     match kind {

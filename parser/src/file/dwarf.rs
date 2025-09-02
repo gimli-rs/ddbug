@@ -228,17 +228,17 @@ impl<R: gimli::Reader<Offset = usize>> gimli::Reader for Relocate<'_, R> {
     }
 
     #[inline]
-    fn to_slice(&self) -> gimli::Result<Cow<[u8]>> {
+    fn to_slice(&'_ self) -> gimli::Result<Cow<'_, [u8]>> {
         self.reader.to_slice()
     }
 
     #[inline]
-    fn to_string(&self) -> gimli::Result<Cow<str>> {
+    fn to_string(&'_ self) -> gimli::Result<Cow<'_, str>> {
         self.reader.to_string()
     }
 
     #[inline]
-    fn to_string_lossy(&self) -> gimli::Result<Cow<str>> {
+    fn to_string_lossy(&'_ self) -> gimli::Result<Cow<'_, str>> {
         self.reader.to_string_lossy()
     }
 
@@ -304,11 +304,11 @@ where
     }
 
     fn tree(
-        &self,
+        &'_ self,
         offset: gimli::DebugInfoOffset,
     ) -> Option<(
-        &DwarfUnit<'input, Endian>,
-        gimli::EntriesTree<Reader<'input, Endian>>,
+        &'_ DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
         // FIXME: make this more efficient for large numbers of units
         // FIXME: cache lookups
@@ -323,11 +323,11 @@ where
     }
 
     fn type_tree(
-        &self,
+        &'_ self,
         offset: TypeOffset,
     ) -> Option<(
-        &DwarfUnit<'input, Endian>,
-        gimli::EntriesTree<Reader<'input, Endian>>,
+        &'_ DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
         offset
             .get()
@@ -335,11 +335,11 @@ where
     }
 
     fn function_tree(
-        &self,
+        &'_ self,
         offset: FunctionOffset,
     ) -> Option<(
-        &DwarfUnit<'input, Endian>,
-        gimli::EntriesTree<Reader<'input, Endian>>,
+        &'_ DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
         offset
             .get()

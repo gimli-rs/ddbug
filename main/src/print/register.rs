@@ -12,14 +12,6 @@ pub(crate) fn print_list(state: &mut PrintState, mut registers: Vec<Register>) -
     Ok(())
 }
 
-pub(crate) fn print_list_with_ranges(
-    state: &mut PrintState,
-    registers: &[(Range, Register)],
-) -> Result<()> {
-    state.field_expanded("registers", |state| state.list(&(), registers))?;
-    Ok(())
-}
-
 pub(crate) fn diff_list(
     state: &mut DiffState,
     mut registers_a: Vec<Register>,

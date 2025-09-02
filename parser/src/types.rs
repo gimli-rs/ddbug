@@ -943,7 +943,7 @@ impl<'input> Member<'input> {
     pub fn source(&self) -> &Source<'input> {
         &self.source
     }
-    
+
     /// The debuginfo offset of this member.
     #[inline]
     pub fn offset(&self) -> MemberOffset {
