@@ -18,6 +18,7 @@ pub(crate) mod enumeration;
 pub(crate) mod file;
 pub(crate) mod frame_location;
 pub(crate) mod function;
+pub(crate) mod function_call;
 pub(crate) mod inherit;
 pub(crate) mod inlined_function;
 pub(crate) mod local_variable;
@@ -385,12 +386,12 @@ pub(crate) struct DiffState<'a> {
 
 impl<'a> DiffState<'a> {
     #[inline]
-    fn a(&mut self) -> PrintState {
+    fn a(&'_ mut self) -> PrintState<'_> {
         PrintState::new(self.printer, self.hash_a, self.code_a, self.options)
     }
 
     #[inline]
-    fn b(&mut self) -> PrintState {
+    fn b(&'_ mut self) -> PrintState<'_> {
         PrintState::new(self.printer, self.hash_b, self.code_b, self.options)
     }
 

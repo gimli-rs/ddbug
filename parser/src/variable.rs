@@ -13,7 +13,7 @@ use crate::{Address, Id, Size};
 /// The debuginfo offset of a variable.
 ///
 /// This is unique for all variables in a file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct VariableOffset(usize);
 
 impl VariableOffset {
@@ -26,6 +26,11 @@ impl VariableOffset {
     #[inline]
     pub(crate) fn none() -> VariableOffset {
         VariableOffset(usize::MAX)
+    }
+
+    #[inline]
+    pub(crate) fn is_none(self) -> bool {
+        self == Self::none()
     }
 }
 
@@ -53,6 +58,16 @@ pub struct Variable<'input> {
 }
 
 impl<'input> Variable<'input> {
+    pub(crate) fn from_offset<'a>(
+        hash: &'a FileHash<'input>,
+        offset: VariableOffset,
+    ) -> Option<&'input Variable<'input>> {
+        if offset.is_none() {
+            return None;
+        }
+        hash.variables_by_offset.get(&offset).cloned()
+    }
+
     /// The user defined id for this variable.
     #[inline]
     pub fn id(&self) -> usize {
@@ -175,6 +190,12 @@ impl<'input> LocalVariable<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The debuginfo offset of the variable.
+    #[inline]
+    pub fn offset(&self) -> VariableOffset {
+        self.offset
     }
 
     /// The type offset of the variable.

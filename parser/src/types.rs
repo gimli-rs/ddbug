@@ -38,7 +38,7 @@ pub enum TypeKind<'input> {
     Subrange(SubrangeType<'input>),
 }
 
-impl<'input> TypeKind<'input> {
+impl TypeKind<'_> {
     fn discriminant_value(&self) -> u8 {
         match *self {
             TypeKind::Void => 1,
@@ -108,7 +108,7 @@ pub struct Type<'input> {
     pub(crate) kind: TypeKind<'input>,
 }
 
-impl<'input> Default for Type<'input> {
+impl Default for Type<'_> {
     fn default() -> Self {
         Type {
             id: Id::new(0),
@@ -893,8 +893,11 @@ impl<'input> Variant<'input> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct MemberOffset(usize);
+/// The debuginfo offset of a member.
+///
+/// This is unique for all members in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct MemberOffset(usize);
 
 impl MemberOffset {
     #[inline]
@@ -939,6 +942,12 @@ impl<'input> Member<'input> {
     #[inline]
     pub fn source(&self) -> &Source<'input> {
         &self.source
+    }
+
+    /// The debuginfo offset of this member.
+    #[inline]
+    pub fn offset(&self) -> MemberOffset {
+        self.offset
     }
 
     /// The debuginfo offset of the type of this member.

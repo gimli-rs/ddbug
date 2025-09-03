@@ -35,6 +35,7 @@ impl<'input> Print for InlinedFunction<'input> {
             // which requires that there are no duplicate functions
             |state| state.line(|w, state| print_size_and_decl(self, w, state)),
             |state| {
+                state.field_expanded("ranges", |state| state.list(&(), self.ranges()))?;
                 if state.options().print_source {
                     state.field("call source", |w, _state| print_call_source(self, w, unit))?;
                 }
@@ -46,6 +47,11 @@ impl<'input> Print for InlinedFunction<'input> {
                 if state.options().print_function_variables {
                     state
                         .field_collapsed("variables", |state| state.list(unit, self.variables()))?;
+                }
+                if state.options().print_function_calls {
+                    state.inline(|state| {
+                        state.field_collapsed("call sites", |state| state.list(unit, self.calls()))
+                    })?;
                 }
                 state.inline(|state| state.list(unit, self.inlined_functions()))?;
                 Ok(())

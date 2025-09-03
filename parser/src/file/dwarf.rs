@@ -3,13 +3,15 @@ use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::sync::Arc;
 
-use gimli::Reader as GimliReader;
+use gimli::{LocationListsOffset, RangeListsOffset, Reader as GimliReader};
 use object::{self, ObjectSection, ObjectSymbol};
 
 use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{Architecture, Arena, DebugInfo, FileHash};
 use crate::function::{
-    Function, FunctionDetails, FunctionOffset, InlinedFunction, Parameter, ParameterOffset,
+    CalledFromAddress, Function, FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind,
+    FunctionCallOrigin, FunctionCallParameter, FunctionDetails, FunctionOffset, InlinedFunction,
+    Parameter, ParameterOffset,
 };
 use crate::location::{Location, Piece, Register};
 use crate::namespace::{Namespace, NamespaceKind};
@@ -114,7 +116,7 @@ struct Relocate<'a, R: gimli::Reader<Offset = usize>> {
     reader: R,
 }
 
-impl<'a, R: gimli::Reader<Offset = usize>> Relocate<'a, R> {
+impl<R: gimli::Reader<Offset = usize>> Relocate<'_, R> {
     fn relocate(&self, offset: usize, value: u64) -> u64 {
         if let Some(relocation) = self.relocations.get(&offset) {
             match relocation.kind() {
@@ -142,7 +144,7 @@ where
     }
 }
 
-impl<'a, R: gimli::Reader<Offset = usize>> gimli::Reader for Relocate<'a, R> {
+impl<R: gimli::Reader<Offset = usize>> gimli::Reader for Relocate<'_, R> {
     type Endian = R::Endian;
     type Offset = R::Offset;
 
@@ -226,17 +228,17 @@ impl<'a, R: gimli::Reader<Offset = usize>> gimli::Reader for Relocate<'a, R> {
     }
 
     #[inline]
-    fn to_slice(&self) -> gimli::Result<Cow<[u8]>> {
+    fn to_slice(&'_ self) -> gimli::Result<Cow<'_, [u8]>> {
         self.reader.to_slice()
     }
 
     #[inline]
-    fn to_string(&self) -> gimli::Result<Cow<str>> {
+    fn to_string(&'_ self) -> gimli::Result<Cow<'_, str>> {
         self.reader.to_string()
     }
 
     #[inline]
-    fn to_string_lossy(&self) -> gimli::Result<Cow<str>> {
+    fn to_string_lossy(&'_ self) -> gimli::Result<Cow<'_, str>> {
         self.reader.to_string_lossy()
     }
 
@@ -274,12 +276,39 @@ where
             .ok()
     }
 
-    fn tree(
+    #[inline]
+    fn addr(
         &self,
+        dwarf_unit: &DwarfUnit<'input, Endian>,
+        value: gimli::AttributeValue<Reader<'input, Endian>>,
+    ) -> Option<u64> {
+        self.read.attr_address(dwarf_unit, value).ok()?
+    }
+
+    #[inline]
+    fn rangelist(
+        &self,
+        dwarf_unit: &DwarfUnit<'input, Endian>,
+        value: gimli::AttributeValue<Reader<'input, Endian>>,
+    ) -> Option<RangeListsOffset<usize>> {
+        self.read.attr_ranges_offset(dwarf_unit, value).ok()?
+    }
+
+    #[inline]
+    fn loclist(
+        &self,
+        dwarf_unit: &DwarfUnit<'input, Endian>,
+        value: gimli::AttributeValue<Reader<'input, Endian>>,
+    ) -> Option<LocationListsOffset<usize>> {
+        self.read.attr_locations_offset(dwarf_unit, value).ok()?
+    }
+
+    fn tree(
+        &'_ self,
         offset: gimli::DebugInfoOffset,
     ) -> Option<(
-        &DwarfUnit<'input, Endian>,
-        gimli::EntriesTree<Reader<'input, Endian>>,
+        &'_ DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
         // FIXME: make this more efficient for large numbers of units
         // FIXME: cache lookups
@@ -294,11 +323,11 @@ where
     }
 
     fn type_tree(
-        &self,
+        &'_ self,
         offset: TypeOffset,
     ) -> Option<(
-        &DwarfUnit<'input, Endian>,
-        gimli::EntriesTree<Reader<'input, Endian>>,
+        &'_ DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
         offset
             .get()
@@ -306,11 +335,11 @@ where
     }
 
     fn function_tree(
-        &self,
+        &'_ self,
         offset: FunctionOffset,
     ) -> Option<(
-        &DwarfUnit<'input, Endian>,
-        gimli::EntriesTree<Reader<'input, Endian>>,
+        &'_ DwarfUnit<'input, Endian>,
+        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
         offset
             .get()
@@ -468,6 +497,7 @@ where
     let mut high_pc = None;
     let mut size = None;
     let mut attrs = entry.attrs();
+    let mut found_unknown = false;
     while let Some(attr) = attrs.next()? {
         match attr.name() {
             gimli::DW_AT_name => {
@@ -482,19 +512,20 @@ where
                 }
             }
             gimli::DW_AT_low_pc => {
-                if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    unit.low_pc = Some(addr);
-                }
+                unit.low_pc = dwarf.addr(&dwarf_unit, attr.value());
             }
             gimli::DW_AT_high_pc => match attr.value() {
-                gimli::AttributeValue::Addr(val) => high_pc = Some(val),
                 gimli::AttributeValue::Udata(val) => size = Some(val),
-                val => debug!("unknown CU DW_AT_high_pc: {:?}", val),
+                val => {
+                    if let Some(val) = dwarf.addr(&dwarf_unit, attr.value()) {
+                        high_pc = Some(val);
+                    } else {
+                        debug!("unknown CU DW_AT_high_pc: {:?}", val);
+                    }
+                }
             },
             gimli::DW_AT_ranges => {
-                if let gimli::AttributeValue::RangeListsRef(val) = attr.value() {
-                    ranges = Some(val);
-                }
+                ranges = dwarf.rangelist(&dwarf_unit, attr.value());
             }
             gimli::DW_AT_stmt_list
             | gimli::DW_AT_producer
@@ -503,8 +534,15 @@ where
             | gimli::DW_AT_macro_info
             | gimli::DW_AT_GNU_macros
             | gimli::DW_AT_GNU_pubnames
-            | gimli::DW_AT_sibling => {}
-            _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
+            | gimli::DW_AT_sibling
+            | gimli::DW_AT_str_offsets_base
+            | gimli::DW_AT_addr_base
+            | gimli::DW_AT_rnglists_base
+            | gimli::DW_AT_loclists_base => {}
+            _ => {
+                debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value());
+                found_unknown = true;
+            }
         }
     }
 
@@ -534,7 +572,6 @@ where
             }
         }
     } else if let Some(offset) = ranges {
-        let offset = dwarf.read.ranges_offset_from_raw(&dwarf_unit, offset);
         let mut ranges = dwarf.read.ranges(&dwarf_unit, offset)?;
         while let Some(range) = ranges.next()? {
             if range.begin < range.end {
@@ -580,6 +617,13 @@ where
         &mut variables,
     )?;
     fixup_variable_specifications(&mut unit, dwarf, &dwarf_unit, &mut variables)?;
+
+    if found_unknown {
+        debug!(
+            "found one or more unknown CU attributes for unit: {:#?}",
+            unit
+        );
+    }
 
     dwarf.units.push(dwarf_unit);
     Ok(unit)
@@ -1248,7 +1292,7 @@ where
                 parse_member(&mut ty.members, unit, dwarf, dwarf_unit, &namespace, child)?;
             }
             gimli::DW_TAG_inheritance => {
-                parse_inheritance(&mut ty.inherits, dwarf_unit, child)?;
+                parse_inheritance(&mut ty.inherits, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_variant_part => {
                 parse_variant_part(
@@ -1552,7 +1596,7 @@ where
                 }
             }
             gimli::DW_AT_data_member_location => {
-                if let Some(offset) = parse_data_member_location(dwarf_unit, &attr) {
+                if let Some(offset) = parse_data_member_location(dwarf, dwarf_unit, &attr) {
                     member.bit_offset = offset;
                 }
             }
@@ -1661,6 +1705,7 @@ where
 
 fn parse_inheritance<'input, Endian>(
     inherits: &mut Vec<Inherit>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
 ) -> Result<()>
@@ -1678,7 +1723,7 @@ where
                 }
             }
             gimli::DW_AT_data_member_location => {
-                if let Some(offset) = parse_data_member_location(dwarf_unit, &attr) {
+                if let Some(offset) = parse_data_member_location(dwarf, dwarf_unit, &attr) {
                     inherit.bit_offset = offset;
                 }
             }
@@ -1706,7 +1751,8 @@ where
 }
 
 fn parse_data_member_location<Endian>(
-    dwarf_unit: &DwarfUnit<Endian>,
+    dwarf: &DwarfDebugInfo<'_, Endian>,
+    dwarf_unit: &DwarfUnit<'_, Endian>,
     attr: &gimli::Attribute<Reader<Endian>>,
 ) -> Option<u64>
 where
@@ -1722,7 +1768,7 @@ where
             }
         }
         gimli::AttributeValue::Exprloc(expr) => {
-            if let Some(offset) = evaluate_member_location(&dwarf_unit.header, expr) {
+            if let Some(offset) = evaluate_member_location(dwarf, dwarf_unit, expr) {
                 return Some(offset);
             }
         }
@@ -2247,25 +2293,27 @@ where
                 }
             }
             gimli::DW_AT_low_pc => {
-                if let gimli::AttributeValue::Addr(addr) = attr.value() {
+                let val = attr.value();
+                if let Some(addr) = dwarf.addr(dwarf_unit, val) {
                     if addr != 0 || unit.low_pc == Some(0) {
                         function.address = Address::new(addr);
                     }
+                } else {
+                    debug!("found subprogram low_pc with unknown address: {:?}", val);
                 }
             }
             gimli::DW_AT_high_pc => match attr.value() {
-                gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
                 gimli::AttributeValue::Udata(val) => {
                     if val != 0 {
                         size = Some(val);
                     }
                 }
-                _ => {}
+                val => {
+                    high_pc = dwarf.addr(dwarf_unit, val);
+                }
             },
             gimli::DW_AT_ranges => {
-                if let gimli::AttributeValue::RangeListsRef(val) = attr.value() {
-                    ranges = Some(val);
-                }
+                ranges = dwarf.rangelist(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
@@ -2284,7 +2332,10 @@ where
                 }
             }
             gimli::DW_AT_frame_base => {
-                // FIXME
+                // FIXME / TODO
+            }
+            gimli::DW_AT_calling_convention => {
+                // FIXME / TODO
             }
             gimli::DW_AT_external
             | gimli::DW_AT_call_all_calls
@@ -2313,7 +2364,6 @@ where
     }
 
     if let Some(offset) = ranges {
-        let offset = dwarf.read.ranges_offset_from_raw(dwarf_unit, offset);
         let mut ranges = dwarf.read.ranges(dwarf_unit, offset)?;
         let mut size = 0;
         while let Some(range) = ranges.next()? {
@@ -2604,26 +2654,29 @@ where
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
                         evaluate_parameter_location(
-                            &dwarf_unit.header,
+                            dwarf,
+                            dwarf_unit,
                             Range::all(),
                             expr,
                             &mut parameter,
                         );
                     }
-                    gimli::AttributeValue::LocationListsRef(offset) => {
-                        let mut locations = dwarf.read.locations(dwarf_unit, offset)?;
-                        while let Some(location) = locations.next()? {
-                            // TODO: use location.range too
-                            evaluate_parameter_location(
-                                &dwarf_unit.header,
-                                location.range.into(),
-                                location.data,
-                                &mut parameter,
-                            );
+                    val => {
+                        if let Some(offset) = dwarf.loclist(dwarf_unit, val) {
+                            let mut locations = dwarf.read.locations(dwarf_unit, offset)?;
+                            while let Some(location) = locations.next()? {
+                                // TODO: use location.range too
+                                evaluate_parameter_location(
+                                    dwarf,
+                                    dwarf_unit,
+                                    location.range.into(),
+                                    location.data,
+                                    &mut parameter,
+                                );
+                            }
+                        } else {
+                            debug!("unknown parameter DW_AT_location: {:?}", attr.value());
                         }
-                    }
-                    _ => {
-                        debug!("unknown parameter DW_AT_location: {:?}", attr.value());
                     }
                 }
             }
@@ -2872,6 +2925,7 @@ where
             parameters: Vec::new(),
             variables: Vec::new(),
             inlined_functions: Vec::new(),
+            calls: Vec::new(),
         });
 
     parse_subprogram_children_details(hash, dwarf, dwarf_unit, &mut details, node.children())?;
@@ -2907,11 +2961,18 @@ where
                 parse_lexical_block_details(
                     &mut function.inlined_functions,
                     &mut function.variables,
+                    &mut function.calls,
                     hash,
                     dwarf,
                     dwarf_unit,
                     child,
                 )?;
+            }
+            gimli::DW_TAG_call_site => {
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, false)?;
+            }
+            gimli::DW_TAG_GNU_call_site => {
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, true)?;
             }
             // Checking for unknown tags is done in `parse_subprogram_children`.
             _ => {}
@@ -2923,6 +2984,7 @@ where
 fn parse_lexical_block_details<'input, Endian>(
     inlined_functions: &mut Vec<InlinedFunction<'input>>,
     local_variables: &mut Vec<LocalVariable<'input>>,
+    calls: &mut Vec<FunctionCall<'input>>,
     hash: &FileHash<'input>,
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: &DwarfUnit<'input, Endian>,
@@ -2948,11 +3010,18 @@ where
                 parse_lexical_block_details(
                     inlined_functions,
                     local_variables,
+                    calls,
                     hash,
                     dwarf,
                     dwarf_unit,
                     child,
                 )?;
+            }
+            gimli::DW_TAG_call_site => {
+                parse_call_site(calls, hash, dwarf, dwarf_unit, child, false)?;
+            }
+            gimli::DW_TAG_GNU_call_site => {
+                parse_call_site(calls, hash, dwarf, dwarf_unit, child, true)?;
             }
             // Checking for unknown tags is done in `parse_lexical_block`.
             _ => {}
@@ -2984,19 +3053,16 @@ where
                 }
             }
             gimli::DW_AT_low_pc => {
-                if let gimli::AttributeValue::Addr(addr) = attr.value() {
-                    low_pc = Some(addr);
-                }
+                low_pc = dwarf.addr(dwarf_unit, attr.value());
             }
             gimli::DW_AT_high_pc => match attr.value() {
-                gimli::AttributeValue::Addr(addr) => high_pc = Some(addr),
                 gimli::AttributeValue::Udata(val) => size = Some(val),
-                _ => {}
+                val => {
+                    high_pc = dwarf.addr(dwarf_unit, val);
+                }
             },
             gimli::DW_AT_ranges => {
-                if let gimli::AttributeValue::RangeListsRef(val) = attr.value() {
-                    ranges = Some(val);
-                }
+                ranges = dwarf.rangelist(dwarf_unit, attr.value());
             }
             gimli::DW_AT_call_file => {
                 parse_source_file(dwarf, dwarf_unit, &attr, &mut function.call_source)
@@ -3028,7 +3094,6 @@ where
 
     if let Some(offset) = ranges {
         let mut size = 0;
-        let offset = dwarf.read.ranges_offset_from_raw(dwarf_unit, offset);
         let mut ranges = dwarf.read.ranges(dwarf_unit, offset)?;
         while let Some(range) = ranges.next()? {
             if range.end > range.begin {
@@ -3080,13 +3145,20 @@ where
                 parse_lexical_block_details(
                     &mut function.inlined_functions,
                     &mut function.variables,
+                    &mut function.calls,
                     hash,
                     dwarf,
                     dwarf_unit,
                     child,
                 )?;
             }
-            gimli::DW_TAG_label | gimli::DW_TAG_call_site | gimli::DW_TAG_GNU_call_site => {}
+            gimli::DW_TAG_call_site => {
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, false)?;
+            }
+            gimli::DW_TAG_GNU_call_site => {
+                parse_call_site(&mut function.calls, hash, dwarf, dwarf_unit, child, true)?;
+            }
+            gimli::DW_TAG_label => {}
             tag => {
                 debug!("unknown inlined_subroutine child tag: {}", tag);
             }
@@ -3145,7 +3217,7 @@ where
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some((address, size)) =
-                        evaluate_variable_location(&dwarf_unit.header, expr)
+                        evaluate_variable_location(dwarf, dwarf_unit, expr)
                     {
                         variable.address = address;
                         if size.is_some() {
@@ -3230,26 +3302,29 @@ where
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
                         evaluate_local_variable_location(
-                            &dwarf_unit.header,
+                            dwarf,
+                            dwarf_unit,
                             Range::all(),
                             expr,
                             &mut variable,
                         );
                     }
-                    gimli::AttributeValue::LocationListsRef(offset) => {
-                        let mut locations = dwarf.read.locations(dwarf_unit, offset)?;
-                        while let Some(location) = locations.next()? {
-                            // TODO: use location.range too
-                            evaluate_local_variable_location(
-                                &dwarf_unit.header,
-                                location.range.into(),
-                                location.data,
-                                &mut variable,
-                            );
+                    val => {
+                        if let Some(offset) = dwarf.loclist(dwarf_unit, val) {
+                            let mut locations = dwarf.read.locations(dwarf_unit, offset)?;
+                            while let Some(location) = locations.next()? {
+                                // TODO: use location.range too
+                                evaluate_local_variable_location(
+                                    dwarf,
+                                    dwarf_unit,
+                                    location.range.into(),
+                                    location.data,
+                                    &mut variable,
+                                );
+                            }
+                        } else {
+                            debug!("unknown local variable DW_AT_location: {:?}", attr.value());
                         }
-                    }
-                    _ => {
-                        debug!("unknown local variable DW_AT_location: {:?}", attr.value());
                     }
                 }
             }
@@ -3321,14 +3396,240 @@ where
     Ok(())
 }
 
+fn parse_call_site<'input, Endian>(
+    calls: &mut Vec<FunctionCall<'input>>,
+    hash: &FileHash<'input>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    is_gnu: bool,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut call = FunctionCall::default();
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        let name = attr.name();
+        match name {
+            gimli::DW_AT_call_origin | gimli::DW_AT_abstract_origin => {
+                if let Some(offset) =
+                    parse_function_call_origin_offset(hash, dwarf, dwarf_unit, &attr)
+                {
+                    call.origin = Some(offset);
+                }
+            }
+            gimli::DW_AT_GNU_tail_call | gimli::DW_AT_call_tail_call => {
+                call.kind = FunctionCallKind::Tail;
+            }
+            gimli::DW_AT_GNU_call_site_target
+            | gimli::DW_AT_GNU_call_site_target_clobbered
+            | gimli::DW_AT_call_target
+            | gimli::DW_AT_call_target_clobbered => {
+                match attr.value() {
+                    gimli::AttributeValue::Exprloc(expr) => {
+                        if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
+                            call.target_locations =
+                                l.into_iter().map(|p| (Range::all(), p)).collect();
+                        }
+                    }
+                    gimli::AttributeValue::LocationListsRef(..) => {
+                        debug!(
+                            "loclist for call_site_parameter location: {:?}",
+                            attr.value()
+                        );
+                    }
+                    _ => {
+                        debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                    }
+                }
+
+                if matches!(
+                    name,
+                    gimli::DW_AT_GNU_call_site_target_clobbered
+                        | gimli::DW_AT_call_target_clobbered
+                ) {
+                    call.target_is_clobbered = true;
+                }
+            }
+            gimli::DW_AT_low_pc => {
+                if is_gnu {
+                    if let Some(addr) = dwarf.addr(dwarf_unit, attr.value()) {
+                        // (the current value is the next address, so fill in the return addr with this address).
+                        // The called_from address can be derived as the instruction prior to this one.
+                        call.return_address = Some(addr);
+                        call.called_from_address = Some(CalledFromAddress::PreviousToReturnAddress);
+                    }
+                } else {
+                    debug!("non-GNU call_site using DW_AT_low_pc: {:?}", attr.value());
+                }
+            }
+            gimli::DW_AT_call_return_pc => {
+                call.return_address = dwarf.addr(dwarf_unit, attr.value());
+            }
+            gimli::DW_AT_call_pc => {
+                call.called_from_address = dwarf
+                    .addr(dwarf_unit, attr.value())
+                    .map(CalledFromAddress::Specific);
+            }
+            gimli::DW_AT_type => {
+                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    call.called_function_ty = Some(offset);
+                }
+            }
+            gimli::DW_AT_call_file => parse_source_file(
+                dwarf,
+                dwarf_unit,
+                &attr,
+                call.called_from_source.get_or_insert_default(),
+            ),
+            gimli::DW_AT_call_line => {
+                parse_source_line(&attr, call.called_from_source.get_or_insert_default())
+            }
+            gimli::DW_AT_call_column => {
+                parse_source_column(&attr, call.called_from_source.get_or_insert_default())
+            }
+            _ => debug!(
+                "unknown call_site attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    if call.called_from_address.is_none() && call.return_address.is_some() {
+        call.called_from_address = Some(CalledFromAddress::PreviousToReturnAddress);
+    }
+
+    // visit the call site's children (parameters)
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_GNU_call_site_parameter | gimli::DW_TAG_call_site_parameter => {
+                parse_call_site_parameter(&mut call.parameter_inputs, dwarf, dwarf_unit, child)?;
+            }
+            tag => debug!("unknown call_site child tag: {}", tag),
+        }
+    }
+
+    calls.push(call);
+    Ok(())
+}
+
+fn parse_call_site_parameter<'input, Endian>(
+    call_site_parameters: &mut Vec<FunctionCallParameter<'input>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let mut parameter = FunctionCallParameter::default();
+
+    let mut attrs = node.entry().attrs();
+    while let Some(attr) = attrs.next()? {
+        match attr.name() {
+            gimli::DW_AT_location => match attr.value() {
+                gimli::AttributeValue::Exprloc(expr) => {
+                    if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
+                        parameter.locations = l.into_iter().map(|p| (Range::all(), p)).collect();
+                    }
+                }
+                gimli::AttributeValue::LocationListsRef(..) => {
+                    debug!(
+                        "loclist for call_site_parameter location: {:?}",
+                        attr.value()
+                    );
+                }
+                _ => {
+                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                }
+            },
+            gimli::DW_AT_GNU_call_site_value | gimli::DW_AT_call_value => match attr.value() {
+                gimli::AttributeValue::Exprloc(expr) => {
+                    if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
+                        parameter.value_locations =
+                            l.into_iter().map(|p| (Range::all(), p)).collect();
+                    }
+                }
+                gimli::AttributeValue::LocationListsRef(..) => {
+                    debug!("loclist for call_site_parameter value: {:?}", attr.value());
+                }
+                _ => {
+                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                }
+            },
+            gimli::DW_AT_call_data_location => match attr.value() {
+                gimli::AttributeValue::Exprloc(expr) => {
+                    if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
+                        parameter.dataref_locations =
+                            l.into_iter().map(|p| (Range::all(), p)).collect();
+                    }
+                }
+                gimli::AttributeValue::LocationListsRef(..) => {
+                    debug!(
+                        "loclist for call_site_parameter data location: {:?}",
+                        attr.value()
+                    );
+                }
+                _ => {
+                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                }
+            },
+            gimli::DW_AT_call_data_value => match attr.value() {
+                gimli::AttributeValue::Exprloc(expr) => {
+                    if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
+                        parameter.dataref_value_locations =
+                            l.into_iter().map(|p| (Range::all(), p)).collect();
+                    }
+                }
+                gimli::AttributeValue::LocationListsRef(..) => {
+                    debug!(
+                        "loclist for call_site_parameter data value: {:?}",
+                        attr.value()
+                    );
+                }
+                _ => {
+                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                }
+            },
+            gimli::DW_AT_call_parameter => {
+                if let Some(offset) = parse_parameter_offset(dwarf_unit, &attr) {
+                    parameter.parameter.get_or_insert_default().offset = offset;
+                }
+            }
+            gimli::DW_AT_name => {
+                parameter.parameter.get_or_insert_default().name =
+                    dwarf.string(dwarf_unit, attr.value());
+            }
+            gimli::DW_AT_type => {
+                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    parameter.parameter.get_or_insert_default().ty = offset;
+                }
+            }
+            _ => debug!(
+                "unknown call_site_parameter attribute: {} {:?}",
+                attr.name(),
+                attr.value()
+            ),
+        }
+    }
+
+    call_site_parameters.push(parameter);
+    Ok(())
+}
+
 fn evaluate_member_location<'input, Endian>(
-    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
     expression: gimli::Expression<Reader<'input, Endian>>,
 ) -> Option<u64>
 where
     Endian: gimli::Endianity,
 {
-    let pieces = evaluate(unit, expression, true);
+    let pieces = evaluate(dwarf, dwarf_unit, expression, true);
     if pieces.len() != 1 {
         debug!("unsupported number of evaluation pieces: {:?}", pieces);
         return None;
@@ -3344,13 +3645,14 @@ where
 }
 
 fn evaluate_variable_location<'input, Endian>(
-    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
     expression: gimli::Expression<Reader<'input, Endian>>,
 ) -> Option<(Address, Size)>
 where
     Endian: gimli::Endianity,
 {
-    let pieces = evaluate(unit, expression, false);
+    let pieces = evaluate(dwarf, dwarf_unit, expression, false);
     let mut result = None;
     for piece in &*pieces {
         match piece.location {
@@ -3380,14 +3682,15 @@ where
 }
 
 fn evaluate_local_variable_location<'input, Endian>(
-    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
     range: Range,
     expression: gimli::Expression<Reader<'input, Endian>>,
     variable: &mut LocalVariable<'input>,
 ) where
     Endian: gimli::Endianity,
 {
-    let pieces = match evaluate_simple(unit, expression, false) {
+    let pieces = match evaluate_simple(dwarf, dwarf_unit, expression, false) {
         Ok(locations) => locations,
         Err(_e) => {
             // This happens a lot, not sure if bugs or bad DWARF.
@@ -3425,14 +3728,15 @@ fn evaluate_local_variable_location<'input, Endian>(
 }
 
 fn evaluate_parameter_location<'input, Endian>(
-    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
     range: Range,
     expression: gimli::Expression<Reader<'input, Endian>>,
     parameter: &mut Parameter<'input>,
 ) where
     Endian: gimli::Endianity,
 {
-    let pieces = match evaluate_simple(unit, expression, false) {
+    let pieces = match evaluate_simple(dwarf, dwarf_unit, expression, false) {
         Ok(locations) => locations,
         Err(_e) => {
             // This happens a lot, not sure if bugs or bad DWARF.
@@ -3446,14 +3750,36 @@ fn evaluate_parameter_location<'input, Endian>(
         .extend(pieces.into_iter().map(|piece| (range, piece)));
 }
 
+fn evaluate_single_location<'input, Endian>(
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    expression: gimli::Expression<Reader<'input, Endian>>,
+) -> Option<Vec<Piece>>
+where
+    Endian: gimli::Endianity,
+{
+    let pieces = match evaluate_simple(dwarf, dwarf_unit, expression, false) {
+        Ok(locations) => locations,
+        Err(_e) => {
+            // This happens a lot, not sure if bugs or bad DWARF.
+            //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
+            return None;
+        }
+    };
+
+    Some(pieces)
+}
+
 fn evaluate_simple<'input, Endian>(
-    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
     expression: gimli::Expression<Reader<'input, Endian>>,
     _object_address: bool,
 ) -> Result<Vec<Piece>>
 where
     Endian: gimli::Endianity + 'input,
 {
+    let unit = &dwarf_unit.header;
     let encoding = unit.encoding();
     let addr_mask = if encoding.address_size == 8 {
         !0u64
@@ -3544,7 +3870,16 @@ where
                     address: Address::new(address),
                 });
             }
-            gimli::Operation::AddressIndex { .. } | gimli::Operation::ConstantIndex { .. } => {
+            gimli::Operation::AddressIndex { index } => {
+                if let Ok(address) = dwarf.read.address(dwarf_unit, index) {
+                    stack.push(Location::Address {
+                        address: Address::new(address),
+                    });
+                } else {
+                    stack.push(Location::Other);
+                }
+            }
+            gimli::Operation::ConstantIndex { .. } => {
                 // Unimplemented.
                 stack.push(Location::Other);
             }
@@ -3747,13 +4082,15 @@ where
 }
 
 fn evaluate<'input, Endian>(
-    unit: &gimli::UnitHeader<Reader<'input, Endian>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
     expression: gimli::Expression<Reader<'input, Endian>>,
     object_address: bool,
 ) -> Vec<gimli::Piece<Reader<'input, Endian>>>
 where
     Endian: gimli::Endianity + 'input,
 {
+    let unit = &dwarf_unit.header;
     let mut evaluation = expression.evaluation(unit.encoding());
     if object_address {
         evaluation.set_object_address(0);
@@ -3767,6 +4104,11 @@ where
             }
             Ok(gimli::EvaluationResult::RequiresRelocatedAddress(address)) => {
                 result = evaluation.resume_with_relocated_address(address);
+            }
+            Ok(gimli::EvaluationResult::RequiresIndexedAddress { index, relocate: _ }) => {
+                if let Ok(address) = dwarf.read.address(dwarf_unit, index) {
+                    result = evaluation.resume_with_indexed_address(address);
+                }
             }
             Ok(_x) => {
                 debug!("incomplete evaluation: {:?}", _x);
@@ -3919,6 +4261,95 @@ where
     Endian: gimli::Endianity,
 {
     parse_debug_info_offset(dwarf_unit, attr).map(|x| x.into())
+}
+
+fn parse_function_call_origin_offset<'input, Endian>(
+    hash: &FileHash<'input>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: &DwarfUnit<'input, Endian>,
+    attr: &gimli::Attribute<Reader<'input, Endian>>,
+) -> Option<FunctionCallOrigin<'input>>
+where
+    Endian: gimli::Endianity,
+{
+    if let Some(unit_section_offset) = parse_debug_info_offset(dwarf_unit, attr) {
+        // now parse the DIE at this offset to discover its type
+        let entry = match unit_section_offset {
+            gimli::UnitSectionOffset::DebugInfoOffset(offset) => {
+                if let Some((target_dwarf_unit, _)) = dwarf.tree(offset) {
+                    let unit_offset = if let Some(unit_offset) =
+                        unit_section_offset.to_unit_offset(target_dwarf_unit)
+                    {
+                        unit_offset
+                    } else {
+                        panic!(
+                            "failed to convert unit_section offset {:?} to unit offset",
+                            unit_section_offset
+                        );
+                    };
+                    let entry = if let Ok(entry) = target_dwarf_unit.entry(unit_offset) {
+                        entry
+                    } else {
+                        panic!("failed to find DIE entry at offset: {:?}", unit_offset);
+                    };
+
+                    Some(entry)
+                } else {
+                    None
+                }
+            }
+            _ => {
+                debug!(
+                    "while parsing call_site origin, found unknown DIE offset: {:?}",
+                    unit_section_offset
+                );
+                None
+            }
+        };
+
+        if let Some(entry) = entry {
+            match entry.tag() {
+                gimli::DW_TAG_subprogram => {
+                    let offset: FunctionOffset = unit_section_offset.into();
+                    Function::from_offset(hash, offset).map(FunctionCallOrigin::Direct)
+                }
+                gimli::DW_TAG_variable => {
+                    // check if this is a global variable
+                    let offset: VariableOffset = unit_section_offset.into();
+                    if let Some(v) = Variable::from_offset(hash, offset) {
+                        Some(FunctionCallOrigin::Indirect(
+                            FunctionCallIndirectOrigin::Variable(v),
+                        ))
+                    } else {
+                        // Have the caller check the local variables (they can use a function hash if they are interested)
+                        Some(FunctionCallOrigin::Indirect(
+                            FunctionCallIndirectOrigin::LocalVariable(offset),
+                        ))
+                    }
+                }
+                gimli::DW_TAG_formal_parameter => {
+                    // Have the caller check their parameters (they can use a function hash if they are interested)
+                    Some(FunctionCallOrigin::Indirect(
+                        FunctionCallIndirectOrigin::Parameter(unit_section_offset.into()),
+                    ))
+                }
+                gimli::DW_TAG_member => {
+                    // this can be viewed as a vtable or a class method
+                    Some(FunctionCallOrigin::Indirect(
+                        FunctionCallIndirectOrigin::Member(unit_section_offset.into()),
+                    ))
+                }
+                tag => {
+                    debug!("uknown tag for call site origin at offset: {}", tag);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }
 }
 
 fn parse_source_file<'input, Endian>(
