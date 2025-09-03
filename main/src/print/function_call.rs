@@ -4,7 +4,7 @@ use parser::{
 };
 
 use crate::Result;
-use crate::print::{self, Print, PrintState, ValuePrinter};
+use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
 
 fn print_kind(kind: FunctionCallKind, w: &mut dyn ValuePrinter) -> Result<()> {
     match kind {
@@ -41,7 +41,11 @@ fn print_header(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
 fn print_origin(origin: Option<&FunctionCallOrigin>, w: &mut dyn ValuePrinter) -> Result<()> {
     match origin {
         Some(FunctionCallOrigin::Direct(f)) => {
-            write!(w, " -> {:?}", f.name())?;
+            if let Some(name) = f.name() {
+                write!(w, " -> {name}")?;
+            } else {
+                write!(w, " -> <unknown>")?;
+            }
         }
         Some(FunctionCallOrigin::Indirect(indirect)) => {
             write!(w, " -> ")?;
@@ -79,7 +83,7 @@ impl<'input> Print for FunctionCall<'input> {
                     })?;
                 }
 
-                if state.options().print_variable_locations {
+                if state.options().print_variable_locations && !self.target_locations().is_empty() {
                     state.expanded(
                         |state| {
                             state.line(|w, _hash| {
@@ -209,6 +213,66 @@ impl<'input> Print for FunctionCall<'input> {
     }
 }
 
+impl<'input> DiffList for FunctionCall<'input> {
+    fn step_cost(&self, _state: &DiffState, _arg: &Unit) -> usize {
+        1
+    }
+
+    fn diff_cost(state: &DiffState, _unit_a: &Unit, a: &Self, _unit_b: &Unit, b: &Self) -> usize {
+        let mut cost = 0;
+
+        // Compare call kind
+        if a.kind().cmp(&b.kind()) != std::cmp::Ordering::Equal {
+            cost += 1;
+        }
+
+        // Compare called from address
+        if a.called_from_address().cmp(&b.called_from_address()) != std::cmp::Ordering::Equal {
+            cost += 1;
+        }
+
+        // Compare return address
+        if a.return_address().cmp(&b.return_address()) != std::cmp::Ordering::Equal {
+            cost += 1;
+        }
+
+        // Compare origin
+        match (a.origin(), b.origin()) {
+            (Some(origin_a), Some(origin_b)) => {
+                // This is a simplified comparison - could be more sophisticated
+                if std::mem::discriminant(origin_a) != std::mem::discriminant(origin_b) {
+                    cost += 2;
+                } else {
+                    match (origin_a, origin_b) {
+                        (FunctionCallOrigin::Direct(f_a), FunctionCallOrigin::Direct(f_b)) => {
+                            if parser::Function::cmp_id(state.hash_a(), f_a, state.hash_b(), f_b)
+                                != std::cmp::Ordering::Equal
+                            {
+                                cost += 1;
+                            }
+                        }
+                        (
+                            FunctionCallOrigin::Indirect(ind_a),
+                            FunctionCallOrigin::Indirect(ind_b),
+                        ) => {
+                            if std::mem::discriminant(ind_a) != std::mem::discriminant(ind_b) {
+                                cost += 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            (None, None) => {}
+            _ => {
+                cost += 1;
+            }
+        }
+
+        cost
+    }
+}
+
 fn print_parameter_header(
     param: &FunctionCallParameter,
     w: &mut dyn ValuePrinter,
@@ -240,85 +304,93 @@ impl<'input> Print for FunctionCallParameter<'input> {
             |state| state.line(|w, hash| print_parameter_header(self, w, hash)),
             |state| {
                 if state.options().print_variable_locations {
-                    state.expanded(
-                        |state| {
-                            state.line(|w, _hash| {
-                                write!(w, "location")?;
+                    if !self.locations().is_empty() {
+                        state.expanded(
+                            |state| {
+                                state.line(|w, _hash| {
+                                    write!(w, "location")?;
+                                    Ok(())
+                                })
+                            },
+                            |state| {
+                                print::register::print_list(
+                                    state,
+                                    self.registers().map(|x| x.1).collect(),
+                                )?;
+                                print::frame_location::print_list(
+                                    state,
+                                    self.frame_locations().map(|x| x.1).collect(),
+                                )?;
                                 Ok(())
-                            })
-                        },
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                            },
+                        )?;
+                    }
 
-                    state.expanded(
-                        |state| {
-                            state.line(|w, _hash| {
-                                write!(w, "value")?;
+                    if !self.value_locations().is_empty() {
+                        state.expanded(
+                            |state| {
+                                state.line(|w, _hash| {
+                                    write!(w, "value")?;
+                                    Ok(())
+                                })
+                            },
+                            |state| {
+                                print::register::print_list(
+                                    state,
+                                    self.value_registers().map(|x| x.1).collect(),
+                                )?;
+                                print::frame_location::print_list(
+                                    state,
+                                    self.value_frame_locations().map(|x| x.1).collect(),
+                                )?;
                                 Ok(())
-                            })
-                        },
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.value_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.value_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                            },
+                        )?;
+                    }
 
-                    state.expanded(
-                        |state| {
-                            state.line(|w, _hash| {
-                                write!(w, "data_location")?;
+                    if !self.dataref_locations().is_empty() {
+                        state.expanded(
+                            |state| {
+                                state.line(|w, _hash| {
+                                    write!(w, "data_location")?;
+                                    Ok(())
+                                })
+                            },
+                            |state| {
+                                print::register::print_list(
+                                    state,
+                                    self.dataref_registers().map(|x| x.1).collect(),
+                                )?;
+                                print::frame_location::print_list(
+                                    state,
+                                    self.dataref_frame_locations().map(|x| x.1).collect(),
+                                )?;
                                 Ok(())
-                            })
-                        },
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.dataref_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.dataref_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                            },
+                        )?;
+                    }
 
-                    state.expanded(
-                        |state| {
-                            state.line(|w, _hash| {
-                                write!(w, "data_value_location")?;
+                    if !self.dataref_value_locations().is_empty() {
+                        state.expanded(
+                            |state| {
+                                state.line(|w, _hash| {
+                                    write!(w, "data_value_location")?;
+                                    Ok(())
+                                })
+                            },
+                            |state| {
+                                print::register::print_list(
+                                    state,
+                                    self.dataref_value_registers().map(|x| x.1).collect(),
+                                )?;
+                                print::frame_location::print_list(
+                                    state,
+                                    self.dataref_value_frame_locations().map(|x| x.1).collect(),
+                                )?;
                                 Ok(())
-                            })
-                        },
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.dataref_value_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.dataref_value_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                            },
+                        )?;
+                    }
                 }
 
                 Ok(())

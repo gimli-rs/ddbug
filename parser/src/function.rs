@@ -512,7 +512,7 @@ impl<'input> FunctionCall<'input> {
 }
 
 /// The kind of function call being made.
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 pub enum FunctionCallKind {
     /// This is a normal function call made via a call-type instruction
     #[default]
@@ -547,7 +547,7 @@ pub enum FunctionCallIndirectOrigin<'input> {
 }
 
 /// The address where the function call is made
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 pub enum CalledFromAddress {
     /// The function is called from an address specified by DWARF
     Specific(u64),

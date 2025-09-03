@@ -127,10 +127,10 @@ impl<'input> PrintHeader for Function<'input> {
                 state.list(unit, details.inlined_functions())
             })
         })?;
-        state.inline(|state| {
-            state.field_collapsed("call sites", |state| state.list(unit, details.calls()))
-        })?;
         if state.options().print_function_calls {
+            state.inline(|state| {
+                state.field_collapsed("call sites", |state| state.list(unit, details.calls()))
+            })?;
             let calls = calls(self, state.code);
             state.field_collapsed("calls", |state| state.list(&(), &calls))?;
         }
@@ -236,6 +236,9 @@ impl<'input> PrintHeader for Function<'input> {
             })
         })?;
         if state.options().print_function_calls {
+            state.field_collapsed("call sites", |state| {
+                state.list(unit_a, details_a.calls(), unit_b, details_b.calls())
+            })?;
             let calls_a = calls(a, state.code_a);
             let calls_b = calls(b, state.code_b);
             state.field_collapsed("calls", |state| state.list(&(), &calls_a, &(), &calls_b))?;
