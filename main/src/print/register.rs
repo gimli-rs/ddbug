@@ -1,6 +1,6 @@
 use std::cmp;
 
-use parser::{FileHash, Range, Register};
+use parser::{FileHash, Register};
 
 use crate::Result;
 use crate::print::{DiffList, DiffState, Print, PrintState, ValuePrinter};
@@ -33,29 +33,6 @@ pub(crate) fn print(register: Register, w: &mut dyn ValuePrinter, hash: &FileHas
         None => write!(w, "r{}", register.0)?,
     };
     Ok(())
-}
-
-pub(crate) fn print_with_range(
-    register: &(Range, Register),
-    w: &mut dyn ValuePrinter,
-    hash: &FileHash,
-) -> Result<()> {
-    crate::print::range::print_address(&register.0, w)?;
-    write!(w, "\t")?;
-    print(register.1, w, hash)?;
-    Ok(())
-}
-
-impl Print for (Range, Register) {
-    type Arg = ();
-
-    fn print(&self, state: &mut PrintState, _arg: &()) -> Result<()> {
-        state.line(|w, hash| print_with_range(self, w, hash))
-    }
-
-    fn diff(state: &mut DiffState, _arg_a: &(), a: &Self, _arg_b: &(), b: &Self) -> Result<()> {
-        state.line(a, b, |w, hash, x| print_with_range(x, w, hash))
-    }
 }
 
 impl Print for Register {

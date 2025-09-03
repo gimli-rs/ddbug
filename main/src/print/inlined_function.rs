@@ -48,11 +48,12 @@ impl<'input> Print for InlinedFunction<'input> {
                     state
                         .field_collapsed("variables", |state| state.list(unit, self.variables()))?;
                 }
+                if state.options().print_function_calls {
+                    state.inline(|state| {
+                        state.field_collapsed("call sites", |state| state.list(unit, self.calls()))
+                    })?;
+                }
                 state.inline(|state| state.list(unit, self.inlined_functions()))?;
-
-                state.inline(|state| {
-                    state.field_collapsed("call sites", |state| state.list(unit, self.calls()))
-                })?;
                 Ok(())
             },
         )?;
