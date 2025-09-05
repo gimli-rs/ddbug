@@ -14,11 +14,10 @@ fn print_kind(kind: FunctionCallKind, w: &mut dyn ValuePrinter) -> Result<()> {
     Ok(())
 }
 
-fn print_address(addr: Option<u64>, w: &mut dyn ValuePrinter) -> Result<()> {
-    match addr {
-        Some(addr) => write!(w, "{:#x}", addr),
-        None => write!(w, "<unknown>"),
-    }?;
+fn print_address(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
+    if let Some(address) = f.return_address() {
+        write!(w, "{:#x}", address)?;
+    }
     Ok(())
 }
 
@@ -39,11 +38,8 @@ fn print_header(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
 fn print_origin(origin: Option<&FunctionCallOrigin>, w: &mut dyn ValuePrinter) -> Result<()> {
     match origin {
         Some(FunctionCallOrigin::Direct(f)) => {
-            if let Some(name) = f.name() {
-                write!(w, " -> {name}")?;
-            } else {
-                write!(w, " -> <unknown>")?;
-            }
+            write!(w, " -> ")?;
+            print::function::print_ref(f, w)?;
         }
         Some(FunctionCallOrigin::Indirect(indirect)) => {
             write!(w, " -> ")?;
@@ -74,21 +70,11 @@ impl<'input> Print for FunctionCall<'input> {
         state.expanded(
             |state| state.line(|w, _state| print_header(self, w)),
             |state| {
-                if let Some(return_addr) = self.return_address() {
-                    state.field("return address", |w, _state| {
-                        write!(w, "{:#x}", return_addr)?;
-                        Ok(())
-                    })?;
-                }
+                state.field("return address", |w, _state| print_address(self, w))?;
 
-                if state.options().print_variable_locations && !self.target_locations().is_empty() {
-                    state.expanded(
-                        |state| {
-                            state.line(|w, _hash| {
-                                write!(w, "target")?;
-                                Ok(())
-                            })
-                        },
+                if state.options().print_variable_locations {
+                    state.field_expanded(
+                        "target",
                         |state| {
                             print::register::print_list(
                                 state,
@@ -109,14 +95,12 @@ impl<'input> Print for FunctionCall<'input> {
                     })?;
                 }
 
-                if !self.parameter_inputs().is_empty() {
-                    state.field_expanded("parameters", |state| {
-                        for param in self.parameter_inputs() {
-                            param.print(state, unit)?;
-                        }
-                        Ok(())
-                    })?;
-                }
+                state.field_expanded("parameters", |state| {
+                    for param in self.parameter_inputs() {
+                        param.print(state, unit)?;
+                    }
+                    Ok(())
+                })?;
 
                 Ok(())
             },
@@ -135,17 +119,12 @@ impl<'input> Print for FunctionCall<'input> {
             |state| state.line(a, b, |w, _state, x| print_header(x, w)),
             |state| {
                 state.field("return address", a, b, |w, _state, x| {
-                    print_address(x.return_address(), w)
+                    print_address(x, w)
                 })?;
 
                 if state.options().print_variable_locations {
-                    state.expanded(
-                        |state| {
-                            state.line(a, b, |w, _hash, _| {
-                                write!(w, "target")?;
-                                Ok(())
-                            })
-                        },
+                    state.field_expanded(
+                        "target",
                         |state| {
                             print::register::diff_list(
                                 state,
@@ -293,93 +272,65 @@ impl<'input> Print for FunctionCallParameter<'input> {
             |state| state.line(|w, hash| print_parameter_header(self, w, hash)),
             |state| {
                 if state.options().print_variable_locations {
-                    if !self.locations().is_empty() {
-                        state.expanded(
-                            |state| {
-                                state.line(|w, _hash| {
-                                    write!(w, "location")?;
-                                    Ok(())
-                                })
-                            },
-                            |state| {
-                                print::register::print_list(
-                                    state,
-                                    self.registers().map(|x| x.1).collect(),
-                                )?;
-                                print::frame_location::print_list(
-                                    state,
-                                    self.frame_locations().map(|x| x.1).collect(),
-                                )?;
-                                Ok(())
-                            },
-                        )?;
-                    }
+                    state.field_expanded(
+                        "location",
+                        |state| {
+                            print::register::print_list(
+                                state,
+                                self.registers().map(|x| x.1).collect(),
+                            )?;
+                            print::frame_location::print_list(
+                                state,
+                                self.frame_locations().map(|x| x.1).collect(),
+                            )?;
+                            Ok(())
+                        },
+                    )?;
 
-                    if !self.value_locations().is_empty() {
-                        state.expanded(
-                            |state| {
-                                state.line(|w, _hash| {
-                                    write!(w, "value")?;
-                                    Ok(())
-                                })
-                            },
-                            |state| {
-                                print::register::print_list(
-                                    state,
-                                    self.value_registers().map(|x| x.1).collect(),
-                                )?;
-                                print::frame_location::print_list(
-                                    state,
-                                    self.value_frame_locations().map(|x| x.1).collect(),
-                                )?;
-                                Ok(())
-                            },
-                        )?;
-                    }
+                    state.field_expanded(
+                        "value",
+                        |state| {
+                            print::register::print_list(
+                                state,
+                                self.value_registers().map(|x| x.1).collect(),
+                            )?;
+                            print::frame_location::print_list(
+                                state,
+                                self.value_frame_locations().map(|x| x.1).collect(),
+                            )?;
+                            Ok(())
+                        },
+                    )?;
 
-                    if !self.dataref_locations().is_empty() {
-                        state.expanded(
-                            |state| {
-                                state.line(|w, _hash| {
-                                    write!(w, "data_location")?;
-                                    Ok(())
-                                })
-                            },
-                            |state| {
-                                print::register::print_list(
-                                    state,
-                                    self.dataref_registers().map(|x| x.1).collect(),
-                                )?;
-                                print::frame_location::print_list(
-                                    state,
-                                    self.dataref_frame_locations().map(|x| x.1).collect(),
-                                )?;
-                                Ok(())
-                            },
-                        )?;
-                    }
+                    state.field_expanded(
+                        "data_location",
+                        |state| {
+                            print::register::print_list(
+                                state,
+                                self.dataref_registers().map(|x| x.1).collect(),
+                            )?;
+                            print::frame_location::print_list(
+                                state,
+                                self.dataref_frame_locations().map(|x| x.1).collect(),
+                            )?;
+                            Ok(())
+                        },
+                    )?;
 
-                    if !self.dataref_value_locations().is_empty() {
-                        state.expanded(
-                            |state| {
-                                state.line(|w, _hash| {
-                                    write!(w, "data_value_location")?;
-                                    Ok(())
-                                })
-                            },
-                            |state| {
-                                print::register::print_list(
-                                    state,
-                                    self.dataref_value_registers().map(|x| x.1).collect(),
-                                )?;
-                                print::frame_location::print_list(
-                                    state,
-                                    self.dataref_value_frame_locations().map(|x| x.1).collect(),
-                                )?;
-                                Ok(())
-                            },
-                        )?;
-                    }
+                    state.field_expanded(
+                        "data_value_location",
+                        |state| {
+                            print::register::print_list(
+                                state,
+                                self.dataref_value_registers().map(|x| x.1).collect(),
+                            )?;
+                            print::frame_location::print_list(
+                                state,
+                                self.dataref_value_frame_locations().map(|x| x.1).collect(),
+                            )?;
+                            Ok(())
+                        },
+                    )?;
                 }
 
                 Ok(())
@@ -402,13 +353,8 @@ impl<'input> Print for FunctionCallParameter<'input> {
             },
             |state| {
                 if state.options().print_variable_locations {
-                    state.expanded(
-                        |state| {
-                            state.line(a, b, |w, _hash, _| {
-                                write!(w, "location")?;
-                                Ok(())
-                            })
-                        },
+                    state.field_expanded(
+                        "location",
                         |state| {
                             print::register::diff_list(
                                 state,
@@ -424,13 +370,8 @@ impl<'input> Print for FunctionCallParameter<'input> {
                         },
                     )?;
 
-                    state.expanded(
-                        |state| {
-                            state.line(a, b, |w, _hash, _| {
-                                write!(w, "value")?;
-                                Ok(())
-                            })
-                        },
+                    state.field_expanded(
+                        "value",
                         |state| {
                             print::register::diff_list(
                                 state,
@@ -446,13 +387,8 @@ impl<'input> Print for FunctionCallParameter<'input> {
                         },
                     )?;
 
-                    state.expanded(
-                        |state| {
-                            state.line(a, b, |w, _hash, _| {
-                                write!(w, "data_location")?;
-                                Ok(())
-                            })
-                        },
+                    state.field_expanded(
+                        "data_location",
                         |state| {
                             print::register::diff_list(
                                 state,
@@ -468,13 +404,8 @@ impl<'input> Print for FunctionCallParameter<'input> {
                         },
                     )?;
 
-                    state.expanded(
-                        |state| {
-                            state.line(a, b, |w, _hash, _| {
-                                write!(w, "data_value_location")?;
-                                Ok(())
-                            })
-                        },
+                    state.field_expanded(
+                        "data_value_location",
                         |state| {
                             print::register::diff_list(
                                 state,
