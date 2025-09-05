@@ -128,9 +128,7 @@ impl<'input> PrintHeader for Function<'input> {
             })
         })?;
         if state.options().print_function_calls {
-            state.inline(|state| {
-                state.field_collapsed("call sites", |state| state.list(unit, details.calls()))
-            })?;
+            state.field_collapsed("call sites", |state| state.list(unit, details.calls()))?;
             let calls = calls(self, state.code);
             state.field_collapsed("calls", |state| state.list(&(), &calls))?;
         }
