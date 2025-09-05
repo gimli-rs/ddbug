@@ -213,14 +213,14 @@ impl<'input> File<'input> {
         let handle = match fs::File::open(&path) {
             Ok(handle) => handle,
             Err(e) => {
-                return Err(format!("open failed: {e}").into());
+                return Err(format!("open failed: {}", e).into());
             }
         };
 
         let map = match unsafe { memmap2::Mmap::map(&handle) } {
             Ok(map) => map,
             Err(e) => {
-                return Err(format!("memmap failed: {e}").into());
+                return Err(format!("memmap failed: {}", e).into());
             }
         };
 
@@ -709,7 +709,7 @@ pub struct Section<'input> {
     pub(crate) size: u64,
 }
 
-impl Section<'_> {
+impl<'input> Section<'input> {
     /// The name of this section.
     pub fn name(&self) -> Option<&str> {
         self.name.as_deref()
@@ -753,7 +753,7 @@ pub struct Symbol<'input> {
     pub(crate) size: u64,
 }
 
-impl Symbol<'_> {
+impl<'input> Symbol<'input> {
     /// The symbol name.
     #[inline]
     pub fn name(&self) -> Option<&str> {

@@ -38,7 +38,7 @@ pub enum TypeKind<'input> {
     Subrange(SubrangeType<'input>),
 }
 
-impl TypeKind<'_> {
+impl<'input> TypeKind<'input> {
     fn discriminant_value(&self) -> u8 {
         match *self {
             TypeKind::Void => 1,
@@ -108,7 +108,7 @@ pub struct Type<'input> {
     pub(crate) kind: TypeKind<'input>,
 }
 
-impl Default for Type<'_> {
+impl<'input> Default for Type<'input> {
     fn default() -> Self {
         Type {
             id: Id::new(0),

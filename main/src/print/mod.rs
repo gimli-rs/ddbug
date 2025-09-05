@@ -386,12 +386,12 @@ pub(crate) struct DiffState<'a> {
 
 impl<'a> DiffState<'a> {
     #[inline]
-    fn a(&'_ mut self) -> PrintState<'_> {
+    fn a(&mut self) -> PrintState {
         PrintState::new(self.printer, self.hash_a, self.code_a, self.options)
     }
 
     #[inline]
-    fn b(&'_ mut self) -> PrintState<'_> {
+    fn b(&mut self) -> PrintState {
         PrintState::new(self.printer, self.hash_b, self.code_b, self.options)
     }
 
