@@ -420,7 +420,7 @@ pub struct FunctionCall<'input> {
     pub(crate) return_address: Option<u64>,
     /// The address of the call-like instruction for a normal call or the jump-like instruction
     /// for a tail call
-    pub(crate) called_from_address: Option<CalledFromAddress>,
+    pub(crate) called_from_address: Option<u64>,
     pub(crate) origin: Option<FunctionCallOrigin<'input>>,
     /// The target that is being called (if present) must reside in a single location (it is a function pointer).
     pub(crate) target_locations: Vec<(Range, Piece)>,
@@ -445,8 +445,8 @@ impl<'input> FunctionCall<'input> {
 
     /// The address of the call instruction.
     #[inline]
-    pub fn called_from_address(&self) -> Option<&CalledFromAddress> {
-        self.called_from_address.as_ref()
+    pub fn called_from_address(&self) -> Option<u64> {
+        self.called_from_address
     }
 
     /// The origin of the function being called.
@@ -544,15 +544,6 @@ pub enum FunctionCallIndirectOrigin<'input> {
     /// We store this as the unique member offset. This allows for later traversal down the types
     /// in order to locate this exact member if the caller is interested.
     Member(MemberOffset),
-}
-
-/// The address where the function call is made
-#[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
-pub enum CalledFromAddress {
-    /// The function is called from an address specified by DWARF
-    Specific(u64),
-    /// The function is called by the instruction address prior to the one specified in `return_address`.
-    PreviousToReturnAddress,
 }
 
 /// Represents one of the parameter inputs for the call.

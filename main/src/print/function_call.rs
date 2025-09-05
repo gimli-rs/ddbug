@@ -1,6 +1,6 @@
 use parser::{
-    CalledFromAddress, FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind,
-    FunctionCallOrigin, FunctionCallParameter, Unit,
+    FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind, FunctionCallOrigin,
+    FunctionCallParameter, Unit,
 };
 
 use crate::Result;
@@ -25,14 +25,12 @@ fn print_address(addr: Option<u64>, w: &mut dyn ValuePrinter) -> Result<()> {
 fn print_header(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
     print_kind(f.kind(), w)?;
     write!(w, " at ")?;
-    match f.called_from_address() {
-        Some(addr) => match addr {
-            CalledFromAddress::Specific(addr) => write!(w, "{:#x}", addr)?,
-            CalledFromAddress::PreviousToReturnAddress => {
-                write!(w, "<before return>")?;
-            }
-        },
-        None => write!(w, "<unknown>")?,
+    if let Some(addr) = f.called_from_address() {
+        write!(w, "{:#x}", addr)?;
+    } else if f.return_address().is_some() {
+        write!(w, "<before return>")?;
+    } else {
+        write!(w, "<unknown>")?;
     }
     print_origin(f.origin(), w)?;
     Ok(())

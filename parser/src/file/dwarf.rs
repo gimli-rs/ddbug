@@ -9,9 +9,9 @@ use object::{self, ObjectSection, ObjectSymbol};
 use crate::cfi::{Cfi, CfiDirective};
 use crate::file::{Architecture, Arena, DebugInfo, FileHash};
 use crate::function::{
-    CalledFromAddress, Function, FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind,
-    FunctionCallOrigin, FunctionCallParameter, FunctionDetails, FunctionOffset, InlinedFunction,
-    Parameter, ParameterOffset,
+    Function, FunctionCall, FunctionCallIndirectOrigin, FunctionCallKind, FunctionCallOrigin,
+    FunctionCallParameter, FunctionDetails, FunctionOffset, InlinedFunction, Parameter,
+    ParameterOffset,
 };
 use crate::location::{Location, Piece, Register};
 use crate::namespace::{Namespace, NamespaceKind};
@@ -3459,7 +3459,6 @@ where
                         // (the current value is the next address, so fill in the return addr with this address).
                         // The called_from address can be derived as the instruction prior to this one.
                         call.return_address = Some(addr);
-                        call.called_from_address = Some(CalledFromAddress::PreviousToReturnAddress);
                     }
                 } else {
                     debug!("non-GNU call_site using DW_AT_low_pc: {:?}", attr.value());
@@ -3469,9 +3468,7 @@ where
                 call.return_address = dwarf.addr(dwarf_unit, attr.value());
             }
             gimli::DW_AT_call_pc => {
-                call.called_from_address = dwarf
-                    .addr(dwarf_unit, attr.value())
-                    .map(CalledFromAddress::Specific);
+                call.called_from_address = dwarf.addr(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
@@ -3496,10 +3493,6 @@ where
                 attr.value()
             ),
         }
-    }
-
-    if call.called_from_address.is_none() && call.return_address.is_some() {
-        call.called_from_address = Some(CalledFromAddress::PreviousToReturnAddress);
     }
 
     // visit the call site's children (parameters)
