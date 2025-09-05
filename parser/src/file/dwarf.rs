@@ -497,7 +497,6 @@ where
     let mut high_pc = None;
     let mut size = None;
     let mut attrs = entry.attrs();
-    let mut found_unknown = false;
     while let Some(attr) = attrs.next()? {
         match attr.name() {
             gimli::DW_AT_name => {
@@ -534,15 +533,12 @@ where
             | gimli::DW_AT_macro_info
             | gimli::DW_AT_GNU_macros
             | gimli::DW_AT_GNU_pubnames
-            | gimli::DW_AT_sibling
             | gimli::DW_AT_str_offsets_base
             | gimli::DW_AT_addr_base
             | gimli::DW_AT_rnglists_base
-            | gimli::DW_AT_loclists_base => {}
-            _ => {
-                debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value());
-                found_unknown = true;
-            }
+            | gimli::DW_AT_loclists_base
+            | gimli::DW_AT_sibling => {}
+            _ => debug!("unknown CU attribute: {} {:?}", attr.name(), attr.value()),
         }
     }
 
@@ -617,13 +613,6 @@ where
         &mut variables,
     )?;
     fixup_variable_specifications(&mut unit, dwarf, &dwarf_unit, &mut variables)?;
-
-    if found_unknown {
-        debug!(
-            "found one or more unknown CU attributes for unit: {:#?}",
-            unit
-        );
-    }
 
     dwarf.units.push(dwarf_unit);
     Ok(unit)
@@ -2332,12 +2321,10 @@ where
                 }
             }
             gimli::DW_AT_frame_base => {
-                // FIXME / TODO
-            }
-            gimli::DW_AT_calling_convention => {
-                // FIXME / TODO
+                // FIXME
             }
             gimli::DW_AT_external
+            | gimli::DW_AT_calling_convention
             | gimli::DW_AT_call_all_calls
             | gimli::DW_AT_call_all_tail_calls
             | gimli::DW_AT_GNU_all_call_sites
