@@ -426,7 +426,7 @@ pub struct FunctionCall<'input> {
     pub(crate) target_locations: Vec<(Range, Piece)>,
     pub(crate) target_is_clobbered: bool,
     pub(crate) called_function_ty: Option<TypeOffset>,
-    pub(crate) called_from_source: Option<Source<'input>>,
+    pub(crate) called_from_source: Source<'input>,
     pub(crate) parameter_inputs: Vec<FunctionCallParameter<'input>>,
 }
 
@@ -500,8 +500,8 @@ impl<'input> FunctionCall<'input> {
 
     /// The source location of the call.
     #[inline]
-    pub fn called_from_source(&self) -> Option<&Source<'input>> {
-        self.called_from_source.as_ref()
+    pub fn called_from_source(&self) -> &Source<'input> {
+        &self.called_from_source
     }
 
     /// The parameter inputs for this call.

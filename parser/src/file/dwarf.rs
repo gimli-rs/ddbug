@@ -3475,17 +3475,14 @@ where
                     call.called_function_ty = Some(offset);
                 }
             }
-            gimli::DW_AT_call_file => parse_source_file(
-                dwarf,
-                dwarf_unit,
-                &attr,
-                call.called_from_source.get_or_insert_default(),
-            ),
+            gimli::DW_AT_call_file => {
+                parse_source_file(dwarf, dwarf_unit, &attr, &mut call.called_from_source)
+            }
             gimli::DW_AT_call_line => {
-                parse_source_line(&attr, call.called_from_source.get_or_insert_default())
+                parse_source_line(&attr, &mut call.called_from_source);
             }
             gimli::DW_AT_call_column => {
-                parse_source_column(&attr, call.called_from_source.get_or_insert_default())
+                parse_source_column(&attr, &mut call.called_from_source);
             }
             _ => debug!(
                 "unknown call_site attribute: {} {:?}",

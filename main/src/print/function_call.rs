@@ -103,10 +103,10 @@ impl<'input> Print for FunctionCall<'input> {
                     )?;
                 }
 
-                if let Some(source) = self.called_from_source() {
-                    if state.options().print_source {
-                        state.field("source", |w, _state| print::source::print(source, w, unit))?;
-                    }
+                if state.options().print_source {
+                    state.field("source", |w, _state| {
+                        print::source::print(self.called_from_source(), w, unit)
+                    })?;
                 }
 
                 if !self.parameter_inputs().is_empty() {
@@ -163,18 +163,9 @@ impl<'input> Print for FunctionCall<'input> {
                 }
 
                 if state.options().print_source {
-                    state.field(
-                        "source",
-                        (arg_a, a),
-                        (arg_b, b),
-                        |w, _state, (unit, x)| match x.called_from_source() {
-                            Some(source) => print::source::print(source, w, unit),
-                            None => {
-                                write!(w, "<none>")?;
-                                Ok(())
-                            }
-                        },
-                    )?;
+                    state.field("source", (arg_a, a), (arg_b, b), |w, _state, (unit, x)| {
+                        print::source::print(x.called_from_source(), w, unit)
+                    })?;
                 }
 
                 // Show detailed parameter diff
