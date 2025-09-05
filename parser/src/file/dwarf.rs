@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::mem;
 use std::sync::Arc;
 
-use gimli::{LocationListsOffset, RangeListsOffset, Reader as GimliReader};
+use gimli::Reader as GimliReader;
 use object::{self, ObjectSection, ObjectSymbol};
 
 use crate::cfi::{Cfi, CfiDirective};
@@ -290,7 +290,7 @@ where
         &self,
         dwarf_unit: &DwarfUnit<'input, Endian>,
         value: gimli::AttributeValue<Reader<'input, Endian>>,
-    ) -> Option<RangeListsOffset<usize>> {
+    ) -> Option<gimli::RangeListsOffset<usize>> {
         self.read.attr_ranges_offset(dwarf_unit, value).ok()?
     }
 
@@ -299,7 +299,7 @@ where
         &self,
         dwarf_unit: &DwarfUnit<'input, Endian>,
         value: gimli::AttributeValue<Reader<'input, Endian>>,
-    ) -> Option<LocationListsOffset<usize>> {
+    ) -> Option<gimli::LocationListsOffset<usize>> {
         self.read.attr_locations_offset(dwarf_unit, value).ok()?
     }
 
