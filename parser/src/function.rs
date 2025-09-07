@@ -416,18 +416,14 @@ impl<'input> InlinedFunction<'input> {
 #[derive(Debug, Default)]
 pub struct FunctionCall<'input> {
     pub(crate) kind: FunctionCallKind,
-    /// The return address after the call
     pub(crate) return_address: Option<u64>,
-    /// The address of the call-like instruction for a normal call or the jump-like instruction
-    /// for a tail call
-    pub(crate) called_from_address: Option<u64>,
+    pub(crate) call_address: Option<u64>,
     pub(crate) origin: Option<FunctionCallOrigin<'input>>,
-    /// The target that is being called (if present) must reside in a single location (it is a function pointer).
-    pub(crate) target_locations: Vec<Piece>,
+    pub(crate) target: Vec<Piece>,
     pub(crate) target_is_clobbered: bool,
-    pub(crate) called_function_ty: Option<TypeOffset>,
+    pub(crate) ty: Option<TypeOffset>,
     pub(crate) called_from_source: Source<'input>,
-    pub(crate) parameter_inputs: Vec<FunctionCallParameter<'input>>,
+    pub(crate) parameters: Vec<FunctionCallParameter<'input>>,
 }
 
 impl<'input> FunctionCall<'input> {
@@ -444,38 +440,46 @@ impl<'input> FunctionCall<'input> {
     }
 
     /// The address of the call instruction.
+    ///
+    /// This the call-like instruction for a normal call or the jump-like instruction
+    /// for a tail call.
     #[inline]
-    pub fn called_from_address(&self) -> Option<u64> {
-        self.called_from_address
+    pub fn call_address(&self) -> Option<u64> {
+        self.call_address
     }
 
-    /// The origin of the function being called.
+    /// The origin of the target of the call.
+    ///
+    /// This determines whether the call is direct or indirect,
+    /// and if it is indirect, where the function pointer comes from.
     #[inline]
     pub fn origin(&self) -> Option<&FunctionCallOrigin<'input>> {
         self.origin.as_ref()
     }
 
-    /// The target location of the call.
+    /// The computed value of the target of the call.
+    ///
+    /// This is only used if the target is indirect.
     #[inline]
-    pub fn target_locations(&self) -> &[Piece] {
-        &self.target_locations
+    pub fn target(&self) -> &[Piece] {
+        &self.target
     }
 
-    /// Whether the target is clobbered.
+    /// Whether the expression for the value of `target` is only valid before the call.
     #[inline]
     pub fn target_is_clobbered(&self) -> bool {
         self.target_is_clobbered
     }
 
-    /// The called_function_type.
+    /// The type of the target of the call.
     ///
-    /// Returns `None` if the called_function_type is invalid.
+    /// This is usually omitted if `origin` is specified.
+    ///
+    /// Returns `None` if the type is invalid or unknown.
+    // TODO: add a convenient way to get the type from either `origin` or `ty`.
     #[inline]
-    pub fn called_function_type<'a>(
-        &self,
-        hash: &'a FileHash<'input>,
-    ) -> Option<Cow<'a, Type<'input>>> {
-        if let Some(ty) = self.called_function_ty {
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        if let Some(ty) = self.ty {
             Type::from_offset(hash, ty)
         } else {
             None
@@ -484,87 +488,81 @@ impl<'input> FunctionCall<'input> {
 
     /// The source location of the call.
     #[inline]
-    pub fn called_from_source(&self) -> &Source<'input> {
+    pub fn source(&self) -> &Source<'input> {
         &self.called_from_source
     }
 
-    /// The parameter inputs for this call.
+    /// The function parameters for this call.
     #[inline]
-    pub fn parameter_inputs(&self) -> &[FunctionCallParameter<'input>] {
-        &self.parameter_inputs
+    pub fn parameters(&self) -> &[FunctionCallParameter<'input>] {
+        &self.parameters
     }
 }
 
 /// The kind of function call being made.
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
 pub enum FunctionCallKind {
-    /// This is a normal function call made via a call-type instruction
+    /// This is a normal function call made via a call-like instruction.
     #[default]
     Normal,
-    /// This is a tail-call made via a jump-type instruction
+    /// This is a tail call made via a jump-like instruction.
     Tail,
 }
 
-/// This is the function definition (origin) which is being called (if known)
+/// The origin of the target of a function call.
 #[derive(Debug)]
 pub enum FunctionCallOrigin<'input> {
-    /// The static function definition which is being called directly.
+    /// The definition of the function for a direct call.
     Direct(&'input Function<'input>),
-    /// The indirect function definition
+    /// The origin of the function pointer for an indirect call.
     Indirect(FunctionCallIndirectOrigin<'input>),
 }
 
-/// Represents the subroutine pointer that is being called
+/// The origin of the function pointer for an indirect function call.
 #[derive(Debug)]
 pub enum FunctionCallIndirectOrigin<'input> {
-    /// The function origin is stored in this variable at the time of the call
+    /// The function pointer is stored in this variable at the time of the call.
     Variable(&'input Variable<'input>),
-    /// The function origin is stored in one of the caller function's local variables at the time of the call
+    /// The function pointer is stored in one of the caller function's local variables at the time of the call.
     LocalVariable(VariableOffset),
     /// The function origin is stored in one of the caller function's parameters at the time of the call.
-    /// The parameter is stored in the function details, so we don't resolve to a reference yet.
     Parameter(ParameterOffset),
-    /// The function origin is stored in this member at the time of the call
+    /// The function origin is stored in this member at the time of the call.
+    ///
     /// We store this as the unique member offset. This allows for later traversal down the types
     /// in order to locate this exact member if the caller is interested.
     Member(MemberOffset),
 }
 
-/// Represents one of the parameter inputs for the call.
+/// Represents one of the parameters for a function call.
 #[derive(Debug, Default)]
 pub struct FunctionCallParameter<'input> {
-    /// The location where we are sending this parameter value to (the callee will read the parameter value from here).
-    /// This will generally line up with the caller-callee ABI.
-    pub(crate) locations: Vec<Piece>,
-    /// This location holds the value at the time of the call
-    pub(crate) value_locations: Vec<Piece>,
-    /// If this parameter is a reference, also keep track of the referenced data location+value
-    pub(crate) dataref_locations: Vec<Piece>,
-    /// If this parameter is a reference, also keep track of the referenced data location+value
-    pub(crate) dataref_value_locations: Vec<Piece>,
-    /// The destination parameter that this value is filling in
+    pub(crate) location: Vec<Piece>,
+    pub(crate) value: Vec<Piece>,
+    pub(crate) data_location: Vec<Piece>,
+    pub(crate) data_value: Vec<Piece>,
     pub(crate) parameter: Option<ParameterType<'input>>,
 }
 
 impl<'input> FunctionCallParameter<'input> {
-    /// A list of all locations where the parameter value is sent to.
-    pub fn locations(&self) -> &[Piece] {
-        &self.locations
+    /// The location where the paramter is passed for the call.
+    pub fn location(&self) -> &[Piece] {
+        &self.location
     }
 
-    /// A list of all locations where the value is at the time of the call.
-    pub fn value_locations(&self) -> &[Piece] {
-        &self.value_locations
+    /// The value of the parameter at the time of the call.
+    pub fn value(&self) -> &[Piece] {
+        &self.value
     }
 
-    /// A list of all locations where the referenced data location is if this parameter is a reference.
-    pub fn dataref_locations(&self) -> &[Piece] {
-        &self.dataref_locations
+    /// If the paramter is a reference, the location where the referenced data is stored.
+    pub fn data_location(&self) -> &[Piece] {
+        &self.data_location
     }
 
-    /// A list of all locations where the referenced data value location is if this parameter is a reference.
-    pub fn dataref_value_locations(&self) -> &[Piece] {
-        &self.dataref_value_locations
+    /// If the paramter is a reference, the value of the referenced data at the time of the call.
+    pub fn data_value(&self) -> &[Piece] {
+        &self.data_value
     }
 
     /// The destination parameter that this value is filling in.
@@ -602,6 +600,7 @@ impl<'input> FunctionInstance<'input> {
 }
 
 /// An index of parameters and local variables within a function.
+///
 /// This requires the function details to be loaded.
 pub struct FunctionHash<'input> {
     /// The function being indexed.
@@ -613,7 +612,7 @@ pub struct FunctionHash<'input> {
 }
 
 impl<'input> FunctionHash<'input> {
-    /// Create a new `FileHash` for the given `File`.
+    /// Create a new `FunctionHash` for the given function.
     pub fn new(function: FunctionInstance<'input>) -> Self {
         Self {
             function,

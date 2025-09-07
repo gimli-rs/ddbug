@@ -3417,7 +3417,7 @@ where
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
                         if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                            call.target_locations = l;
+                            call.target = l;
                         }
                     }
                     _ => {
@@ -3448,11 +3448,11 @@ where
                 call.return_address = dwarf.addr(dwarf_unit, attr.value());
             }
             gimli::DW_AT_call_pc => {
-                call.called_from_address = dwarf.addr(dwarf_unit, attr.value());
+                call.call_address = dwarf.addr(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    call.called_function_ty = Some(offset);
+                    call.ty = Some(offset);
                 }
             }
             gimli::DW_AT_call_file => {
@@ -3477,7 +3477,7 @@ where
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_GNU_call_site_parameter | gimli::DW_TAG_call_site_parameter => {
-                parse_call_site_parameter(&mut call.parameter_inputs, dwarf, dwarf_unit, child)?;
+                parse_call_site_parameter(&mut call.parameters, dwarf, dwarf_unit, child)?;
             }
             tag => debug!("unknown call_site child tag: {}", tag),
         }
@@ -3504,7 +3504,7 @@ where
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.locations = l;
+                        parameter.location = l;
                     }
                 }
                 _ => {
@@ -3516,8 +3516,9 @@ where
             },
             gimli::DW_AT_GNU_call_site_value | gimli::DW_AT_call_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
+                    // TODO: evaluate expression, not location
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.value_locations = l;
+                        parameter.value = l;
                     }
                 }
                 _ => {
@@ -3527,7 +3528,7 @@ where
             gimli::DW_AT_call_data_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.dataref_locations = l;
+                        parameter.data_location = l;
                     }
                 }
                 _ => {
@@ -3536,8 +3537,9 @@ where
             },
             gimli::DW_AT_call_data_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
+                    // TODO: evaluate expression, not location
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.dataref_value_locations = l;
+                        parameter.data_value = l;
                     }
                 }
                 _ => {
@@ -4289,7 +4291,7 @@ where
                     ))
                 }
                 tag => {
-                    debug!("uknown tag for call site origin at offset: {}", tag);
+                    debug!("unknown tag for call site origin at offset: {}", tag);
                     None
                 }
             }

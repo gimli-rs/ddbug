@@ -24,7 +24,7 @@ fn print_address(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
 fn print_header(f: &FunctionCall, w: &mut dyn ValuePrinter) -> Result<()> {
     print_kind(f.kind(), w)?;
     write!(w, " at ")?;
-    if let Some(addr) = f.called_from_address() {
+    if let Some(addr) = f.call_address() {
         write!(w, "{:#x}", addr)?;
     } else if f.return_address().is_some() {
         write!(w, "<before return>")?;
@@ -74,18 +74,18 @@ impl<'input> Print for FunctionCall<'input> {
 
                 if state.options().print_variable_locations {
                     state.field_expanded("target", |state| {
-                        print::location::print_pieces(state, self.target_locations())
+                        print::location::print_pieces(state, self.target())
                     })?;
                 }
 
                 if state.options().print_source {
                     state.field("source", |w, _state| {
-                        print::source::print(self.called_from_source(), w, unit)
+                        print::source::print(self.source(), w, unit)
                     })?;
                 }
 
                 state.field_expanded("parameters", |state| {
-                    for param in self.parameter_inputs() {
+                    for param in self.parameters() {
                         param.print(state, unit)?;
                     }
                     Ok(())
@@ -111,25 +111,21 @@ impl<'input> Print for FunctionCall<'input> {
 
                 if state.options().print_variable_locations {
                     state.field_expanded("target", |state| {
-                        print::location::diff_pieces(
-                            state,
-                            a.target_locations(),
-                            b.target_locations(),
-                        )
+                        print::location::diff_pieces(state, a.target(), b.target())
                     })?;
                 }
 
                 if state.options().print_source {
                     state.field("source", (arg_a, a), (arg_b, b), |w, _state, (unit, x)| {
-                        print::source::print(x.called_from_source(), w, unit)
+                        print::source::print(x.source(), w, unit)
                     })?;
                 }
 
                 // Show detailed parameter diff
-                if !a.parameter_inputs().is_empty() || !b.parameter_inputs().is_empty() {
+                if !a.parameters().is_empty() || !b.parameters().is_empty() {
                     state.field_expanded("parameters", |state| {
-                        let params_a = a.parameter_inputs();
-                        let params_b = b.parameter_inputs();
+                        let params_a = a.parameters();
+                        let params_b = b.parameters();
                         let max_len = params_a.len().max(params_b.len());
 
                         for i in 0..max_len {
@@ -173,7 +169,7 @@ impl<'input> DiffList for FunctionCall<'input> {
         }
 
         // Compare called from address
-        if a.called_from_address().cmp(&b.called_from_address()) != std::cmp::Ordering::Equal {
+        if a.call_address().cmp(&b.call_address()) != std::cmp::Ordering::Equal {
             cost += 1;
         }
 
@@ -251,19 +247,19 @@ impl<'input> Print for FunctionCallParameter<'input> {
             |state| {
                 if state.options().print_variable_locations {
                     state.field_expanded("location", |state| {
-                        print::location::print_pieces(state, self.locations())
+                        print::location::print_pieces(state, self.location())
                     })?;
 
                     state.field_expanded("value", |state| {
-                        print::location::print_pieces(state, self.value_locations())
+                        print::location::print_pieces(state, self.value())
                     })?;
 
                     state.field_expanded("data_location", |state| {
-                        print::location::print_pieces(state, self.dataref_locations())
+                        print::location::print_pieces(state, self.data_location())
                     })?;
 
                     state.field_expanded("data_value_location", |state| {
-                        print::location::print_pieces(state, self.dataref_value_locations())
+                        print::location::print_pieces(state, self.data_value())
                     })?;
                 }
 
@@ -288,31 +284,19 @@ impl<'input> Print for FunctionCallParameter<'input> {
             |state| {
                 if state.options().print_variable_locations {
                     state.field_expanded("location", |state| {
-                        print::location::diff_pieces(state, a.locations(), b.locations())
+                        print::location::diff_pieces(state, a.location(), b.location())
                     })?;
 
                     state.field_expanded("value", |state| {
-                        print::location::diff_pieces(
-                            state,
-                            a.value_locations(),
-                            b.value_locations(),
-                        )
+                        print::location::diff_pieces(state, a.value(), b.value())
                     })?;
 
                     state.field_expanded("data_location", |state| {
-                        print::location::diff_pieces(
-                            state,
-                            a.dataref_locations(),
-                            b.dataref_locations(),
-                        )
+                        print::location::diff_pieces(state, a.data_location(), b.data_location())
                     })?;
 
                     state.field_expanded("data_value_location", |state| {
-                        print::location::diff_pieces(
-                            state,
-                            a.dataref_value_locations(),
-                            b.dataref_value_locations(),
-                        )
+                        print::location::diff_pieces(state, a.data_value(), b.data_value())
                     })?;
                 }
 
