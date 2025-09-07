@@ -3417,18 +3417,11 @@ where
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
                         if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                            call.target_locations =
-                                l.into_iter().map(|p| (Range::all(), p)).collect();
+                            call.target_locations = l;
                         }
                     }
-                    gimli::AttributeValue::LocationListsRef(..) => {
-                        debug!(
-                            "loclist for call_site_parameter location: {:?}",
-                            attr.value()
-                        );
-                    }
                     _ => {
-                        debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                        debug!("unknown DW_AT_call_target: {:?}", attr.value());
                     }
                 }
 
@@ -3511,65 +3504,44 @@ where
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.locations = l.into_iter().map(|p| (Range::all(), p)).collect();
+                        parameter.locations = l;
                     }
                 }
-                gimli::AttributeValue::LocationListsRef(..) => {
+                _ => {
                     debug!(
-                        "loclist for call_site_parameter location: {:?}",
+                        "unknown call site parameter DW_AT_location: {:?}",
                         attr.value()
                     );
-                }
-                _ => {
-                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
                 }
             },
             gimli::DW_AT_GNU_call_site_value | gimli::DW_AT_call_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.value_locations =
-                            l.into_iter().map(|p| (Range::all(), p)).collect();
+                        parameter.value_locations = l;
                     }
                 }
-                gimli::AttributeValue::LocationListsRef(..) => {
-                    debug!("loclist for call_site_parameter value: {:?}", attr.value());
-                }
                 _ => {
-                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                    debug!("unknown DW_AT_call_value: {:?}", attr.value());
                 }
             },
             gimli::DW_AT_call_data_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.dataref_locations =
-                            l.into_iter().map(|p| (Range::all(), p)).collect();
+                        parameter.dataref_locations = l;
                     }
                 }
-                gimli::AttributeValue::LocationListsRef(..) => {
-                    debug!(
-                        "loclist for call_site_parameter data location: {:?}",
-                        attr.value()
-                    );
-                }
                 _ => {
-                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                    debug!("unknown DW_AT_call_data_location: {:?}", attr.value());
                 }
             },
             gimli::DW_AT_call_data_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some(l) = evaluate_single_location(dwarf, dwarf_unit, expr) {
-                        parameter.dataref_value_locations =
-                            l.into_iter().map(|p| (Range::all(), p)).collect();
+                        parameter.dataref_value_locations = l;
                     }
                 }
-                gimli::AttributeValue::LocationListsRef(..) => {
-                    debug!(
-                        "loclist for call_site_parameter data value: {:?}",
-                        attr.value()
-                    );
-                }
                 _ => {
-                    debug!("unknown variable DW_AT_location: {:?}", attr.value());
+                    debug!("unknown DW_AT_call_data_value: {:?}", attr.value());
                 }
             },
             gimli::DW_AT_call_parameter => {

@@ -423,7 +423,7 @@ pub struct FunctionCall<'input> {
     pub(crate) called_from_address: Option<u64>,
     pub(crate) origin: Option<FunctionCallOrigin<'input>>,
     /// The target that is being called (if present) must reside in a single location (it is a function pointer).
-    pub(crate) target_locations: Vec<(Range, Piece)>,
+    pub(crate) target_locations: Vec<Piece>,
     pub(crate) target_is_clobbered: bool,
     pub(crate) called_function_ty: Option<TypeOffset>,
     pub(crate) called_from_source: Source<'input>,
@@ -457,24 +457,8 @@ impl<'input> FunctionCall<'input> {
 
     /// The target location of the call.
     #[inline]
-    pub fn target_locations(&self) -> &[(Range, Piece)] {
+    pub fn target_locations(&self) -> &[Piece] {
         &self.target_locations
-    }
-
-    /// The registers where the parameter value is sent to.
-    #[inline]
-    pub fn target_registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
-        location::registers(&self.target_locations)
-    }
-
-    /// The registers pointing to where this variable is stored.
-    pub fn target_register_offsets(&self) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
-        location::register_offsets(&self.target_locations)
-    }
-
-    /// The stack frame locations at which this variable is stored.
-    pub fn target_frame_locations(&self) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
-        location::frame_locations(&self.target_locations)
     }
 
     /// Whether the target is clobbered.
@@ -551,104 +535,36 @@ pub enum FunctionCallIndirectOrigin<'input> {
 pub struct FunctionCallParameter<'input> {
     /// The location where we are sending this parameter value to (the callee will read the parameter value from here).
     /// This will generally line up with the caller-callee ABI.
-    pub(crate) locations: Vec<(Range, Piece)>,
+    pub(crate) locations: Vec<Piece>,
     /// This location holds the value at the time of the call
-    pub(crate) value_locations: Vec<(Range, Piece)>,
+    pub(crate) value_locations: Vec<Piece>,
     /// If this parameter is a reference, also keep track of the referenced data location+value
-    pub(crate) dataref_locations: Vec<(Range, Piece)>,
+    pub(crate) dataref_locations: Vec<Piece>,
     /// If this parameter is a reference, also keep track of the referenced data location+value
-    pub(crate) dataref_value_locations: Vec<(Range, Piece)>,
+    pub(crate) dataref_value_locations: Vec<Piece>,
     /// The destination parameter that this value is filling in
     pub(crate) parameter: Option<ParameterType<'input>>,
 }
 
 impl<'input> FunctionCallParameter<'input> {
     /// A list of all locations where the parameter value is sent to.
-    pub fn locations(&self) -> &[(Range, Piece)] {
+    pub fn locations(&self) -> &[Piece] {
         &self.locations
     }
 
-    /// The registers where the parameter value is sent to.
-    #[inline]
-    pub fn registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
-        location::registers(&self.locations)
-    }
-
-    /// The registers pointing to where this variable is stored.
-    pub fn register_offsets(&self) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
-        location::register_offsets(&self.locations)
-    }
-
-    /// The stack frame locations at which this variable is stored.
-    pub fn frame_locations(&self) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
-        location::frame_locations(&self.locations)
-    }
-
     /// A list of all locations where the value is at the time of the call.
-    pub fn value_locations(&self) -> &[(Range, Piece)] {
+    pub fn value_locations(&self) -> &[Piece] {
         &self.value_locations
     }
 
-    /// The registers where the value is at the time of the call.
-    #[inline]
-    pub fn value_registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
-        location::registers(&self.value_locations)
-    }
-
-    /// The registers pointing to where the value is at the time of the call.
-    pub fn value_register_offsets(&self) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
-        location::register_offsets(&self.value_locations)
-    }
-
-    /// The stack frame locations at which the value is at the time of the call.
-    pub fn value_frame_locations(&self) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
-        location::frame_locations(&self.value_locations)
-    }
-
     /// A list of all locations where the referenced data location is if this parameter is a reference.
-    pub fn dataref_locations(&self) -> &[(Range, Piece)] {
+    pub fn dataref_locations(&self) -> &[Piece] {
         &self.dataref_locations
     }
 
-    /// The registers where the referenced data location is if this parameter is a reference.
-    #[inline]
-    pub fn dataref_registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
-        location::registers(&self.dataref_locations)
-    }
-
-    /// The registers pointing to where the referenced data location is if this parameter is a reference.
-    pub fn dataref_register_offsets(&self) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
-        location::register_offsets(&self.dataref_locations)
-    }
-
-    /// The stack frame locations at which the referenced data location is if this parameter is a reference.
-    pub fn dataref_frame_locations(&self) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
-        location::frame_locations(&self.dataref_locations)
-    }
-
     /// A list of all locations where the referenced data value location is if this parameter is a reference.
-    pub fn dataref_value_locations(&self) -> &[(Range, Piece)] {
+    pub fn dataref_value_locations(&self) -> &[Piece] {
         &self.dataref_value_locations
-    }
-
-    /// The registers where the referenced data value location is if this parameter is a reference.
-    #[inline]
-    pub fn dataref_value_registers(&self) -> impl Iterator<Item = (Range, Register)> + '_ {
-        location::registers(&self.dataref_value_locations)
-    }
-
-    /// The registers pointing to where the referenced data value location is if this parameter is a reference.
-    pub fn dataref_value_register_offsets(
-        &self,
-    ) -> impl Iterator<Item = (Range, Register, i64)> + '_ {
-        location::register_offsets(&self.dataref_value_locations)
-    }
-
-    /// The stack frame locations at which the referenced data value location is if this parameter is a reference.
-    pub fn dataref_value_frame_locations(
-        &self,
-    ) -> impl Iterator<Item = (Range, FrameLocation)> + '_ {
-        location::frame_locations(&self.dataref_value_locations)
     }
 
     /// The destination parameter that this value is filling in.

@@ -73,20 +73,9 @@ impl<'input> Print for FunctionCall<'input> {
                 state.field("return address", |w, _state| print_address(self, w))?;
 
                 if state.options().print_variable_locations {
-                    state.field_expanded(
-                        "target",
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.target_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.target_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("target", |state| {
+                        print::location::print_pieces(state, self.target_locations())
+                    })?;
                 }
 
                 if state.options().print_source {
@@ -118,27 +107,16 @@ impl<'input> Print for FunctionCall<'input> {
         state.expanded(
             |state| state.line(a, b, |w, _state, x| print_header(x, w)),
             |state| {
-                state.field("return address", a, b, |w, _state, x| {
-                    print_address(x, w)
-                })?;
+                state.field("return address", a, b, |w, _state, x| print_address(x, w))?;
 
                 if state.options().print_variable_locations {
-                    state.field_expanded(
-                        "target",
-                        |state| {
-                            print::register::diff_list(
-                                state,
-                                a.target_registers().map(|x| x.1).collect(),
-                                b.target_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::diff_list(
-                                state,
-                                a.target_frame_locations().map(|x| x.1).collect(),
-                                b.target_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("target", |state| {
+                        print::location::diff_pieces(
+                            state,
+                            a.target_locations(),
+                            b.target_locations(),
+                        )
+                    })?;
                 }
 
                 if state.options().print_source {
@@ -272,65 +250,21 @@ impl<'input> Print for FunctionCallParameter<'input> {
             |state| state.line(|w, hash| print_parameter_header(self, w, hash)),
             |state| {
                 if state.options().print_variable_locations {
-                    state.field_expanded(
-                        "location",
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("location", |state| {
+                        print::location::print_pieces(state, self.locations())
+                    })?;
 
-                    state.field_expanded(
-                        "value",
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.value_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.value_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("value", |state| {
+                        print::location::print_pieces(state, self.value_locations())
+                    })?;
 
-                    state.field_expanded(
-                        "data_location",
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.dataref_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.dataref_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("data_location", |state| {
+                        print::location::print_pieces(state, self.dataref_locations())
+                    })?;
 
-                    state.field_expanded(
-                        "data_value_location",
-                        |state| {
-                            print::register::print_list(
-                                state,
-                                self.dataref_value_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::print_list(
-                                state,
-                                self.dataref_value_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("data_value_location", |state| {
+                        print::location::print_pieces(state, self.dataref_value_locations())
+                    })?;
                 }
 
                 Ok(())
@@ -353,73 +287,33 @@ impl<'input> Print for FunctionCallParameter<'input> {
             },
             |state| {
                 if state.options().print_variable_locations {
-                    state.field_expanded(
-                        "location",
-                        |state| {
-                            print::register::diff_list(
-                                state,
-                                a.registers().map(|x| x.1).collect(),
-                                b.registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::diff_list(
-                                state,
-                                a.frame_locations().map(|x| x.1).collect(),
-                                b.frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("location", |state| {
+                        print::location::diff_pieces(state, a.locations(), b.locations())
+                    })?;
 
-                    state.field_expanded(
-                        "value",
-                        |state| {
-                            print::register::diff_list(
-                                state,
-                                a.value_registers().map(|x| x.1).collect(),
-                                b.value_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::diff_list(
-                                state,
-                                a.value_frame_locations().map(|x| x.1).collect(),
-                                b.value_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("value", |state| {
+                        print::location::diff_pieces(
+                            state,
+                            a.value_locations(),
+                            b.value_locations(),
+                        )
+                    })?;
 
-                    state.field_expanded(
-                        "data_location",
-                        |state| {
-                            print::register::diff_list(
-                                state,
-                                a.dataref_registers().map(|x| x.1).collect(),
-                                b.dataref_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::diff_list(
-                                state,
-                                a.dataref_frame_locations().map(|x| x.1).collect(),
-                                b.dataref_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("data_location", |state| {
+                        print::location::diff_pieces(
+                            state,
+                            a.dataref_locations(),
+                            b.dataref_locations(),
+                        )
+                    })?;
 
-                    state.field_expanded(
-                        "data_value_location",
-                        |state| {
-                            print::register::diff_list(
-                                state,
-                                a.dataref_value_registers().map(|x| x.1).collect(),
-                                b.dataref_value_registers().map(|x| x.1).collect(),
-                            )?;
-                            print::frame_location::diff_list(
-                                state,
-                                a.dataref_value_frame_locations().map(|x| x.1).collect(),
-                                b.dataref_value_frame_locations().map(|x| x.1).collect(),
-                            )?;
-                            Ok(())
-                        },
-                    )?;
+                    state.field_expanded("data_value_location", |state| {
+                        print::location::diff_pieces(
+                            state,
+                            a.dataref_value_locations(),
+                            b.dataref_value_locations(),
+                        )
+                    })?;
                 }
 
                 Ok(())

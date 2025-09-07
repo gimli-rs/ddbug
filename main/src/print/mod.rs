@@ -22,6 +22,7 @@ pub(crate) mod function_call;
 pub(crate) mod inherit;
 pub(crate) mod inlined_function;
 pub(crate) mod local_variable;
+pub(crate) mod location;
 pub(crate) mod member;
 pub(crate) mod namespace;
 pub(crate) mod parameter;
