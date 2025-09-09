@@ -96,7 +96,7 @@ impl DiffList for Location {
 
     fn diff_cost(_state: &DiffState, _unit_a: &(), a: &Self, _unit_b: &(), b: &Self) -> usize {
         let mut cost = 0;
-        if a.cmp(&b) != cmp::Ordering::Equal {
+        if a.cmp(b) != cmp::Ordering::Equal {
             cost += 1;
         }
         cost
