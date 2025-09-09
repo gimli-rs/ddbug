@@ -537,15 +537,34 @@ pub enum FunctionCallIndirectOrigin<'input> {
 /// Represents one of the parameters for a function call.
 #[derive(Debug, Default)]
 pub struct FunctionCallParameter<'input> {
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: Option<TypeOffset>,
     pub(crate) location: Vec<Piece>,
     pub(crate) value: Vec<Piece>,
     pub(crate) data_location: Vec<Piece>,
     pub(crate) data_value: Vec<Piece>,
-    pub(crate) parameter: Option<ParameterType<'input>>,
 }
 
 impl<'input> FunctionCallParameter<'input> {
-    /// The location where the paramter is passed for the call.
+    /// The name of the parameter.
+    #[inline]
+    pub fn name(&self) -> Option<&'input str> {
+        self.name
+    }
+
+    /// The type of the parameter.
+    ///
+    /// Returns `None` if the type is invalid or unknown.
+    #[inline]
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        if let Some(ty) = self.ty {
+            Type::from_offset(hash, ty)
+        } else {
+            None
+        }
+    }
+
+    /// The location where the parameter is passed for the call.
     pub fn location(&self) -> &[Piece] {
         &self.location
     }
@@ -555,20 +574,14 @@ impl<'input> FunctionCallParameter<'input> {
         &self.value
     }
 
-    /// If the paramter is a reference, the location where the referenced data is stored.
+    /// If the parameter is a reference, the location where the referenced data is stored.
     pub fn data_location(&self) -> &[Piece] {
         &self.data_location
     }
 
-    /// If the paramter is a reference, the value of the referenced data at the time of the call.
+    /// If the parameter is a reference, the value of the referenced data at the time of the call.
     pub fn data_value(&self) -> &[Piece] {
         &self.data_value
-    }
-
-    /// The destination parameter that this value is filling in.
-    #[inline]
-    pub fn parameter(&self) -> Option<&ParameterType<'input>> {
-        self.parameter.as_ref()
     }
 }
 

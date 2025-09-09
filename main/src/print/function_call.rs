@@ -220,20 +220,15 @@ fn print_parameter_header(
     w: &mut dyn ValuePrinter,
     hash: &parser::FileHash,
 ) -> Result<()> {
-    if let Some(param_type) = param.parameter() {
-        if let Some(name) = param_type.name() {
-            write!(w, "parameter: {}", name)?;
-        } else {
-            write!(w, "parameter: <unnamed>")?;
-        }
-
-        if let Some(ty) = param_type.ty(hash) {
-            write!(w, " (")?;
-            print::types::print_ref(Some(ty), w, hash)?;
-            write!(w, ")")?;
-        }
+    if let Some(name) = param.name() {
+        write!(w, "{}", name)?;
     } else {
-        write!(w, "parameter: <unknown>")?;
+        write!(w, "<unnamed>")?;
+    }
+
+    if let Some(ty) = param.ty(hash) {
+        write!(w, ": ")?;
+        print::types::print_ref(Some(ty), w, hash)?;
     }
     Ok(())
 }

@@ -3497,6 +3497,7 @@ where
     Endian: gimli::Endianity,
 {
     let mut parameter = FunctionCallParameter::default();
+    let mut abstract_origin = None;
 
     let mut attrs = node.entry().attrs();
     while let Some(attr) = attrs.next()? {
@@ -3546,18 +3547,19 @@ where
                     debug!("unknown DW_AT_call_data_value: {:?}", attr.value());
                 }
             },
-            gimli::DW_AT_call_parameter => {
-                if let Some(offset) = parse_parameter_offset(dwarf_unit, &attr) {
-                    parameter.parameter.get_or_insert_default().offset = offset;
+            gimli::DW_AT_call_parameter | gimli::DW_AT_abstract_origin => {
+                if let Some(gimli::UnitSectionOffset::DebugInfoOffset(offset)) =
+                    parse_debug_info_offset(dwarf_unit, &attr)
+                {
+                    abstract_origin = Some(offset);
                 }
             }
             gimli::DW_AT_name => {
-                parameter.parameter.get_or_insert_default().name =
-                    dwarf.string(dwarf_unit, attr.value());
+                parameter.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
-                    parameter.parameter.get_or_insert_default().ty = offset;
+                    parameter.ty = Some(offset);
                 }
             }
             _ => debug!(
@@ -3565,6 +3567,24 @@ where
                 attr.name(),
                 attr.value()
             ),
+        }
+    }
+
+    if let Some((dwarf_unit, mut tree)) = abstract_origin.and_then(|offset| dwarf.tree(offset)) {
+        let node = tree.root()?;
+        let mut attrs = node.entry().attrs();
+        while let Some(attr) = attrs.next()? {
+            match attr.name() {
+                gimli::DW_AT_name => {
+                    parameter.name = dwarf.string(dwarf_unit, attr.value());
+                }
+                gimli::DW_AT_type => {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                        parameter.ty = Some(offset);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
