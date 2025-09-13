@@ -2,13 +2,15 @@ use std::borrow::Cow;
 use std::cmp;
 use std::sync::Arc;
 
+use fnv::FnvHashMap as HashMap;
+
 use crate::file::FileHash;
 use crate::location::{self, FrameLocation, Piece, Register};
 use crate::namespace::Namespace;
 use crate::range::Range;
 use crate::source::Source;
-use crate::types::{ParameterType, Type, TypeOffset};
-use crate::variable::LocalVariable;
+use crate::types::{MemberOffset, ParameterType, Type, TypeOffset};
+use crate::variable::{LocalVariable, Variable, VariableOffset};
 use crate::{Address, Id, Size};
 
 /// The debuginfo offset of a function.
@@ -79,13 +81,14 @@ pub struct FunctionDetails<'input> {
     pub(crate) parameters: Vec<Parameter<'input>>,
     pub(crate) variables: Vec<LocalVariable<'input>>,
     pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
+    pub(crate) calls: Vec<FunctionCall<'input>>,
 }
 
 impl<'input> Function<'input> {
     pub(crate) fn from_offset<'a>(
         hash: &'a FileHash<'input>,
         offset: FunctionOffset,
-    ) -> Option<&'a Function<'input>> {
+    ) -> Option<&'input Function<'input>> {
         if offset.is_none() {
             return None;
         }
@@ -219,10 +222,19 @@ impl<'input> FunctionDetails<'input> {
     pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
         &self.inlined_functions
     }
+
+    /// The calls to non-inlined functions.
+    #[inline]
+    pub fn calls(&self) -> &[FunctionCall<'input>] {
+        &self.calls
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct ParameterOffset(usize);
+/// The debuginfo offset of a parameter formal specification/definition.
+///
+/// This is unique for all parameter specifications/definitions in a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ParameterOffset(usize);
 
 impl ParameterOffset {
     #[inline]
@@ -244,7 +256,7 @@ impl Default for ParameterOffset {
     }
 }
 
-/// A function parameter.
+/// A function parameter definition.
 #[derive(Debug, Default, Clone)]
 pub struct Parameter<'input> {
     pub(crate) offset: ParameterOffset,
@@ -259,6 +271,12 @@ impl<'input> Parameter<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The debuginfo offset of this parameter.
+    #[inline]
+    pub fn offset(&self) -> ParameterOffset {
+        self.offset
     }
 
     /// The type offset of the parameter.
@@ -340,6 +358,7 @@ pub struct InlinedFunction<'input> {
     pub(crate) parameters: Vec<Parameter<'input>>,
     pub(crate) variables: Vec<LocalVariable<'input>>,
     pub(crate) inlined_functions: Vec<InlinedFunction<'input>>,
+    pub(crate) calls: Vec<FunctionCall<'input>>,
     pub(crate) call_source: Source<'input>,
 }
 
@@ -384,5 +403,254 @@ impl<'input> InlinedFunction<'input> {
     #[inline]
     pub fn inlined_functions(&self) -> &[InlinedFunction<'input>] {
         &self.inlined_functions
+    }
+
+    /// The calls to non-inlined functions.
+    #[inline]
+    pub fn calls(&self) -> &[FunctionCall<'input>] {
+        &self.calls
+    }
+}
+
+/// A call to another (non-inlined) function.
+#[derive(Debug, Default)]
+pub struct FunctionCall<'input> {
+    pub(crate) kind: FunctionCallKind,
+    pub(crate) return_address: Option<u64>,
+    pub(crate) call_address: Option<u64>,
+    pub(crate) origin: Option<FunctionCallOrigin<'input>>,
+    pub(crate) target: Vec<Piece>,
+    pub(crate) target_is_clobbered: bool,
+    pub(crate) ty: Option<TypeOffset>,
+    pub(crate) called_from_source: Source<'input>,
+    pub(crate) parameters: Vec<FunctionCallParameter<'input>>,
+}
+
+impl<'input> FunctionCall<'input> {
+    /// The kind of function call (normal or tail call).
+    #[inline]
+    pub fn kind(&self) -> FunctionCallKind {
+        self.kind
+    }
+
+    /// The return address after the call.
+    #[inline]
+    pub fn return_address(&self) -> Option<u64> {
+        self.return_address
+    }
+
+    /// The address of the call instruction.
+    ///
+    /// This the call-like instruction for a normal call or the jump-like instruction
+    /// for a tail call.
+    #[inline]
+    pub fn call_address(&self) -> Option<u64> {
+        self.call_address
+    }
+
+    /// The origin of the target of the call.
+    ///
+    /// This determines whether the call is direct or indirect,
+    /// and if it is indirect, where the function pointer comes from.
+    #[inline]
+    pub fn origin(&self) -> Option<&FunctionCallOrigin<'input>> {
+        self.origin.as_ref()
+    }
+
+    /// The computed value of the target of the call.
+    ///
+    /// This is only used if the target is indirect.
+    #[inline]
+    pub fn target(&self) -> &[Piece] {
+        &self.target
+    }
+
+    /// Whether the expression for the value of `target` is only valid before the call.
+    #[inline]
+    pub fn target_is_clobbered(&self) -> bool {
+        self.target_is_clobbered
+    }
+
+    /// The type of the target of the call.
+    ///
+    /// This is usually omitted if `origin` is specified.
+    ///
+    /// Returns `None` if the type is invalid or unknown.
+    // TODO: add a convenient way to get the type from either `origin` or `ty`.
+    #[inline]
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        if let Some(ty) = self.ty {
+            Type::from_offset(hash, ty)
+        } else {
+            None
+        }
+    }
+
+    /// The source location of the call.
+    #[inline]
+    pub fn source(&self) -> &Source<'input> {
+        &self.called_from_source
+    }
+
+    /// The function parameters for this call.
+    #[inline]
+    pub fn parameters(&self) -> &[FunctionCallParameter<'input>] {
+        &self.parameters
+    }
+}
+
+/// The kind of function call being made.
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, PartialOrd, Ord)]
+pub enum FunctionCallKind {
+    /// This is a normal function call made via a call-like instruction.
+    #[default]
+    Normal,
+    /// This is a tail call made via a jump-like instruction.
+    Tail,
+}
+
+/// The origin of the target of a function call.
+#[derive(Debug)]
+pub enum FunctionCallOrigin<'input> {
+    /// The definition of the function for a direct call.
+    Direct(&'input Function<'input>),
+    /// The origin of the function pointer for an indirect call.
+    Indirect(FunctionCallIndirectOrigin<'input>),
+}
+
+/// The origin of the function pointer for an indirect function call.
+#[derive(Debug)]
+pub enum FunctionCallIndirectOrigin<'input> {
+    /// The function pointer is stored in this variable at the time of the call.
+    Variable(&'input Variable<'input>),
+    /// The function pointer is stored in one of the caller function's local variables at the time of the call.
+    LocalVariable(VariableOffset),
+    /// The function origin is stored in one of the caller function's parameters at the time of the call.
+    Parameter(ParameterOffset),
+    /// The function origin is stored in this member at the time of the call.
+    ///
+    /// We store this as the unique member offset. This allows for later traversal down the types
+    /// in order to locate this exact member if the caller is interested.
+    Member(MemberOffset),
+}
+
+/// Represents one of the parameters for a function call.
+#[derive(Debug, Default)]
+pub struct FunctionCallParameter<'input> {
+    pub(crate) name: Option<&'input str>,
+    pub(crate) ty: Option<TypeOffset>,
+    pub(crate) location: Vec<Piece>,
+    pub(crate) value: Vec<Piece>,
+    pub(crate) data_location: Vec<Piece>,
+    pub(crate) data_value: Vec<Piece>,
+}
+
+impl<'input> FunctionCallParameter<'input> {
+    /// The name of the parameter.
+    #[inline]
+    pub fn name(&self) -> Option<&'input str> {
+        self.name
+    }
+
+    /// The type of the parameter.
+    ///
+    /// Returns `None` if the type is invalid or unknown.
+    #[inline]
+    pub fn ty<'a>(&self, hash: &'a FileHash<'input>) -> Option<Cow<'a, Type<'input>>> {
+        if let Some(ty) = self.ty {
+            Type::from_offset(hash, ty)
+        } else {
+            None
+        }
+    }
+
+    /// The location where the parameter is passed for the call.
+    pub fn location(&self) -> &[Piece] {
+        &self.location
+    }
+
+    /// The value of the parameter at the time of the call.
+    pub fn value(&self) -> &[Piece] {
+        &self.value
+    }
+
+    /// If the parameter is a reference, the location where the referenced data is stored.
+    pub fn data_location(&self) -> &[Piece] {
+        &self.data_location
+    }
+
+    /// If the parameter is a reference, the value of the referenced data at the time of the call.
+    pub fn data_value(&self) -> &[Piece] {
+        &self.data_value
+    }
+}
+
+/// Abstracts over functions vs inlined functions at the details level
+#[derive(Debug, Clone, Copy)]
+pub enum FunctionInstance<'input> {
+    /// This is a non-inlined function
+    Normal(&'input FunctionDetails<'input>),
+    /// This is an inlined function
+    Inlined(&'input InlinedFunction<'input>),
+}
+
+impl<'input> FunctionInstance<'input> {
+    #[inline]
+    fn parameters(&self) -> &'input [Parameter<'input>] {
+        match self {
+            Self::Normal(f) => f.parameters(),
+            Self::Inlined(f) => f.parameters(),
+        }
+    }
+
+    #[inline]
+    fn variables(&self) -> &'input [LocalVariable<'input>] {
+        match self {
+            Self::Normal(f) => f.variables(),
+            Self::Inlined(f) => f.variables(),
+        }
+    }
+}
+
+/// An index of parameters and local variables within a function.
+///
+/// This requires the function details to be loaded.
+pub struct FunctionHash<'input> {
+    /// The function being indexed.
+    pub function: FunctionInstance<'input>,
+    /// All parameters by offset.
+    pub parameters_by_offset: HashMap<ParameterOffset, &'input Parameter<'input>>,
+    /// All local variables by offset.
+    pub local_variables_by_offset: HashMap<VariableOffset, &'input LocalVariable<'input>>,
+}
+
+impl<'input> FunctionHash<'input> {
+    /// Create a new `FunctionHash` for the given function.
+    pub fn new(function: FunctionInstance<'input>) -> Self {
+        Self {
+            function,
+            parameters_by_offset: Self::parameters_by_offset(&function),
+            local_variables_by_offset: Self::local_variables_by_offset(&function),
+        }
+    }
+
+    fn parameters_by_offset(
+        function: &FunctionInstance<'input>,
+    ) -> HashMap<ParameterOffset, &'input Parameter<'input>> {
+        let mut parameters = HashMap::default();
+        for parameter in function.parameters() {
+            parameters.insert(parameter.offset, parameter);
+        }
+        parameters
+    }
+
+    fn local_variables_by_offset(
+        function: &FunctionInstance<'input>,
+    ) -> HashMap<VariableOffset, &'input LocalVariable<'input>> {
+        let mut local_variables = HashMap::default();
+        for local_variable in function.variables() {
+            local_variables.insert(local_variable.offset, local_variable);
+        }
+        local_variables
     }
 }
