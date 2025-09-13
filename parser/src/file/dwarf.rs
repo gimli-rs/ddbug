@@ -4009,11 +4009,14 @@ where
                 // Skip and Call could be implemented if needed.
                 return Ok(pieces);
             }
-            gimli::Operation::WasmLocal { .. }
-            | gimli::Operation::WasmGlobal { .. }
-            | gimli::Operation::WasmStack { .. } => {
-                // Unimplemented.
-                location = Some((Location::Other, false));
+            gimli::Operation::WasmLocal { index } => {
+                location = Some((Location::WasmLocal { index }, false));
+            }
+            gimli::Operation::WasmGlobal { index } => {
+                location = Some((Location::WasmGlobal { index }, false));
+            }
+            gimli::Operation::WasmStack { index } => {
+                location = Some((Location::WasmStack { index }, false));
             }
         }
         if let Some((location, is_value)) = location {
@@ -4035,6 +4038,11 @@ where
                             is_value,
                             Size::new(size_in_bits),
                         );
+                    }
+                    // https://docs.rs/gimli/latest/gimli/read/enum.Operation.html#variant.StackValue
+                    // Commonly used for Wasm to terminate the expression.
+                    gimli::Operation::StackValue => {
+                        add_piece(&mut pieces, location, 0, is_value, Size::none());
                     }
                     _ => {
                         return Err(gimli::Error::InvalidPiece.into());
