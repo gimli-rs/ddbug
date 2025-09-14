@@ -303,6 +303,32 @@ where
         self.read.attr_locations_offset(dwarf_unit, value).ok()?
     }
 
+    fn unit(
+        &self,
+        offset: gimli::UnitSectionOffset,
+    ) -> Option<(&DwarfUnit<'input, Endian>, gimli::UnitOffset)> {
+        // FIXME: make this more efficient for large numbers of units
+        // FIXME: cache lookups
+        for unit in &self.units {
+            if let Some(offset) = offset.to_unit_offset(unit) {
+                return Some((unit, offset));
+            }
+        }
+        None
+    }
+
+    fn entry(
+        &self,
+        offset: gimli::UnitSectionOffset,
+    ) -> Option<(
+        &DwarfUnit<'input, Endian>,
+        gimli::DebuggingInformationEntry<'_, '_, Reader<'input, Endian>>,
+    )> {
+        let (unit, offset) = self.unit(offset)?;
+        let entry = unit.entry(offset).ok()?;
+        Some((unit, entry))
+    }
+
     fn tree(
         &self,
         offset: gimli::DebugInfoOffset,
@@ -310,16 +336,10 @@ where
         &DwarfUnit<'input, Endian>,
         gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
-        // FIXME: make this more efficient for large numbers of units
-        // FIXME: cache lookups
         let offset = gimli::UnitSectionOffset::DebugInfoOffset(offset);
-        for unit in &self.units {
-            if let Some(offset) = offset.to_unit_offset(unit) {
-                let tree = unit.entries_tree(Some(offset)).ok()?;
-                return Some((unit, tree));
-            }
-        }
-        None
+        let (unit, offset) = self.unit(offset)?;
+        let tree = unit.entries_tree(Some(offset)).ok()?;
+        Some((unit, tree))
     }
 
     fn type_tree(
@@ -4249,83 +4269,50 @@ fn parse_function_call_origin_offset<'input, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    if let Some(unit_section_offset) = parse_debug_info_offset(dwarf_unit, attr) {
-        // now parse the DIE at this offset to discover its type
-        let entry = match unit_section_offset {
-            gimli::UnitSectionOffset::DebugInfoOffset(offset) => {
-                if let Some((target_dwarf_unit, _)) = dwarf.tree(offset) {
-                    let unit_offset = if let Some(unit_offset) =
-                        unit_section_offset.to_unit_offset(target_dwarf_unit)
-                    {
-                        unit_offset
-                    } else {
-                        panic!(
-                            "failed to convert unit_section offset {:?} to unit offset",
-                            unit_section_offset
-                        );
-                    };
-                    let entry = if let Ok(entry) = target_dwarf_unit.entry(unit_offset) {
-                        entry
-                    } else {
-                        panic!("failed to find DIE entry at offset: {:?}", unit_offset);
-                    };
+    let unit_section_offset = parse_debug_info_offset(dwarf_unit, attr)?;
+    let Some((_, entry)) = dwarf.entry(unit_section_offset) else {
+        debug!(
+            "failed to find DIE entry at offset: {:?}",
+            unit_section_offset
+        );
+        return None;
+    };
 
-                    Some(entry)
-                } else {
-                    None
-                }
+    match entry.tag() {
+        gimli::DW_TAG_subprogram => {
+            let offset: FunctionOffset = unit_section_offset.into();
+            Function::from_offset(hash, offset).map(FunctionCallOrigin::Direct)
+        }
+        gimli::DW_TAG_variable => {
+            // check if this is a global variable
+            let offset: VariableOffset = unit_section_offset.into();
+            if let Some(v) = Variable::from_offset(hash, offset) {
+                Some(FunctionCallOrigin::Indirect(
+                    FunctionCallIndirectOrigin::Variable(v),
+                ))
+            } else {
+                // Have the caller check the local variables (they can use a function hash if they are interested)
+                Some(FunctionCallOrigin::Indirect(
+                    FunctionCallIndirectOrigin::LocalVariable(offset),
+                ))
             }
-            _ => {
-                debug!(
-                    "while parsing call_site origin, found unknown DIE offset: {:?}",
-                    unit_section_offset
-                );
-                None
-            }
-        };
-
-        if let Some(entry) = entry {
-            match entry.tag() {
-                gimli::DW_TAG_subprogram => {
-                    let offset: FunctionOffset = unit_section_offset.into();
-                    Function::from_offset(hash, offset).map(FunctionCallOrigin::Direct)
-                }
-                gimli::DW_TAG_variable => {
-                    // check if this is a global variable
-                    let offset: VariableOffset = unit_section_offset.into();
-                    if let Some(v) = Variable::from_offset(hash, offset) {
-                        Some(FunctionCallOrigin::Indirect(
-                            FunctionCallIndirectOrigin::Variable(v),
-                        ))
-                    } else {
-                        // Have the caller check the local variables (they can use a function hash if they are interested)
-                        Some(FunctionCallOrigin::Indirect(
-                            FunctionCallIndirectOrigin::LocalVariable(offset),
-                        ))
-                    }
-                }
-                gimli::DW_TAG_formal_parameter => {
-                    // Have the caller check their parameters (they can use a function hash if they are interested)
-                    Some(FunctionCallOrigin::Indirect(
-                        FunctionCallIndirectOrigin::Parameter(unit_section_offset.into()),
-                    ))
-                }
-                gimli::DW_TAG_member => {
-                    // this can be viewed as a vtable or a class method
-                    Some(FunctionCallOrigin::Indirect(
-                        FunctionCallIndirectOrigin::Member(unit_section_offset.into()),
-                    ))
-                }
-                tag => {
-                    debug!("unknown tag for call site origin at offset: {}", tag);
-                    None
-                }
-            }
-        } else {
+        }
+        gimli::DW_TAG_formal_parameter => {
+            // Have the caller check their parameters (they can use a function hash if they are interested)
+            Some(FunctionCallOrigin::Indirect(
+                FunctionCallIndirectOrigin::Parameter(unit_section_offset.into()),
+            ))
+        }
+        gimli::DW_TAG_member => {
+            // this can be viewed as a vtable or a class method
+            Some(FunctionCallOrigin::Indirect(
+                FunctionCallIndirectOrigin::Member(unit_section_offset.into()),
+            ))
+        }
+        tag => {
+            debug!("unknown tag for call site origin at offset: {}", tag);
             None
         }
-    } else {
-        None
     }
 }
 
