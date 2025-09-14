@@ -4077,8 +4077,14 @@ where
                 result = evaluation.resume_with_relocated_address(address);
             }
             Ok(gimli::EvaluationResult::RequiresIndexedAddress { index, relocate: _ }) => {
-                if let Ok(address) = dwarf.read.address(dwarf_unit, index) {
-                    result = evaluation.resume_with_indexed_address(address);
+                match dwarf.read.address(dwarf_unit, index) {
+                    Ok(address) => {
+                        result = evaluation.resume_with_indexed_address(address);
+                    }
+                    Err(e) => {
+                        debug!("evaluation failed: {}", e);
+                        return Vec::new();
+                    }
                 }
             }
             Ok(_x) => {
