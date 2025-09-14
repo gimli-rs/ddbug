@@ -331,12 +331,11 @@ where
 
     fn tree(
         &self,
-        offset: gimli::DebugInfoOffset,
+        offset: gimli::UnitSectionOffset,
     ) -> Option<(
         &DwarfUnit<'input, Endian>,
         gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
-        let offset = gimli::UnitSectionOffset::DebugInfoOffset(offset);
         let (unit, offset) = self.unit(offset)?;
         let tree = unit.entries_tree(Some(offset)).ok()?;
         Some((unit, tree))
@@ -349,9 +348,9 @@ where
         &DwarfUnit<'input, Endian>,
         gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
-        offset
-            .get()
-            .and_then(|offset| self.tree(gimli::DebugInfoOffset(offset)))
+        let offset = offset.get()?;
+        let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
+        self.tree(offset)
     }
 
     fn function_tree(
@@ -361,9 +360,9 @@ where
         &'_ DwarfUnit<'input, Endian>,
         gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
     )> {
-        offset
-            .get()
-            .and_then(|offset| self.tree(gimli::DebugInfoOffset(offset)))
+        let offset = offset.get()?;
+        let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
+        self.tree(offset)
     }
 
     pub(crate) fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
@@ -3568,9 +3567,7 @@ where
                 }
             },
             gimli::DW_AT_call_parameter | gimli::DW_AT_abstract_origin => {
-                if let Some(gimli::UnitSectionOffset::DebugInfoOffset(offset)) =
-                    parse_debug_info_offset(dwarf_unit, &attr)
-                {
+                if let Some(offset) = parse_debug_info_offset(dwarf_unit, &attr) {
                     abstract_origin = Some(offset);
                 }
             }
