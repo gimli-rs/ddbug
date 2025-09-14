@@ -3397,7 +3397,7 @@ where
             | gimli::DW_AT_call_target_clobbered => {
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
-                        if let Some(l) = evaluate_single_location(dwarf_unit, expr) {
+                        if let Some(l) = evaluate_simple(dwarf_unit, expr, false) {
                             call.target = l;
                         }
                     }
@@ -3485,7 +3485,7 @@ where
         match attr.name() {
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
-                    if let Some(l) = evaluate_single_location(dwarf_unit, expr) {
+                    if let Some(l) = evaluate_simple(dwarf_unit, expr, false) {
                         parameter.location = l;
                     }
                 }
@@ -3499,7 +3499,7 @@ where
             gimli::DW_AT_GNU_call_site_value | gimli::DW_AT_call_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     // TODO: evaluate expression, not location
-                    if let Some(l) = evaluate_single_location(dwarf_unit, expr) {
+                    if let Some(l) = evaluate_simple(dwarf_unit, expr, false) {
                         parameter.value = l;
                     }
                 }
@@ -3509,7 +3509,7 @@ where
             },
             gimli::DW_AT_call_data_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
-                    if let Some(l) = evaluate_single_location(dwarf_unit, expr) {
+                    if let Some(l) = evaluate_simple(dwarf_unit, expr, false) {
                         parameter.data_location = l;
                     }
                 }
@@ -3520,7 +3520,7 @@ where
             gimli::DW_AT_call_data_value => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     // TODO: evaluate expression, not location
-                    if let Some(l) = evaluate_single_location(dwarf_unit, expr) {
+                    if let Some(l) = evaluate_simple(dwarf_unit, expr, false) {
                         parameter.data_value = l;
                     }
                 }
@@ -3637,13 +3637,8 @@ fn evaluate_local_variable_location<'input, Endian>(
 ) where
     Endian: gimli::Endianity,
 {
-    let pieces = match evaluate_simple(dwarf_unit, expression, false) {
-        Ok(locations) => locations,
-        Err(_e) => {
-            // This happens a lot, not sure if bugs or bad DWARF.
-            //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
-            return;
-        }
+    let Some(pieces) = evaluate_simple(dwarf_unit, expression, false) else {
+        return;
     };
 
     for piece in &pieces {
@@ -3682,13 +3677,8 @@ fn evaluate_parameter_location<'input, Endian>(
 ) where
     Endian: gimli::Endianity,
 {
-    let pieces = match evaluate_simple(dwarf_unit, expression, false) {
-        Ok(locations) => locations,
-        Err(_e) => {
-            // This happens a lot, not sure if bugs or bad DWARF.
-            //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
-            return;
-        }
+    let Some(pieces) = evaluate_simple(dwarf_unit, expression, false) else {
+        return;
     };
 
     parameter
@@ -3696,26 +3686,26 @@ fn evaluate_parameter_location<'input, Endian>(
         .extend(pieces.into_iter().map(|piece| (range, piece)));
 }
 
-fn evaluate_single_location<'input, Endian>(
+fn evaluate_simple<'input, Endian>(
     dwarf_unit: DwarfUnit<'_, 'input, Endian>,
     expression: gimli::Expression<Reader<'input, Endian>>,
+    _object_address: bool,
 ) -> Option<Vec<Piece>>
 where
     Endian: gimli::Endianity,
 {
-    let pieces = match evaluate_simple(dwarf_unit, expression, false) {
-        Ok(locations) => locations,
+    #[allow(clippy::manual_ok_err)]
+    match evaluate_simple_internal(dwarf_unit, expression, false) {
+        Ok(locations) => Some(locations),
         Err(_e) => {
             // This happens a lot, not sure if bugs or bad DWARF.
             //debug!("simple evaluation failed: {}: {:?}", _e, expression.0);
-            return None;
+            None
         }
-    };
-
-    Some(pieces)
+    }
 }
 
-fn evaluate_simple<'input, Endian>(
+fn evaluate_simple_internal<'input, Endian>(
     dwarf_unit: DwarfUnit<'_, 'input, Endian>,
     expression: gimli::Expression<Reader<'input, Endian>>,
     _object_address: bool,
