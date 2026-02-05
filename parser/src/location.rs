@@ -81,6 +81,21 @@ pub enum Location {
         /// The offset.
         offset: u64,
     },
+    /// The value is stored in a Wasm local
+    WasmLocal {
+        /// The index of the local
+        index: u32,
+    },
+    /// The value is stored in a Wasm global
+    WasmGlobal {
+        /// The index of the global
+        index: u32,
+    },
+    /// The value is stored on the Wasm stack
+    WasmStack {
+        /// The index in the stack
+        index: u32,
+    },
     /// The value is more complex than any of the above variants.
     Other,
 }
