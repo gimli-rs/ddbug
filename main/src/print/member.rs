@@ -42,7 +42,11 @@ fn print_variant(variant: &Variant, w: &mut dyn ValuePrinter) -> Result<()> {
         write!(w, "{}: ", name)?;
     }
     // TODO: use discriminant type to display value
-    write!(w, "<{}>", variant.discriminant_value().unwrap_or(0))?;
+    if let Some(value) = variant.discriminant_value() {
+        write!(w, "<{}>", value)?;
+    } else {
+        write!(w, "<default>")?;
+    }
     Ok(())
 }
 
