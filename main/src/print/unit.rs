@@ -351,6 +351,9 @@ impl<'input> SortList for Unit<'input> {
     ) -> cmp::Ordering {
         let (prefix_a, suffix_a) = options.prefix_map(a.name().unwrap_or(""));
         let (prefix_b, suffix_b) = options.prefix_map(b.name().unwrap_or(""));
+        // TODO: make this optional?
+        let suffix_a = suffix_a.split_once('@').map(|(a, _)| a).unwrap_or(suffix_a);
+        let suffix_b = suffix_b.split_once('@').map(|(a, _)| a).unwrap_or(suffix_b);
         let iter_a = prefix_a.bytes().chain(suffix_a.bytes());
         let iter_b = prefix_b.bytes().chain(suffix_b.bytes());
         iter_a.cmp(iter_b)
