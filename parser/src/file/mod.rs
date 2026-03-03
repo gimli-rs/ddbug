@@ -380,15 +380,15 @@ impl<'input> File<'input> {
             }
 
             for variable in &mut unit.variables {
-                if let Some(address) = variable.address() {
-                    if let Some(symbol) = Self::get_symbol(
+                if let Some(address) = variable.address()
+                    && let Some(symbol) = Self::get_symbol(
                         &self.symbols,
                         &mut used_symbols,
                         address,
                         variable.linkage_name().or_else(|| variable.name()),
-                    ) {
-                        variable.symbol_name = symbol.name;
-                    }
+                    )
+                {
+                    variable.symbol_name = symbol.name;
                 }
             }
         }

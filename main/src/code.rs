@@ -116,21 +116,20 @@ fn find_plts<'data>(
     let mut cs = Capstone::new_raw(arch, mode, capstone::NO_EXTRA_MODE, None).ok()?;
     cs.set_detail(true).ok()?;
     for section in file.sections() {
-        if let (Some(name), Some(address)) = (section.name(), section.address()) {
-            if name.starts_with(".plt") {
-                if let Some(bytes) = file.segment_bytes(address) {
-                    let insns = cs.disasm_all(bytes, address.begin).ok()?;
-                    for insn in insns.iter() {
-                        let detail = cs.insn_detail(insn).ok()?;
-                        let arch_detail = detail.arch_detail();
-                        for op in arch_detail.operands() {
-                            if let Some((_offset, target, _size)) = is_ip_offset(insn, &op) {
-                                if let Some(symbol) = relocations.get(&target) {
-                                    // HACK: assume PLT is aligned to 16 bytes
-                                    plts.insert(insn.address() & !0xf, symbol);
-                                }
-                            }
-                        }
+        if let (Some(name), Some(address)) = (section.name(), section.address())
+            && name.starts_with(".plt")
+            && let Some(bytes) = file.segment_bytes(address)
+        {
+            let insns = cs.disasm_all(bytes, address.begin).ok()?;
+            for insn in insns.iter() {
+                let detail = cs.insn_detail(insn).ok()?;
+                let arch_detail = detail.arch_detail();
+                for op in arch_detail.operands() {
+                    if let Some((_offset, target, _size)) = is_ip_offset(insn, &op)
+                        && let Some(symbol) = relocations.get(&target)
+                    {
+                        // HACK: assume PLT is aligned to 16 bytes
+                        plts.insert(insn.address() & !0xf, symbol);
                     }
                 }
             }
@@ -261,11 +260,12 @@ impl<'a> Instruction<'a> {
                             write!(w, ", ")?;
                         }
                         if let Some(op) = ops.next() {
-                            if let Some(imm) = is_imm(&op) {
-                                if is_jump(&detail) && range.contains(imm) {
-                                    write!(w, "+{:x}", imm - range.begin)?;
-                                    continue;
-                                }
+                            if let Some(imm) = is_imm(&op)
+                                && is_jump(&detail)
+                                && range.contains(imm)
+                            {
+                                write!(w, "+{:x}", imm - range.begin)?;
+                                continue;
                             }
                         } else {
                             debug!("operand count mismatch {:x}", self.insn.address());
@@ -446,10 +446,10 @@ fn is_jump(detail: &InsnDetail) -> bool {
 }
 
 fn is_imm(op: &ArchOperand) -> Option<u64> {
-    if let ArchOperand::X86Operand(op) = op {
-        if let X86OperandType::Imm(imm) = op.op_type {
-            return Some(imm as u64);
-        }
+    if let ArchOperand::X86Operand(op) = op
+        && let X86OperandType::Imm(imm) = op.op_type
+    {
+        return Some(imm as u64);
     }
     None
 }
@@ -468,31 +468,31 @@ fn is_reg(op: &ArchOperand) -> Option<Register> {
 }
 
 fn is_reg_offset(op: &ArchOperand) -> Option<(Register, i64)> {
-    if let ArchOperand::X86Operand(op) = op {
-        if let X86OperandType::Mem(op) = op.op_type {
-            return convert_reg(op.base()).map(|reg| (reg, op.disp()));
-        }
+    if let ArchOperand::X86Operand(op) = op
+        && let X86OperandType::Mem(op) = op.op_type
+    {
+        return convert_reg(op.base()).map(|reg| (reg, op.disp()));
     }
     None
 }
 
 // Option<(offset, address, size)>
 fn is_ip_offset(insn: &Insn, op: &ArchOperand) -> Option<(i64, u64, u64)> {
-    if let ArchOperand::X86Operand(op) = op {
-        if let X86OperandType::Mem(op) = op.op_type {
-            use capstone::arch::x86::X86Reg;
-            let reg = op.base().0 as u32;
-            let size = if reg == X86Reg::X86_REG_RIP {
-                8
-            } else if reg == X86Reg::X86_REG_EIP {
-                4
-            } else {
-                return None;
-            };
-            let offset = op.disp();
-            let address = (insn.address() + insn.bytes().len() as u64).wrapping_add(offset as u64);
-            return Some((offset, address, size));
-        }
+    if let ArchOperand::X86Operand(op) = op
+        && let X86OperandType::Mem(op) = op.op_type
+    {
+        use capstone::arch::x86::X86Reg;
+        let reg = op.base().0 as u32;
+        let size = if reg == X86Reg::X86_REG_RIP {
+            8
+        } else if reg == X86Reg::X86_REG_EIP {
+            4
+        } else {
+            return None;
+        };
+        let offset = op.disp();
+        let address = (insn.address() + insn.bytes().len() as u64).wrapping_add(offset as u64);
+        return Some((offset, address, size));
     }
     None
 }

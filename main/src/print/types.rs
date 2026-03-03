@@ -129,11 +129,11 @@ fn print_ref_function(ty: &FunctionType, w: &mut dyn ValuePrinter, hash: &FileHa
     }
     write!(w, ")")?;
 
-    if let Some(return_type) = ty.return_type(hash) {
-        if !return_type.is_void() {
-            write!(w, " -> ")?;
-            print_ref(Some(return_type), w, hash)?;
-        }
+    if let Some(return_type) = ty.return_type(hash)
+        && !return_type.is_void()
+    {
+        write!(w, " -> ")?;
+        print_ref(Some(return_type), w, hash)?;
     }
     Ok(())
 }

@@ -591,10 +591,10 @@ impl<'input> PartialOrd for FrameVariable<'input> {
 }
 
 fn print_frame_unknown(variable: &FrameVariable, w: &mut dyn ValuePrinter) -> Result<()> {
-    if let Some(offset) = variable.prev_offset {
-        if offset < variable.offset {
-            write!(w, "{}[{}]\t<unknown>", offset, variable.offset - offset)?;
-        }
+    if let Some(offset) = variable.prev_offset
+        && offset < variable.offset
+    {
+        write!(w, "{}[{}]\t<unknown>", offset, variable.offset - offset)?;
     }
     Ok(())
 }

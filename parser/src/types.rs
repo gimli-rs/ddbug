@@ -429,20 +429,15 @@ impl<'input> TypeModifier<'input> {
 }
 
 /// The endianity of an object.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Endianity {
     /// Default endianity encoding.
+    #[default]
     Default,
     /// Big-endian encoding.
     Big,
     /// Little-endian encoding.
     Little,
-}
-
-impl Default for Endianity {
-    fn default() -> Self {
-        Self::Default
-    }
 }
 
 /// The encoding of a base type.
@@ -1108,14 +1103,14 @@ fn layout<'input, 'item>(
         next_bit_offset = Some(member.bit_offset);
         layout.push(member);
     }
-    if let Some(first_bit_offset) = layout.last().map(|x| x.bit_offset) {
-        if first_bit_offset > 0 {
-            layout.push(Layout {
-                bit_offset: 0,
-                bit_size: Size::new(first_bit_offset),
-                item: LayoutItem::Padding,
-            });
-        }
+    if let Some(first_bit_offset) = layout.last().map(|x| x.bit_offset)
+        && first_bit_offset > 0
+    {
+        layout.push(Layout {
+            bit_offset: 0,
+            bit_size: Size::new(first_bit_offset),
+            item: LayoutItem::Padding,
+        });
     }
     layout.reverse();
     layout

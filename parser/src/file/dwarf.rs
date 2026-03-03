@@ -571,10 +571,10 @@ where
             }
         }
     } else if let Some(low_pc) = unit.low_pc {
-        if let Some(size) = size {
-            if high_pc.is_none() {
-                high_pc = low_pc.checked_add(size);
-            }
+        if let Some(size) = size
+            && high_pc.is_none()
+        {
+            high_pc = low_pc.checked_add(size);
         }
         if let Some(high_pc) = high_pc {
             unit.ranges.push(Range {
@@ -1508,34 +1508,35 @@ where
     // struct is set to be the same as the size of the enum. This makes it hard
     // to see the exact layout of the enum, so it's more helpful to treat the
     // struct members as being owned by the variant instead.
-    if unit.language == Some(gimli::DW_LANG_Rust) && variant.members.len() == 1 {
-        if let Some(offset) = variant.members[0].ty.get() {
-            let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
-            if let Some(offset) = offset.to_unit_offset(&dwarf_unit) {
-                let mut tree = dwarf_unit.entries_tree(Some(offset))?;
-                let node = tree.root()?;
-                if node.entry().tag() == gimli::DW_TAG_structure_type {
-                    // Rust gives the struct a name that matches the variant.
-                    if let Some(attr) = node.entry().attr_value(gimli::DW_AT_name)? {
-                        variant.name = dwarf.string(dwarf_unit, attr);
-                    }
+    if unit.language == Some(gimli::DW_LANG_Rust)
+        && variant.members.len() == 1
+        && let Some(offset) = variant.members[0].ty.get()
+    {
+        let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
+        if let Some(offset) = offset.to_unit_offset(&dwarf_unit) {
+            let mut tree = dwarf_unit.entries_tree(Some(offset))?;
+            let node = tree.root()?;
+            if node.entry().tag() == gimli::DW_TAG_structure_type {
+                // Rust gives the struct a name that matches the variant.
+                if let Some(attr) = node.entry().attr_value(gimli::DW_AT_name)? {
+                    variant.name = dwarf.string(dwarf_unit, attr);
+                }
 
-                    variant.source = variant.members.pop().unwrap().source;
+                variant.source = variant.members.pop().unwrap().source;
 
-                    // Parse the struct's members as our own.
-                    variant.members.clear();
-                    let mut iter = node.children();
-                    while let Some(child) = iter.next()? {
-                        if child.entry().tag() == gimli::DW_TAG_member {
-                            parse_member(
-                                &mut variant.members,
-                                unit,
-                                dwarf,
-                                dwarf_unit,
-                                namespace,
-                                child,
-                            )?;
-                        }
+                // Parse the struct's members as our own.
+                variant.members.clear();
+                let mut iter = node.children();
+                while let Some(child) = iter.next()? {
+                    if child.entry().tag() == gimli::DW_TAG_member {
+                        parse_member(
+                            &mut variant.members,
+                            unit,
+                            dwarf,
+                            dwarf_unit,
+                            namespace,
+                            child,
+                        )?;
                     }
                 }
             }
@@ -1979,15 +1980,15 @@ where
                         ),
                     }
                 }
-                if count.is_none() {
-                    if let Some(upper) = upper {
-                        // TODO: use default lower bound for language
-                        let lower = lower.unwrap_or(0);
-                        count = u64::checked_sub(upper, lower)
-                            .and_then(|count| u64::checked_add(count, 1));
-                        if count.is_none() {
-                            debug!("overflow for array bound: {}", upper);
-                        }
+                if count.is_none()
+                    && let Some(upper) = upper
+                {
+                    // TODO: use default lower bound for language
+                    let lower = lower.unwrap_or(0);
+                    count =
+                        u64::checked_sub(upper, lower).and_then(|count| u64::checked_add(count, 1));
+                    if count.is_none() {
+                        debug!("overflow for array bound: {}", upper);
                     }
                 }
                 if let Some(count) = count {
@@ -4007,10 +4008,10 @@ where
         }
         location = None;
     }
-    if pieces.is_empty() {
-        if let Some(location) = stack.pop() {
-            add_piece(&mut pieces, location, 0, false, Size::none());
-        }
+    if pieces.is_empty()
+        && let Some(location) = stack.pop()
+    {
+        add_piece(&mut pieces, location, 0, false, Size::none());
     }
     Ok(pieces)
 }
@@ -4268,18 +4269,18 @@ fn parse_source_file<'input, Endian>(
 {
     match attr.value() {
         gimli::AttributeValue::FileIndex(val) => {
-            if val != 0 {
-                if let Some(line) = &dwarf_unit.line_program {
-                    if let Some(entry) = line.header().file(val) {
-                        source.file = dwarf.string(dwarf_unit, entry.path_name());
-                        if let Some(directory) = entry.directory(line.header()) {
-                            source.directory = dwarf.string(dwarf_unit, directory);
-                        } else {
-                            debug!("invalid directory index {}", entry.directory_index());
-                        }
+            if val != 0
+                && let Some(line) = &dwarf_unit.line_program
+            {
+                if let Some(entry) = line.header().file(val) {
+                    source.file = dwarf.string(dwarf_unit, entry.path_name());
+                    if let Some(directory) = entry.directory(line.header()) {
+                        source.directory = dwarf.string(dwarf_unit, directory);
                     } else {
-                        debug!("invalid file index {}", val);
+                        debug!("invalid directory index {}", entry.directory_index());
                     }
+                } else {
+                    debug!("invalid file index {}", val);
                 }
             }
         }
