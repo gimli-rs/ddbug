@@ -295,7 +295,7 @@ where
         offset: gimli::UnitSectionOffset,
     ) -> Option<(
         DwarfUnit<'_, 'input, Endian>,
-        gimli::DebuggingInformationEntry<'_, '_, Reader<'input, Endian>>,
+        gimli::DebuggingInformationEntry<Reader<'input, Endian>>,
     )> {
         let (unit, offset) = self.unit(offset)?;
         let entry = unit.unit.entry(offset).ok()?;
@@ -307,7 +307,7 @@ where
         offset: gimli::UnitSectionOffset,
     ) -> Option<(
         DwarfUnit<'_, 'input, Endian>,
-        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
+        gimli::EntriesTree<'_, Reader<'input, Endian>>,
     )> {
         let (unit, offset) = self.unit(offset)?;
         let tree = unit.unit.entries_tree(Some(offset)).ok()?;
@@ -319,10 +319,10 @@ where
         offset: TypeOffset,
     ) -> Option<(
         DwarfUnit<'_, 'input, Endian>,
-        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
+        gimli::EntriesTree<'_, Reader<'input, Endian>>,
     )> {
         let offset = offset.get()?;
-        let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
+        let offset = gimli::UnitSectionOffset(offset);
         self.tree(offset)
     }
 
@@ -331,10 +331,10 @@ where
         offset: FunctionOffset,
     ) -> Option<(
         DwarfUnit<'_, 'input, Endian>,
-        gimli::EntriesTree<'_, '_, Reader<'input, Endian>>,
+        gimli::EntriesTree<'_, Reader<'input, Endian>>,
     )> {
         let offset = offset.get()?;
-        let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
+        let offset = gimli::UnitSectionOffset(offset);
         self.tree(offset)
     }
 
@@ -489,8 +489,7 @@ where
     let mut ranges = None;
     let mut high_pc = None;
     let mut size = None;
-    let mut attrs = entry.attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in entry.attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 unit.name = dwarf.string(dwarf_unit, attr.value()).map(Cow::Borrowed);
@@ -838,8 +837,7 @@ where
     let mut name = None;
 
     let entry = node.entry();
-    let mut attrs = entry.attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in entry.attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 name = dwarf.string(dwarf_unit, attr.value());
@@ -1052,14 +1050,13 @@ where
         address_size: Some(u64::from(dwarf_unit.header.address_size())),
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 modifier.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     modifier.ty = offset;
                 }
             }
@@ -1098,8 +1095,7 @@ where
 {
     let mut ty = BaseType::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 ty.name = dwarf.string(dwarf_unit, attr.value());
@@ -1173,22 +1169,21 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 typedef.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     typedef.ty = offset;
                 }
             }
             gimli::DW_AT_decl_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut typedef.source)
+                parse_source_file(dwarf, dwarf_unit, attr, &mut typedef.source)
             }
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut typedef.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut typedef.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut typedef.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut typedef.source),
             gimli::DW_AT_alignment => {}
             _ => debug!(
                 "unknown typedef attribute: {} {:?}",
@@ -1226,8 +1221,7 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 ty.name = dwarf.string(dwarf_unit, attr.value());
@@ -1242,9 +1236,9 @@ where
                     ty.declaration = flag;
                 }
             }
-            gimli::DW_AT_decl_file => parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source),
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
+            gimli::DW_AT_decl_file => parse_source_file(dwarf, dwarf_unit, attr, &mut ty.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut ty.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut ty.source),
             gimli::DW_AT_containing_type | gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
             _ => debug!(
                 "unknown struct attribute: {} {:?}",
@@ -1324,8 +1318,7 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 ty.name = dwarf.string(dwarf_unit, attr.value());
@@ -1340,9 +1333,9 @@ where
                     ty.declaration = flag;
                 }
             }
-            gimli::DW_AT_decl_file => parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source),
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
+            gimli::DW_AT_decl_file => parse_source_file(dwarf, dwarf_unit, attr, &mut ty.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut ty.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut ty.source),
             gimli::DW_AT_alignment | gimli::DW_AT_sibling => {}
             _ => debug!(
                 "unknown union attribute: {} {:?}",
@@ -1403,11 +1396,10 @@ where
 {
     let mut variant_part = VariantPart::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_discr => {
-                if let Some(offset) = parse_member_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_member_offset(dwarf_unit, attr) {
                     variant_part.discr = offset;
                 }
             }
@@ -1461,8 +1453,7 @@ where
 {
     let mut variant = Variant::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_discr_value => {
                 if let Some(value) = attr.udata_value() {
@@ -1512,13 +1503,13 @@ where
         && variant.members.len() == 1
         && let Some(offset) = variant.members[0].ty.get()
     {
-        let offset = gimli::UnitSectionOffset::DebugInfoOffset(gimli::DebugInfoOffset(offset));
+        let offset = gimli::UnitSectionOffset(offset);
         if let Some(offset) = offset.to_unit_offset(&dwarf_unit) {
             let mut tree = dwarf_unit.entries_tree(Some(offset))?;
             let node = tree.root()?;
             if node.entry().tag() == gimli::DW_TAG_structure_type {
                 // Rust gives the struct a name that matches the variant.
-                if let Some(attr) = node.entry().attr_value(gimli::DW_AT_name)? {
+                if let Some(attr) = node.entry().attr_value(gimli::DW_AT_name) {
                     variant.name = dwarf.string(dwarf_unit, attr);
                 }
 
@@ -1566,19 +1557,18 @@ where
     let mut byte_size = None;
     let mut declaration = false;
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 member.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     member.ty = offset;
                 }
             }
             gimli::DW_AT_data_member_location => {
-                if let Some(offset) = parse_data_member_location(dwarf, dwarf_unit, &attr) {
+                if let Some(offset) = parse_data_member_location(dwarf, dwarf_unit, attr) {
                     member.bit_offset = offset;
                 }
             }
@@ -1602,13 +1592,13 @@ where
                 declaration = true;
             }
             gimli::DW_AT_decl_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut member.source);
+                parse_source_file(dwarf, dwarf_unit, attr, &mut member.source);
             }
             gimli::DW_AT_decl_line => {
-                parse_source_line(&attr, &mut member.source);
+                parse_source_line(attr, &mut member.source);
             }
             gimli::DW_AT_decl_column => {
-                parse_source_column(&attr, &mut member.source);
+                parse_source_column(attr, &mut member.source);
             }
             gimli::DW_AT_external
             | gimli::DW_AT_accessibility
@@ -1696,16 +1686,15 @@ where
 {
     let mut inherit = Inherit::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     inherit.ty = offset;
                 }
             }
             gimli::DW_AT_data_member_location => {
-                if let Some(offset) = parse_data_member_location(dwarf, dwarf_unit, &attr) {
+                if let Some(offset) = parse_data_member_location(dwarf, dwarf_unit, attr) {
                     inherit.bit_offset = offset;
                 }
             }
@@ -1790,14 +1779,13 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 ty.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     ty.ty = offset;
                 }
             }
@@ -1811,9 +1799,9 @@ where
                     ty.declaration = flag;
                 }
             }
-            gimli::DW_AT_decl_file => parse_source_file(dwarf, dwarf_unit, &attr, &mut ty.source),
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut ty.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut ty.source),
+            gimli::DW_AT_decl_file => parse_source_file(dwarf, dwarf_unit, attr, &mut ty.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut ty.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut ty.source),
             gimli::DW_AT_sibling
             | gimli::DW_AT_encoding
             | gimli::DW_AT_alignment
@@ -1883,8 +1871,7 @@ where
 {
     let mut enumerator = Enumerator::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 enumerator.name = dwarf.string(dwarf_unit, attr.value());
@@ -1930,11 +1917,10 @@ where
 {
     let mut array = ArrayType::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     array.ty = offset;
                 }
             }
@@ -1960,8 +1946,7 @@ where
                 let mut count = None;
                 let mut lower = None;
                 let mut upper = None;
-                let mut attrs = child.entry().attrs();
-                while let Some(attr) = attrs.next()? {
+                for attr in child.entry().attrs() {
                     match attr.name() {
                         gimli::DW_AT_count => {
                             count = attr.udata_value();
@@ -2023,14 +2008,13 @@ where
     let mut subrange = SubrangeType::default();
     let mut count = None;
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 subrange.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     subrange.ty = offset;
                 }
             }
@@ -2093,11 +2077,10 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     function.return_type = offset;
                 }
             }
@@ -2138,8 +2121,7 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 ty.name = dwarf.string(dwarf_unit, attr.value());
@@ -2176,16 +2158,15 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     ty.ty = offset;
                 }
             }
             gimli::DW_AT_containing_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     ty.containing_ty = offset;
                 }
             }
@@ -2250,8 +2231,7 @@ where
     let mut ranges = None;
 
     let entry = node.entry();
-    let mut attrs = entry.attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in entry.attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 function.name = dwarf.string(dwarf_unit, attr.value());
@@ -2260,10 +2240,10 @@ where
                 function.linkage_name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_decl_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut function.source)
+                parse_source_file(dwarf, dwarf_unit, attr, &mut function.source)
             }
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut function.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut function.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut function.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut function.source),
             gimli::DW_AT_inline => {
                 if let gimli::AttributeValue::Inline(val) = attr.value() {
                     match val {
@@ -2298,12 +2278,12 @@ where
                 ranges = dwarf_unit.attr_ranges_offset(attr.value())?;
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     function.return_type = offset;
                 }
             }
             gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_function_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
                     specification = Some(offset);
                     abstract_origin = attr.name() == gimli::DW_AT_abstract_origin;
                 }
@@ -2524,11 +2504,10 @@ where
     parameter.offset = offset.into();
     let mut abstract_origin = None;
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_parameter_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_parameter_offset(dwarf_unit, attr) {
                     abstract_origin = Some(offset);
                 }
             }
@@ -2536,7 +2515,7 @@ where
                 parameter.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     parameter.ty = offset;
                 }
             }
@@ -2580,17 +2559,10 @@ where
             let unit_offset = offset
                 .to_unit_offset(&dwarf_unit)
                 .unwrap_or(gimli::UnitOffset(0));
-            let offset = match offset {
-                gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
-                _ => panic!("unexpected offset"),
-            };
-            let header_offset = match dwarf_unit.header.offset() {
-                gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
-                _ => panic!("unexpected offset"),
-            };
+            let header_offset = dwarf_unit.header.offset();
             debug!(
                 "missing parameter abstract origin: 0x{:08x}(0x{:08x}+0x{:08x})",
-                offset, header_offset, unit_offset.0
+                offset.0, header_offset.0, unit_offset.0
             );
         }
     }
@@ -2614,11 +2586,10 @@ where
     parameter.offset = offset.into();
     let mut abstract_origin = None;
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_parameter_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_parameter_offset(dwarf_unit, attr) {
                     abstract_origin = Some(offset);
                 }
             }
@@ -2626,7 +2597,7 @@ where
                 parameter.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     parameter.ty = offset;
                 }
             }
@@ -2695,17 +2666,10 @@ where
             let unit_offset = offset
                 .to_unit_offset(&dwarf_unit)
                 .unwrap_or(gimli::UnitOffset(0));
-            let offset = match offset {
-                gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
-                _ => panic!("unexpected offset"),
-            };
-            let header_offset = match dwarf_unit.header.offset() {
-                gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
-                _ => panic!("unexpected offset"),
-            };
+            let header_offset = dwarf_unit.header.offset();
             debug!(
                 "missing parameter abstract origin: 0x{:08x}(0x{:08x}+0x{:08x})",
-                offset, header_offset, unit_offset.0
+                offset.0, header_offset.0, unit_offset.0
             );
         }
     }
@@ -2726,8 +2690,7 @@ fn parse_lexical_block<'input, Endian>(
 where
     Endian: gimli::Endianity,
 {
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_low_pc
             | gimli::DW_AT_high_pc
@@ -2828,8 +2791,7 @@ fn parse_inlined_lexical_block<Endian>(node: gimli::EntriesTreeNode<Reader<Endia
 where
     Endian: gimli::Endianity,
 {
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_low_pc
             | gimli::DW_AT_high_pc
@@ -2879,11 +2841,10 @@ where
     let mut abstract_origin = None;
 
     let entry = node.entry();
-    let mut attrs = entry.attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in entry.attrs() {
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_function_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
                     abstract_origin = Some(offset);
                 }
             }
@@ -3017,11 +2978,10 @@ where
     let mut high_pc = None;
     let mut size = None;
     let mut ranges = None;
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_function_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
                     function.abstract_origin = offset;
                 }
             }
@@ -3038,10 +2998,10 @@ where
                 ranges = dwarf_unit.attr_ranges_offset(attr.value())?;
             }
             gimli::DW_AT_call_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut function.call_source)
+                parse_source_file(dwarf, dwarf_unit, attr, &mut function.call_source)
             }
-            gimli::DW_AT_call_line => parse_source_line(&attr, &mut function.call_source),
-            gimli::DW_AT_call_column => parse_source_column(&attr, &mut function.call_source),
+            gimli::DW_AT_call_line => parse_source_line(attr, &mut function.call_source),
+            gimli::DW_AT_call_column => parse_source_column(attr, &mut function.call_source),
             gimli::DW_AT_entry_pc | gimli::DW_AT_sibling => {}
             _ => debug!(
                 "unknown inlined_subroutine attribute: {} {:?}",
@@ -3158,8 +3118,7 @@ where
         ..Default::default()
     };
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_name => {
                 variable.name = dwarf.string(dwarf_unit, attr.value());
@@ -3168,12 +3127,12 @@ where
                 variable.linkage_name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     variable.ty = offset;
                 }
             }
             gimli::DW_AT_specification => {
-                if let Some(offset) = parse_variable_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_variable_offset(dwarf_unit, attr) {
                     specification = Some(offset);
                 }
             }
@@ -3183,10 +3142,10 @@ where
                 }
             }
             gimli::DW_AT_decl_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut variable.source)
+                parse_source_file(dwarf, dwarf_unit, attr, &mut variable.source)
             }
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut variable.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut variable.source),
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
                     if let Some((address, size)) = evaluate_variable_location(dwarf_unit, expr) {
@@ -3248,11 +3207,10 @@ where
     variable.offset = offset.into();
     let mut abstract_origin = None;
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_variable_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_variable_offset(dwarf_unit, attr) {
                     abstract_origin = Some(offset);
                 }
             }
@@ -3260,15 +3218,15 @@ where
                 variable.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     variable.ty = offset;
                 }
             }
             gimli::DW_AT_decl_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut variable.source)
+                parse_source_file(dwarf, dwarf_unit, attr, &mut variable.source)
             }
-            gimli::DW_AT_decl_line => parse_source_line(&attr, &mut variable.source),
-            gimli::DW_AT_decl_column => parse_source_column(&attr, &mut variable.source),
+            gimli::DW_AT_decl_line => parse_source_line(attr, &mut variable.source),
+            gimli::DW_AT_decl_column => parse_source_column(attr, &mut variable.source),
             gimli::DW_AT_location => {
                 match attr.value() {
                     gimli::AttributeValue::Exprloc(expr) => {
@@ -3346,17 +3304,10 @@ where
             let unit_offset = offset
                 .to_unit_offset(&dwarf_unit)
                 .unwrap_or(gimli::UnitOffset(0));
-            let offset = match offset {
-                gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
-                _ => panic!("unexpected offset"),
-            };
-            let header_offset = match dwarf_unit.header.offset() {
-                gimli::UnitSectionOffset::DebugInfoOffset(offset) => offset.0,
-                _ => panic!("unexpected offset"),
-            };
+            let header_offset = dwarf_unit.header.offset();
             debug!(
                 "missing variable abstract origin: 0x{:08x}(0x{:08x}+0x{:08x})",
-                offset, header_offset, unit_offset.0
+                offset.0, header_offset.0, unit_offset.0
             );
         }
     }
@@ -3378,13 +3329,12 @@ where
 {
     let mut call = FunctionCall::default();
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         let name = attr.name();
         match name {
             gimli::DW_AT_call_origin | gimli::DW_AT_abstract_origin => {
                 if let Some(offset) =
-                    parse_function_call_origin_offset(hash, dwarf, dwarf_unit, &attr)
+                    parse_function_call_origin_offset(hash, dwarf, dwarf_unit, attr)
                 {
                     call.origin = Some(offset);
                 }
@@ -3433,18 +3383,18 @@ where
                 call.call_address = dwarf_unit.attr_address(attr.value())?;
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     call.ty = Some(offset);
                 }
             }
             gimli::DW_AT_call_file => {
-                parse_source_file(dwarf, dwarf_unit, &attr, &mut call.called_from_source)
+                parse_source_file(dwarf, dwarf_unit, attr, &mut call.called_from_source)
             }
             gimli::DW_AT_call_line => {
-                parse_source_line(&attr, &mut call.called_from_source);
+                parse_source_line(attr, &mut call.called_from_source);
             }
             gimli::DW_AT_call_column => {
-                parse_source_column(&attr, &mut call.called_from_source);
+                parse_source_column(attr, &mut call.called_from_source);
             }
             _ => debug!(
                 "unknown call_site attribute: {} {:?}",
@@ -3481,8 +3431,7 @@ where
     let mut parameter = FunctionCallParameter::default();
     let mut abstract_origin = None;
 
-    let mut attrs = node.entry().attrs();
-    while let Some(attr) = attrs.next()? {
+    for attr in node.entry().attrs() {
         match attr.name() {
             gimli::DW_AT_location => match attr.value() {
                 gimli::AttributeValue::Exprloc(expr) => {
@@ -3530,7 +3479,7 @@ where
                 }
             },
             gimli::DW_AT_call_parameter | gimli::DW_AT_abstract_origin => {
-                if let Some(offset) = parse_debug_info_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_debug_info_offset(dwarf_unit, attr) {
                     abstract_origin = Some(offset);
                 }
             }
@@ -3538,7 +3487,7 @@ where
                 parameter.name = dwarf.string(dwarf_unit, attr.value());
             }
             gimli::DW_AT_type => {
-                if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     parameter.ty = Some(offset);
                 }
             }
@@ -3552,14 +3501,13 @@ where
 
     if let Some((dwarf_unit, mut tree)) = abstract_origin.and_then(|offset| dwarf.tree(offset)) {
         let node = tree.root()?;
-        let mut attrs = node.entry().attrs();
-        while let Some(attr) = attrs.next()? {
+        for attr in node.entry().attrs() {
             match attr.name() {
                 gimli::DW_AT_name => {
                     parameter.name = dwarf.string(dwarf_unit, attr.value());
                 }
                 gimli::DW_AT_type => {
-                    if let Some(offset) = parse_type_offset(dwarf_unit, &attr) {
+                    if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                         parameter.ty = Some(offset);
                     }
                 }
@@ -3773,7 +3721,8 @@ where
             gimli::Operation::EntryValue { .. }
             | gimli::Operation::ParameterRef { .. }
             | gimli::Operation::TypedLiteral { .. }
-            | gimli::Operation::PushObjectAddress => {
+            | gimli::Operation::PushObjectAddress
+            | gimli::Operation::VariableValue { .. } => {
                 // Unimplemented.
                 stack.push(Location::Other);
             }
@@ -3973,6 +3922,10 @@ where
                 // Skip and Call could be implemented if needed.
                 return Ok(pieces);
             }
+            gimli::Operation::Uninitialized => {
+                // Unimplemented.
+                // Set an uninitialized flag?
+            }
             gimli::Operation::WasmLocal { .. }
             | gimli::Operation::WasmGlobal { .. }
             | gimli::Operation::WasmStack { .. } => {
@@ -4082,10 +4035,6 @@ impl From<gimli::Register> for Register {
 impl From<gimli::UnitSectionOffset> for FunctionOffset {
     #[inline]
     fn from(o: gimli::UnitSectionOffset) -> FunctionOffset {
-        let o = match o {
-            gimli::UnitSectionOffset::DebugInfoOffset(o) => o,
-            _ => panic!("unexpected offset {:?}", o),
-        };
         FunctionOffset::new(o.0)
     }
 }
@@ -4093,10 +4042,6 @@ impl From<gimli::UnitSectionOffset> for FunctionOffset {
 impl From<gimli::UnitSectionOffset> for ParameterOffset {
     #[inline]
     fn from(o: gimli::UnitSectionOffset) -> ParameterOffset {
-        let o = match o {
-            gimli::UnitSectionOffset::DebugInfoOffset(o) => o,
-            _ => panic!("unexpected offset {:?}", o),
-        };
         ParameterOffset::new(o.0)
     }
 }
@@ -4104,10 +4049,6 @@ impl From<gimli::UnitSectionOffset> for ParameterOffset {
 impl From<gimli::UnitSectionOffset> for MemberOffset {
     #[inline]
     fn from(o: gimli::UnitSectionOffset) -> MemberOffset {
-        let o = match o {
-            gimli::UnitSectionOffset::DebugInfoOffset(o) => o,
-            _ => panic!("unexpected offset {:?}", o),
-        };
         MemberOffset::new(o.0)
     }
 }
@@ -4115,10 +4056,6 @@ impl From<gimli::UnitSectionOffset> for MemberOffset {
 impl From<gimli::UnitSectionOffset> for TypeOffset {
     #[inline]
     fn from(o: gimli::UnitSectionOffset) -> TypeOffset {
-        let o = match o {
-            gimli::UnitSectionOffset::DebugInfoOffset(o) => o,
-            _ => panic!("unexpected offset {:?}", o),
-        };
         TypeOffset::new(o.0)
     }
 }
@@ -4126,10 +4063,6 @@ impl From<gimli::UnitSectionOffset> for TypeOffset {
 impl From<gimli::UnitSectionOffset> for VariableOffset {
     #[inline]
     fn from(o: gimli::UnitSectionOffset) -> VariableOffset {
-        let o = match o {
-            gimli::UnitSectionOffset::DebugInfoOffset(o) => o,
-            _ => panic!("unexpected offset {:?}", o),
-        };
         VariableOffset::new(o.0)
     }
 }
@@ -4143,9 +4076,7 @@ where
 {
     match attr.value() {
         gimli::AttributeValue::UnitRef(offset) => Some(offset.to_unit_section_offset(&dwarf_unit)),
-        gimli::AttributeValue::DebugInfoRef(offset) => {
-            Some(gimli::UnitSectionOffset::DebugInfoOffset(offset))
-        }
+        gimli::AttributeValue::DebugInfoRef(offset) => Some(gimli::UnitSectionOffset(offset.0)),
         other => {
             debug!("unknown offset: {:?}", other);
             None
