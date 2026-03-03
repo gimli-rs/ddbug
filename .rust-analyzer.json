@@ -1,0 +1,6 @@
+{
+  "check": {
+    "command": "clippy",
+    "workspace": true
+  }
+}
