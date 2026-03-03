@@ -14,7 +14,7 @@ fnv = "1.0"
 gimli = "0.33.0"
 log = "0.4"
 memmap2 = "0.9.4"
-object = { version = "0.37.1", features = ["wasm"] }
+object = { version = "0.38.1", features = ["wasm"] }
 
 [features]
 default = []
