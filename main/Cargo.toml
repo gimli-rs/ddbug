@@ -1,6 +1,6 @@
 [package]
 name = "ddbug"
-version = "0.6.0"
+version = "0.5.0"
 description = "Display debugging information"
 repository = "https://github.com/gimli-rs/ddbug"
 readme = "../README.md"
