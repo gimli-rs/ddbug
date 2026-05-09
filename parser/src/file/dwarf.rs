@@ -362,10 +362,11 @@ where
         &self,
         offset: FunctionOffset,
         hash: &FileHash<'input>,
+        is_abstract: bool,
     ) -> Option<FunctionDetails<'input>> {
         self.function_tree(offset).and_then(|(unit, mut tree)| {
             let node = tree.root().ok()?;
-            parse_subprogram_details(hash, self, unit, node).ok()
+            parse_subprogram_details(hash, self, unit, node, is_abstract).ok()
         })
     }
 
@@ -2834,6 +2835,7 @@ fn parse_subprogram_details<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: DwarfUnit<'_, 'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    is_abstract: bool,
 ) -> Result<FunctionDetails<'input>>
 where
     Endian: gimli::Endianity,
@@ -2845,16 +2847,19 @@ where
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
                 if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
-                    abstract_origin = Some(offset);
+                    if is_abstract {
+                        debug!("unexpected abstract origin: {:x?}", offset);
+                    } else {
+                        abstract_origin = Some(offset);
+                    }
                 }
             }
             _ => {}
         }
     }
 
-    // FIXME: limit recursion
-    let mut details = abstract_origin
-        .and_then(|offset| dwarf.get_function_details(offset, hash))
+    let mut function = abstract_origin
+        .and_then(|offset| dwarf.get_function_details(offset, hash, true))
         .unwrap_or_else(|| FunctionDetails {
             parameters: Vec::new(),
             variables: Vec::new(),
@@ -2862,20 +2867,7 @@ where
             calls: Vec::new(),
         });
 
-    parse_subprogram_children_details(hash, dwarf, dwarf_unit, &mut details, node.children())?;
-    Ok(details)
-}
-
-fn parse_subprogram_children_details<'input, Endian>(
-    hash: &FileHash<'input>,
-    dwarf: &DwarfDebugInfo<'input, Endian>,
-    dwarf_unit: DwarfUnit<'_, 'input, Endian>,
-    function: &mut FunctionDetails<'input>,
-    mut iter: gimli::EntriesTreeIter<Reader<'input, Endian>>,
-) -> Result<()>
-where
-    Endian: gimli::Endianity,
-{
+    let mut iter = node.children();
     while let Some(child) = iter.next()? {
         match child.entry().tag() {
             gimli::DW_TAG_formal_parameter => {
@@ -2885,11 +2877,18 @@ where
                 parse_local_variable(&mut function.variables, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                function
-                    .inlined_functions
-                    .push(parse_inlined_subroutine_details(
-                        hash, dwarf, dwarf_unit, child,
-                    )?);
+                // A DW_AT_subprogram can be both an uninlined instance and an
+                // abstract origin for inlined instances. When parsing it as
+                // an abstract origin, the DW_TAG_inlined_subroutine children
+                // are not relevant, and may even refer back to itself.
+                // In this case, parsing them causes infinite recursion.
+                if !is_abstract {
+                    function
+                        .inlined_functions
+                        .push(parse_inlined_subroutine_details(
+                            hash, dwarf, dwarf_unit, child,
+                        )?);
+                }
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
@@ -2900,6 +2899,7 @@ where
                     dwarf,
                     dwarf_unit,
                     child,
+                    is_abstract,
                 )?;
             }
             gimli::DW_TAG_call_site => {
@@ -2912,7 +2912,7 @@ where
             _ => {}
         }
     }
-    Ok(())
+    Ok(function)
 }
 
 fn parse_lexical_block_details<'input, Endian>(
@@ -2923,6 +2923,7 @@ fn parse_lexical_block_details<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: DwarfUnit<'_, 'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+    is_abstract: bool,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2936,9 +2937,11 @@ where
                 parse_local_variable(local_variables, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                inlined_functions.push(parse_inlined_subroutine_details(
-                    hash, dwarf, dwarf_unit, child,
-                )?);
+                if !is_abstract {
+                    inlined_functions.push(parse_inlined_subroutine_details(
+                        hash, dwarf, dwarf_unit, child,
+                    )?);
+                }
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
@@ -2949,6 +2952,7 @@ where
                     dwarf,
                     dwarf_unit,
                     child,
+                    is_abstract,
                 )?;
             }
             gimli::DW_TAG_call_site => {
@@ -3012,10 +3016,10 @@ where
     }
 
     if function.abstract_origin.is_some() {
-        if let Some(details) = dwarf.get_function_details(function.abstract_origin, hash) {
+        if let Some(details) = dwarf.get_function_details(function.abstract_origin, hash, true) {
             function.parameters = details.parameters;
             function.variables = details.variables;
-            if !function.inlined_functions.is_empty() {
+            if !details.inlined_functions.is_empty() {
                 debug!("abstract origin with inlined functions");
             }
         } else {
@@ -3083,6 +3087,7 @@ where
                     dwarf,
                     dwarf_unit,
                     child,
+                    false,
                 )?;
             }
             gimli::DW_TAG_call_site => {

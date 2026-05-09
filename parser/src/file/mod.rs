@@ -51,7 +51,7 @@ where
         hash: &FileHash<'input>,
     ) -> Option<FunctionDetails<'input>> {
         match self {
-            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash),
+            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash, false),
         }
     }
 
