@@ -41,7 +41,7 @@ where
         encoding: BaseTypeEncoding,
     ) -> Vec<Enumerator<'input>> {
         match self {
-            DebugInfo::Dwarf(dwarf) => dwarf.get_enumerators(offset, encoding),
+            DebugInfo::Dwarf(dwarf) => dwarf.get_enumerators(offset, encoding).unwrap_or_default(),
         }
     }
 
@@ -51,7 +51,7 @@ where
         hash: &FileHash<'input>,
     ) -> Option<FunctionDetails<'input>> {
         match self {
-            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash, false),
+            DebugInfo::Dwarf(dwarf) => dwarf.get_function_details(offset, hash),
         }
     }
 

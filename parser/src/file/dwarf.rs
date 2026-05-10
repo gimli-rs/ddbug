@@ -279,49 +279,51 @@ where
     fn unit(
         &'_ self,
         offset: gimli::UnitSectionOffset,
-    ) -> Option<(DwarfUnit<'_, 'input, Endian>, gimli::UnitOffset)> {
+    ) -> Result<(DwarfUnit<'_, 'input, Endian>, gimli::UnitOffset)> {
         // FIXME: make this more efficient for large numbers of units
         // FIXME: cache lookups
         for unit in &self.units {
             if let Some(offset) = offset.to_unit_offset(unit) {
-                return Some((unit.unit_ref(&self.read), offset));
+                return Ok((unit.unit_ref(&self.read), offset));
             }
         }
-        None
+        Err(format!("invalid DIE offset: {:#x?}", offset).into())
     }
 
     fn entry(
         &'_ self,
         offset: gimli::UnitSectionOffset,
-    ) -> Option<(
+    ) -> Result<(
         DwarfUnit<'_, 'input, Endian>,
         gimli::DebuggingInformationEntry<Reader<'input, Endian>>,
     )> {
         let (unit, offset) = self.unit(offset)?;
-        let entry = unit.unit.entry(offset).ok()?;
-        Some((unit, entry))
+        let entry = unit.unit.entry(offset)?;
+        Ok((unit, entry))
     }
 
     fn tree(
         &'_ self,
         offset: gimli::UnitSectionOffset,
-    ) -> Option<(
+    ) -> Result<(
         DwarfUnit<'_, 'input, Endian>,
         gimli::EntriesTree<'_, Reader<'input, Endian>>,
     )> {
         let (unit, offset) = self.unit(offset)?;
-        let tree = unit.unit.entries_tree(Some(offset)).ok()?;
-        Some((unit, tree))
+        let tree = unit.unit.entries_tree(Some(offset))?;
+        Ok((unit, tree))
     }
 
     fn type_tree(
         &'_ self,
         offset: TypeOffset,
-    ) -> Option<(
+    ) -> Result<(
         DwarfUnit<'_, 'input, Endian>,
         gimli::EntriesTree<'_, Reader<'input, Endian>>,
     )> {
-        let offset = offset.get()?;
+        let offset = offset
+            .get()
+            .ok_or_else(|| crate::Error("missing type offset".into()))?;
         let offset = gimli::UnitSectionOffset(offset);
         self.tree(offset)
     }
@@ -329,45 +331,41 @@ where
     fn function_tree(
         &'_ self,
         offset: FunctionOffset,
-    ) -> Option<(
+    ) -> Result<(
         DwarfUnit<'_, 'input, Endian>,
         gimli::EntriesTree<'_, Reader<'input, Endian>>,
     )> {
-        let offset = offset.get()?;
+        let offset = offset
+            .get()
+            .ok_or_else(|| crate::Error("missing function offset".into()))?;
         let offset = gimli::UnitSectionOffset(offset);
         self.tree(offset)
     }
 
     pub(crate) fn get_type(&self, offset: TypeOffset) -> Option<Type<'input>> {
-        self.type_tree(offset).and_then(|(unit, mut tree)| {
-            let node = tree.root().ok()?;
-            parse_unnamed_type(self, unit, node).ok()?
-        })
+        let (unit, mut tree) = self.type_tree(offset).ok()?;
+        let node = tree.root().ok()?;
+        parse_unnamed_type(self, unit, node).ok()?
     }
 
     pub(crate) fn get_enumerators(
         &self,
         offset: TypeOffset,
         encoding: BaseTypeEncoding,
-    ) -> Vec<Enumerator<'input>> {
-        self.type_tree(offset)
-            .and_then(|(unit, mut tree)| {
-                let node = tree.root().ok()?;
-                parse_enumerators(self, unit, node, encoding).ok()
-            })
-            .unwrap_or_default()
+    ) -> Option<Vec<Enumerator<'input>>> {
+        let (dwarf_unit, mut tree) = self.type_tree(offset).ok()?;
+        let node = tree.root().ok()?;
+        parse_enumerators(self, dwarf_unit, node, encoding).ok()
     }
 
     pub(crate) fn get_function_details(
         &self,
         offset: FunctionOffset,
         hash: &FileHash<'input>,
-        is_abstract: bool,
     ) -> Option<FunctionDetails<'input>> {
-        self.function_tree(offset).and_then(|(unit, mut tree)| {
-            let node = tree.root().ok()?;
-            parse_subprogram_details(hash, self, unit, node, is_abstract).ok()
-        })
+        let (dwarf_unit, mut tree) = self.function_tree(offset).ok()?;
+        let node = tree.root().ok()?;
+        parse_subprogram_details(hash, self, dwarf_unit, node).ok()
     }
 
     pub(crate) fn get_cfi(&self, range: Range) -> Vec<Cfi> {
@@ -2835,37 +2833,40 @@ fn parse_subprogram_details<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: DwarfUnit<'_, 'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
-    is_abstract: bool,
 ) -> Result<FunctionDetails<'input>>
 where
     Endian: gimli::Endianity,
 {
-    let mut abstract_origin = None;
+    let mut abstract_origin = FunctionOffset::none();
 
     let entry = node.entry();
     for attr in entry.attrs() {
         match attr.name() {
             gimli::DW_AT_abstract_origin => {
                 if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
-                    if is_abstract {
-                        debug!("unexpected abstract origin: {:x?}", offset);
-                    } else {
-                        abstract_origin = Some(offset);
-                    }
+                    abstract_origin = offset;
                 }
             }
             _ => {}
         }
     }
 
-    let mut function = abstract_origin
-        .and_then(|offset| dwarf.get_function_details(offset, hash, true))
-        .unwrap_or_else(|| FunctionDetails {
-            parameters: Vec::new(),
-            variables: Vec::new(),
-            inlined_functions: Vec::new(),
-            calls: Vec::new(),
-        });
+    let mut function = FunctionDetails {
+        parameters: Vec::new(),
+        variables: Vec::new(),
+        inlined_functions: Vec::new(),
+        calls: Vec::new(),
+    };
+    if abstract_origin.is_some() {
+        if let Err(e) = parse_abstract_subprogram(
+            &mut function.parameters,
+            &mut function.variables,
+            dwarf,
+            abstract_origin,
+        ) {
+            debug!("subprogram with invalid abstract origin: {}", e);
+        }
+    }
 
     let mut iter = node.children();
     while let Some(child) = iter.next()? {
@@ -2877,18 +2878,11 @@ where
                 parse_local_variable(&mut function.variables, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                // A DW_AT_subprogram can be both an uninlined instance and an
-                // abstract origin for inlined instances. When parsing it as
-                // an abstract origin, the DW_TAG_inlined_subroutine children
-                // are not relevant, and may even refer back to itself.
-                // In this case, parsing them causes infinite recursion.
-                if !is_abstract {
-                    function
-                        .inlined_functions
-                        .push(parse_inlined_subroutine_details(
-                            hash, dwarf, dwarf_unit, child,
-                        )?);
-                }
+                function
+                    .inlined_functions
+                    .push(parse_inlined_subroutine_details(
+                        hash, dwarf, dwarf_unit, child,
+                    )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
@@ -2899,7 +2893,6 @@ where
                     dwarf,
                     dwarf_unit,
                     child,
-                    is_abstract,
                 )?;
             }
             gimli::DW_TAG_call_site => {
@@ -2923,7 +2916,6 @@ fn parse_lexical_block_details<'input, Endian>(
     dwarf: &DwarfDebugInfo<'input, Endian>,
     dwarf_unit: DwarfUnit<'_, 'input, Endian>,
     node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
-    is_abstract: bool,
 ) -> Result<()>
 where
     Endian: gimli::Endianity,
@@ -2937,11 +2929,9 @@ where
                 parse_local_variable(local_variables, dwarf, dwarf_unit, child)?;
             }
             gimli::DW_TAG_inlined_subroutine => {
-                if !is_abstract {
-                    inlined_functions.push(parse_inlined_subroutine_details(
-                        hash, dwarf, dwarf_unit, child,
-                    )?);
-                }
+                inlined_functions.push(parse_inlined_subroutine_details(
+                    hash, dwarf, dwarf_unit, child,
+                )?);
             }
             gimli::DW_TAG_lexical_block => {
                 parse_lexical_block_details(
@@ -2952,7 +2942,6 @@ where
                     dwarf,
                     dwarf_unit,
                     child,
-                    is_abstract,
                 )?;
             }
             gimli::DW_TAG_call_site => {
@@ -3015,15 +3004,15 @@ where
         }
     }
 
-    if function.abstract_origin.is_some() {
-        if let Some(details) = dwarf.get_function_details(function.abstract_origin, hash, true) {
-            function.parameters = details.parameters;
-            function.variables = details.variables;
-            if !details.inlined_functions.is_empty() {
-                debug!("abstract origin with inlined functions");
-            }
-        } else {
-            debug!("inlined_subroutine with invalid abstract origin");
+    let abstract_origin = function.abstract_origin;
+    if abstract_origin.is_some() {
+        if let Err(e) = parse_abstract_subprogram(
+            &mut function.parameters,
+            &mut function.variables,
+            dwarf,
+            abstract_origin,
+        ) {
+            debug!("inlined_subroutine with invalid abstract origin: {}", e);
         }
     } else {
         debug!("inlined_subroutine with no abstract origin");
@@ -3087,7 +3076,6 @@ where
                     dwarf,
                     dwarf_unit,
                     child,
-                    false,
                 )?;
             }
             gimli::DW_TAG_call_site => {
@@ -3103,6 +3091,66 @@ where
         }
     }
     Ok(function)
+}
+
+fn parse_abstract_subprogram<'input, Endian>(
+    parameters: &mut Vec<Parameter<'input>>,
+    variables: &mut Vec<LocalVariable<'input>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    offset: FunctionOffset,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    let (dwarf_unit, mut tree) = dwarf.function_tree(offset)?;
+    let node = tree.root()?;
+
+    // Checking for unknown attributes is done in `parse_subprogram`.
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_formal_parameter => {
+                parse_parameter(parameters, dwarf, dwarf_unit, child)?;
+            }
+            gimli::DW_TAG_variable => {
+                parse_local_variable(variables, dwarf, dwarf_unit, child)?;
+            }
+            gimli::DW_TAG_lexical_block => {
+                parse_abstract_lexical_block(variables, dwarf, dwarf_unit, child)?;
+            }
+            // Checking for unknown tags is done in `parse_subprogram_children`.
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+fn parse_abstract_lexical_block<'input, Endian>(
+    variables: &mut Vec<LocalVariable<'input>>,
+    dwarf: &DwarfDebugInfo<'input, Endian>,
+    dwarf_unit: DwarfUnit<'_, 'input, Endian>,
+    node: gimli::EntriesTreeNode<Reader<'input, Endian>>,
+) -> Result<()>
+where
+    Endian: gimli::Endianity,
+{
+    // Checking for unknown attributes is done in `parse_lexical_block`.
+
+    let mut iter = node.children();
+    while let Some(child) = iter.next()? {
+        match child.entry().tag() {
+            gimli::DW_TAG_variable => {
+                parse_local_variable(variables, dwarf, dwarf_unit, child)?;
+            }
+            gimli::DW_TAG_lexical_block => {
+                parse_abstract_lexical_block(variables, dwarf, dwarf_unit, child)?;
+            }
+            // Checking for unknown tags is done in `parse_lexical_block`.
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 fn parse_variable<'input, Endian>(
@@ -3504,7 +3552,8 @@ where
         }
     }
 
-    if let Some((dwarf_unit, mut tree)) = abstract_origin.and_then(|offset| dwarf.tree(offset)) {
+    if let Some((dwarf_unit, mut tree)) = abstract_origin.and_then(|offset| dwarf.tree(offset).ok())
+    {
         let node = tree.root()?;
         for attr in node.entry().attrs() {
             match attr.name() {
@@ -4149,7 +4198,7 @@ where
     Endian: gimli::Endianity,
 {
     let unit_section_offset = parse_debug_info_offset(dwarf_unit, attr)?;
-    let Some((_, entry)) = dwarf.entry(unit_section_offset) else {
+    let Ok((_, entry)) = dwarf.entry(unit_section_offset) else {
         debug!(
             "failed to find DIE entry at offset: {:?}",
             unit_section_offset
