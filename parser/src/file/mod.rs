@@ -355,7 +355,7 @@ impl<'input> File<'input> {
     }
 
     fn normalize(&mut self) {
-        self.symbols.sort_by(|a, b| a.address.cmp(&b.address));
+        self.symbols.sort_by_key(|s| s.address);
         let mut used_symbols = vec![false; self.symbols.len()];
 
         // Set symbol names on functions/variables.

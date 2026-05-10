@@ -1,3 +1,4 @@
+use std::cmp;
 use std::collections::HashMap;
 
 use parser::{File, FileHash, Function, Type, Unit, Variable};
@@ -215,7 +216,7 @@ fn assign_merged_ids_in_unit(
             functions.push(function);
         }
     }
-    for function in functions.into_iter().chain(inlined_functions.into_iter()) {
+    for function in functions.into_iter().chain(inlined_functions) {
         match function {
             MergeResult::Both((function_index_a, a), (function_index_b, b)) => {
                 a.set_id(ids.len());
@@ -805,7 +806,7 @@ pub fn bloat_index(file: &File, options: &Options) -> BloatIndex {
     }
 
     let mut function_totals: Vec<_> = function_totals.into_iter().collect();
-    function_totals.sort_by(|a, b| b.1.size.cmp(&a.1.size));
+    function_totals.sort_by_key(|f| cmp::Reverse(f.1.size));
 
     BloatIndex {
         ids,

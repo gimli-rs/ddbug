@@ -82,7 +82,7 @@ impl RangeList {
 
     /// Sort the ranges by beginning address, and combine ranges where possible.
     pub fn sort(&mut self) {
-        self.ranges.sort_by(|a, b| a.begin.cmp(&b.begin));
+        self.ranges.sort_by_key(|r| r.begin);
         // Combine ranges by adding to a new list.
         let mut ranges = Vec::new();
         mem::swap(&mut ranges, &mut self.ranges);

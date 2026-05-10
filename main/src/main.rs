@@ -17,6 +17,7 @@ static A: System = System;
 #[macro_use]
 extern crate log;
 
+use std::cmp;
 use std::convert::Infallible;
 use std::io::{BufWriter, Write};
 use std::net::SocketAddr;
@@ -449,7 +450,7 @@ fn main() {
                 .exit();
             }
         }
-        options.prefix_map.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        options.prefix_map.sort_by_key(|p| cmp::Reverse(p.0.len()));
     }
 
     if let Some(mut paths) = matches.get_many::<String>(OPT_DIFF) {

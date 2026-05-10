@@ -186,20 +186,21 @@ impl<'input> DiffList for FunctionCall<'input> {
                     cost += 2;
                 } else {
                     match (origin_a, origin_b) {
-                        (FunctionCallOrigin::Direct(f_a), FunctionCallOrigin::Direct(f_b)) => {
-                            if parser::Function::cmp_id(state.hash_a(), f_a, state.hash_b(), f_b)
-                                != std::cmp::Ordering::Equal
-                            {
-                                cost += 1;
-                            }
+                        (FunctionCallOrigin::Direct(f_a), FunctionCallOrigin::Direct(f_b))
+                            if parser::Function::cmp_id(
+                                state.hash_a(),
+                                f_a,
+                                state.hash_b(),
+                                f_b,
+                            ) != std::cmp::Ordering::Equal =>
+                        {
+                            cost += 1;
                         }
                         (
                             FunctionCallOrigin::Indirect(ind_a),
                             FunctionCallOrigin::Indirect(ind_b),
-                        ) => {
-                            if std::mem::discriminant(ind_a) != std::mem::discriminant(ind_b) {
-                                cost += 1;
-                            }
+                        ) if std::mem::discriminant(ind_a) != std::mem::discriminant(ind_b) => {
+                            cost += 1;
                         }
                         _ => {}
                     }

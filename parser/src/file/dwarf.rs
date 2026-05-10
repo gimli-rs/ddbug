@@ -2857,15 +2857,15 @@ where
         inlined_functions: Vec::new(),
         calls: Vec::new(),
     };
-    if abstract_origin.is_some() {
-        if let Err(e) = parse_abstract_subprogram(
+    if abstract_origin.is_some()
+        && let Err(e) = parse_abstract_subprogram(
             &mut function.parameters,
             &mut function.variables,
             dwarf,
             abstract_origin,
-        ) {
-            debug!("subprogram with invalid abstract origin: {}", e);
-        }
+        )
+    {
+        debug!("subprogram with invalid abstract origin: {}", e);
     }
 
     let mut iter = node.children();
