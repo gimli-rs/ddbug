@@ -1,6 +1,6 @@
 [package]
 name = "ddbug_parser"
-version = "0.4.0"
+version = "0.5.0"
 description = "Unified debug information parser"
 repository = "https://github.com/gimli-rs/ddbug"
 keywords = ["debug", "DWARF"]
@@ -13,8 +13,8 @@ rust-version = "1.88"
 fnv = "1.0"
 gimli = "0.33.0"
 log = "0.4"
-memmap2 = "0.9.4"
-object = { version = "0.38.1", features = ["wasm"] }
+memmap2 = "0.9.10"
+object = { version = "0.39.1", features = ["wasm"] }
 
 [features]
 default = []
