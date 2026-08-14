@@ -13,7 +13,7 @@ use crate::function::{
     FunctionCallParameter, FunctionDetails, FunctionOffset, InlinedFunction, Parameter,
     ParameterOffset,
 };
-use crate::location::{Location, Piece, Register};
+use crate::location::{Location, Piece, Register, WasmSpace};
 use crate::namespace::{Namespace, NamespaceKind};
 use crate::range::Range;
 use crate::source::Source;
@@ -3770,7 +3770,16 @@ where
                 location = Some((Location::Other, false));
             }
             gimli::Operation::StackValue => {
-                location = Some((pop(&mut stack)?, true));
+                let value = pop(&mut stack)?;
+                location = match value {
+                    // `DW_OP_WASM_location, DW_OP_stack_value` is the Wasm equivalent of `DW_OP_regN`.
+                    Location::WasmOffset {
+                        space,
+                        index,
+                        offset: 0,
+                    } => Some((Location::Wasm { space, index }, false)),
+                    _ => Some((value, true)),
+                };
             }
             gimli::Operation::EntryValue { .. }
             | gimli::Operation::ParameterRef { .. }
@@ -3871,29 +3880,23 @@ where
                 stack.push(location);
             }
             gimli::Operation::PlusConstant { value: constant } => {
-                let location = match pop(&mut stack)? {
+                let mut location = pop(&mut stack)?;
+                match &mut location {
                     Location::Literal { value } => {
-                        let value = value.wrapping_add(constant) & addr_mask;
-                        Location::Literal { value }
+                        *value = value.wrapping_add(constant) & addr_mask;
                     }
-                    Location::RegisterOffset { register, offset } => {
-                        let offset = ((offset as u64).wrapping_add(constant) & addr_mask) as i64;
-                        Location::RegisterOffset { register, offset }
+                    Location::RegisterOffset { offset, .. }
+                    | Location::FrameOffset { offset }
+                    | Location::CfaOffset { offset }
+                    | Location::WasmOffset { offset, .. } => {
+                        *offset = ((*offset as u64).wrapping_add(constant) & addr_mask) as i64;
                     }
-                    Location::FrameOffset { offset } => {
-                        let offset = ((offset as u64).wrapping_add(constant) & addr_mask) as i64;
-                        Location::FrameOffset { offset }
-                    }
-                    Location::CfaOffset { offset } => {
-                        let offset = ((offset as u64).wrapping_add(constant) & addr_mask) as i64;
-                        Location::CfaOffset { offset }
-                    }
-                    Location::Other => Location::Other,
-                    location => {
+                    Location::Other => {}
+                    _ => {
                         debug!("unsupported PlusConstant: {:?}", location);
-                        Location::Other
+                        location = Location::Other;
                     }
-                };
+                }
                 stack.push(location);
             }
             gimli::Operation::Plus => {
@@ -3982,11 +3985,26 @@ where
                 // Unimplemented.
                 // Set an uninitialized flag?
             }
-            gimli::Operation::WasmLocal { .. }
-            | gimli::Operation::WasmGlobal { .. }
-            | gimli::Operation::WasmStack { .. } => {
-                // Unimplemented.
-                location = Some((Location::Other, false));
+            gimli::Operation::WasmLocal { index } => {
+                stack.push(Location::WasmOffset {
+                    space: WasmSpace::Local,
+                    index,
+                    offset: 0,
+                });
+            }
+            gimli::Operation::WasmGlobal { index } => {
+                stack.push(Location::WasmOffset {
+                    space: WasmSpace::Global,
+                    index,
+                    offset: 0,
+                });
+            }
+            gimli::Operation::WasmStack { index } => {
+                stack.push(Location::WasmOffset {
+                    space: WasmSpace::Stack,
+                    index,
+                    offset: 0,
+                });
             }
         }
         if let Some((location, is_value)) = location {

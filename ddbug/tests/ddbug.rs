@@ -4,6 +4,23 @@ struct Fixture {
     file2: &'static str,
 }
 
+fn print(fixture: &Fixture, name: &str, expect: &str) {
+    let file = ddbug::File::parse(fixture.file1.into()).unwrap();
+    let mut options = options();
+    options.unit(fixture.unit).name(name);
+    let mut output = Vec::new();
+    let mut printer = ddbug::TextPrinter::new(&mut output, &options);
+    ddbug::print(file.file(), &mut printer, &options).unwrap();
+    let output = String::from_utf8(output).unwrap();
+    if !equal(&output, expect) {
+        println!("\nOutput:");
+        println!("{output}");
+        println!("Expected:");
+        println!("{expect}");
+        assert_eq!(output, expect);
+    }
+}
+
 fn diff(fixture: &Fixture, name: &str, expect: &str) {
     let file1 = ddbug::File::parse(fixture.file1.into()).unwrap();
     let file2 = ddbug::File::parse(fixture.file2.into()).unwrap();
@@ -25,6 +42,7 @@ fn diff(fixture: &Fixture, name: &str, expect: &str) {
 fn options() -> ddbug::Options {
     ddbug::Options {
         print_function_variables: true,
+        print_variable_locations: true,
         inline_depth: 1,
 
         category_unit: false,
@@ -67,6 +85,16 @@ fn equal(mut output: &str, expect: &str) -> bool {
     output.is_empty()
 }
 
+macro_rules! test_print {
+    ($name:ident, $($val:expr),*) => {
+        #[test]
+        fn $name() {
+            let expect = concat!($($val),*);
+            print(&FIXTURE, stringify!($name), expect);
+        }
+    }
+}
+
 macro_rules! test_diff {
     ($name:ident, $($val:expr),*) => {
         #[test]
@@ -85,4 +113,21 @@ mod diff {
         file2: "tests/bin/diff2",
     };
     include!("src/diff.rs");
+}
+
+mod wasm {
+    use super::*;
+    static FIXTURE: Fixture = Fixture {
+        unit: "src/wasm.c",
+        file1: "tests/bin/wasm1",
+        file2: "tests/bin/wasm2",
+    };
+    mod print {
+        use super::*;
+        include!("src/wasm.rs");
+    }
+    mod diff {
+        use super::*;
+        include!("src/wasmdiff.rs");
+    }
 }

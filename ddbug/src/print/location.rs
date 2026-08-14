@@ -1,6 +1,6 @@
 use std::cmp;
 
-use parser::{FileHash, Location, Piece, Range, Size};
+use parser::{FileHash, Location, Piece, Range, Size, WasmSpace};
 
 use crate::Result;
 use crate::print::{self, DiffList, DiffState, Print, PrintState, ValuePrinter};
@@ -19,7 +19,8 @@ fn locations(pieces: &[(Range, Piece)]) -> Vec<(Location, Size)> {
                 // We only display size for memory locations.
                 Location::RegisterOffset { .. }
                 | Location::FrameOffset { .. }
-                | Location::CfaOffset { .. } => Some((piece.location, piece.bit_size)),
+                | Location::CfaOffset { .. }
+                | Location::WasmOffset { .. } => Some((piece.location, piece.bit_size)),
                 // Size is not displayed, so omit it for dedup.
                 _ => Some((piece.location, Size::none())),
             }
@@ -130,10 +131,38 @@ pub(crate) fn print(
         Location::TlsOffset { offset } => {
             write!(w, "tls+0x{:x}", offset)?;
         }
+        Location::Wasm { space, index } => {
+            print_wasm_slot(space, index, w)?;
+        }
+        Location::WasmOffset {
+            space,
+            index,
+            offset,
+        } => {
+            print_wasm_slot(space, index, w)?;
+            if offset < 0 {
+                write!(w, "-0x{:x}", -offset)?;
+            } else {
+                write!(w, "+0x{:x}", offset)?;
+            }
+            if let Some(bit_size) = bit_size.get() {
+                write!(w, "[{}]", bit_size.div_ceil(8))?;
+            }
+        }
         Location::Other => {
             write!(w, "<other>")?;
         }
     }
+    Ok(())
+}
+
+fn print_wasm_slot(space: WasmSpace, index: u32, w: &mut dyn ValuePrinter) -> Result<()> {
+    let space = match space {
+        WasmSpace::Local => "local",
+        WasmSpace::Global => "global",
+        WasmSpace::Stack => "stack",
+    };
+    write!(w, "wasm {} {}", space, index)?;
     Ok(())
 }
 

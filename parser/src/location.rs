@@ -81,8 +81,35 @@ pub enum Location {
         /// The offset.
         offset: u64,
     },
+    /// The value is stored in a Wasm slot.
+    Wasm {
+        /// The storage space containing the slot.
+        space: WasmSpace,
+        /// The index of the slot within the space.
+        index: u32,
+    },
+    /// The value is stored in memory at an offset from an address stored in a Wasm slot.
+    WasmOffset {
+        /// The storage space containing the slot.
+        space: WasmSpace,
+        /// The index of the slot within the space.
+        index: u32,
+        /// The offset.
+        offset: i64,
+    },
     /// The value is more complex than any of the above variants.
     Other,
+}
+
+/// A Wasm storage space.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum WasmSpace {
+    /// A function local.
+    Local,
+    /// A module global.
+    Global,
+    /// The operand stack.
+    Stack,
 }
 
 pub(crate) fn registers(
