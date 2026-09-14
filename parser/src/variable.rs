@@ -178,6 +178,11 @@ impl<'input> Variable<'input> {
 pub struct LocalVariable<'input> {
     pub(crate) offset: VariableOffset,
     pub(crate) name: Option<&'input str>,
+    /// The linker-visible name supplied directly by the variable's debug information.
+    ///
+    /// Static local variables can have a linkage name that differs from their source name. Keeping
+    /// it avoids requiring consumers to reconstruct that relationship from the symbol table.
+    pub(crate) linkage_name: Option<&'input str>,
     pub(crate) ty: TypeOffset,
     pub(crate) source: Source<'input>,
     pub(crate) address: Address,
@@ -190,6 +195,15 @@ impl<'input> LocalVariable<'input> {
     #[inline]
     pub fn name(&self) -> Option<&'input str> {
         self.name
+    }
+
+    /// The linkage name of the variable.
+    ///
+    /// This is read directly from the variable's debug information rather than inferred from a
+    /// symbol-table entry at the same address.
+    #[inline]
+    pub fn linkage_name(&self) -> Option<&'input str> {
+        self.linkage_name
     }
 
     /// The debuginfo offset of the variable.

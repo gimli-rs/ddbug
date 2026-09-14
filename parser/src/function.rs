@@ -59,6 +59,12 @@ impl Default for FunctionOffset {
 pub struct Function<'input> {
     pub(crate) id: Id,
     pub(crate) offset: FunctionOffset,
+    /// The abstract function definition that supplies this function's inherited metadata.
+    ///
+    /// A concrete subprogram can omit an address while contributing metadata for an inlined
+    /// function. Retaining its abstract origin allows consumers to associate that metadata with
+    /// concrete inline instances without relying on names or source locations.
+    pub(crate) abstract_origin: FunctionOffset,
     pub(crate) namespace: Option<Arc<Namespace<'input>>>,
     pub(crate) name: Option<&'input str>,
     pub(crate) linkage_name: Option<&'input str>,
@@ -105,6 +111,25 @@ impl<'input> Function<'input> {
     #[inline]
     pub fn set_id(&self, id: usize) {
         self.id.set(id)
+    }
+
+    /// The debuginfo offset of this function.
+    ///
+    /// The offset is the identity of this function's own DIE, even when the function inherits
+    /// metadata from an abstract origin.
+    #[inline]
+    pub fn offset(&self) -> FunctionOffset {
+        self.offset
+    }
+
+    /// The abstract function definition from which this function inherits metadata.
+    ///
+    /// Some compilers emit addressless concrete subprograms that own local-variable metadata and
+    /// refer to the same abstract definition as address-backed inline instances. Exposing this
+    /// relationship preserves their shared function identity without conflating their DIEs.
+    #[inline]
+    pub fn abstract_origin<'a>(&self, hash: &'a FileHash<'input>) -> Option<&'a Function<'input>> {
+        Function::from_offset(hash, self.abstract_origin)
     }
 
     /// The namespace of the function.
