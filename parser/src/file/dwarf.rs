@@ -2209,6 +2209,7 @@ where
     let mut function = Function {
         id: Id::new(0),
         offset: offset.to_unit_section_offset(&dwarf_unit).into(),
+        abstract_origin: FunctionOffset::none(),
         namespace: namespace.clone(),
         name: None,
         symbol_name: None,
@@ -2281,10 +2282,16 @@ where
                     function.return_type = offset;
                 }
             }
-            gimli::DW_AT_specification | gimli::DW_AT_abstract_origin => {
+            gimli::DW_AT_specification => {
                 if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
                     specification = Some(offset);
-                    abstract_origin = attr.name() == gimli::DW_AT_abstract_origin;
+                }
+            }
+            gimli::DW_AT_abstract_origin => {
+                if let Some(offset) = parse_function_offset(dwarf_unit, attr) {
+                    specification = Some(offset);
+                    abstract_origin = true;
+                    function.abstract_origin = offset;
                 }
             }
             gimli::DW_AT_declaration => {
@@ -3270,6 +3277,9 @@ where
             gimli::DW_AT_name => {
                 variable.name = dwarf.string(dwarf_unit, attr.value());
             }
+            gimli::DW_AT_linkage_name | gimli::DW_AT_MIPS_linkage_name => {
+                variable.linkage_name = dwarf.string(dwarf_unit, attr.value());
+            }
             gimli::DW_AT_type => {
                 if let Some(offset) = parse_type_offset(dwarf_unit, attr) {
                     variable.ty = offset;
@@ -3336,6 +3346,9 @@ where
             let v = &mut variables[index];
             if variable.name.is_some() {
                 v.name = variable.name;
+            }
+            if variable.linkage_name.is_some() {
+                v.linkage_name = variable.linkage_name;
             }
             if variable.ty.is_some() {
                 v.ty = variable.ty;
