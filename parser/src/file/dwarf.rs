@@ -381,6 +381,7 @@ where
             Architecture::Arm => gimli::Arm::register_name,
             Architecture::I386 => gimli::X86::register_name,
             Architecture::X86_64 => gimli::X86_64::register_name,
+            Architecture::TriCore => gimli::TriCore::register_name,
             _ => return None,
         };
         register_name(gimli::Register(register.0))
